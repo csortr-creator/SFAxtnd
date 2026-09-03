@@ -26,13 +26,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.23'
 
-      - name: Setup Android NDK
+      - name: Setup Android NDK r26c
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r27c
+          ndk-version: r26c
           add-to-path: true
 
       - name: Build libbox.aar
@@ -44,11 +44,11 @@ jobs:
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
           export PATH=$PATH:$(go env GOPATH)/bin
-          go run ./cmd/internal/build_libbox -target android
+          go run ./cmd/internal/build_libbox -target android/arm64,android/arm
           mkdir -p ../SFAxtnd/app/libs
           cp libbox.aar ../SFAxtnd/app/libs/
           cd ../SFAxtnd
-          ls -la app/libs/
+          ls -lh app/libs/
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3

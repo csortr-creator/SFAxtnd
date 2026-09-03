@@ -23,18 +23,35 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Build libbox.aar
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
+          cd ../sing-box-core
+          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
+          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+          export PATH=$PATH:$(go env GOPATH)/bin
+          go run ./cmd/internal/build_libbox -target android
+          mkdir -p ../SFAxtnd/app/libs
+          cp libbox.aar ../SFAxtnd/app/libs/
+          cd ../SFAxtnd
+          ls -la app/libs/
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-
-      - name: Download libbox.aar
-        run: |
-          mkdir -p app/libs
-          LATEST_TAG=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
-          echo "Using sing-box core version: $LATEST_TAG"
-          DOWNLOAD_URL="https://github.com/SagerNet/sing-box/releases/download/${LATEST_TAG}/libbox-${LATEST_TAG#v}.aar"
-          curl -L -f -o app/libs/libbox.aar "$DOWNLOAD_URL" || \
-          curl -L -f -o app/libs/libbox.aar "https://github.com/SagerNet/sing-box/releases/download/v1.11.4/libbox-1.11.4.aar"
-          ls -la app/libs/
 
       - name: Make gradlew executable
         run: chmod +x gradlew

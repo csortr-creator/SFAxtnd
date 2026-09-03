@@ -40,7 +40,6 @@ jobs:
         run: |
           echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> local.properties
 
       - name: Build libbox.aar
         run: |
@@ -64,10 +63,9 @@ jobs:
           cd "${{ github.workspace }}"
           ls -lh app/libs/
 
-      - name: Patch updater userAgent
+      - name: Patch HTTPClient userAgent
         run: |
-          sed -i 's/\buserAgent\b/"SFAxtnd"/g' app/src/github/java/io/nekohasekai/sfa/vendor/ApkDownloader.kt || true
-          sed -i 's/\buserAgent\b/"SFAxtnd"/g' app/src/github/java/io/nekohasekai/sfa/vendor/GitHubUpdateChecker.kt || true
+          find app/src -type f -name "*.kt" -exec sed -i 's/HTTPClient\.userAgent/"SFAxtnd"/g' {} +
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -82,5 +80,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SFAxtnd-Debug-APK
-          path: app/build/outputs/apk/**/debug/*.apk
+          path: app/build/outputs/apk/**/*.apk
           

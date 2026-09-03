@@ -26,45 +26,36 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: 'stable'
 
-      - name: Setup Android NDK
+      - name: Setup Android NDK r28b
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r26c
+          ndk-version: r28b
           add-to-path: true
 
       - name: Build libbox.aar
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
-          
-          # Откатываем cronet-go до стабильного коммита без сбойных релокаций Clang
-          git clone https://github.com/sagernet/cronet-go.git /tmp/cronet-go
-          cd /tmp/cronet-go
-          CRONET_COMMIT=$(git log --before="2026-08-25" -n 1 --format="%H")
-          if [ -n "$CRONET_COMMIT" ]; then
-            git checkout "$CRONET_COMMIT"
-          else
-            git checkout HEAD~1
-          fi
-          
-          cd ../sing-box-core
-          go mod edit -replace=github.com/sagernet/cronet-go=/tmp/cronet-go
-          go mod tidy
-          
+          export ANDROID_NDK_HOME="${{ steps.setup-ndk.outputs.ndk-path }}"
+          export ANDROID_NDK_ROOT="${{ steps.setup-ndk.outputs.ndk-path }}"
+          export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+
+          git clone --depth=1 https://github.com/SagerNet/sing-box.git /tmp/sing-box-core
+          cd /tmp/sing-box-core
+
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
           export PATH=$PATH:$(go env GOPATH)/bin
+
           gomobile init
           go run ./cmd/internal/build_libbox -target android
-          
-          mkdir -p ../SFAxtnd/app/libs
-          cp libbox.aar ../SFAxtnd/app/libs/
-          cd ../SFAxtnd
-          ls -la app/libs/
+
+          mkdir -p "${{ github.workspace }}/app/libs"
+          cp libbox.aar "${{ github.workspace }}/app/libs/"
+
+          cd "${{ github.workspace }}"
+          ls -lh app/libs/
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3

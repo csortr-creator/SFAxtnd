@@ -26,7 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -40,12 +40,27 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
+          
+          # Откатываем cronet-go до стабильного коммита без сбойных релокаций Clang
+          git clone https://github.com/sagernet/cronet-go.git /tmp/cronet-go
+          cd /tmp/cronet-go
+          CRONET_COMMIT=$(git log --before="2026-08-25" -n 1 --format="%H")
+          if [ -n "$CRONET_COMMIT" ]; then
+            git checkout "$CRONET_COMMIT"
+          else
+            git checkout HEAD~1
+          fi
+          
           cd ../sing-box-core
+          go mod edit -replace=github.com/sagernet/cronet-go=/tmp/cronet-go
+          go mod tidy
+          
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
           go run ./cmd/internal/build_libbox -target android
+          
           mkdir -p ../SFAxtnd/app/libs
           cp libbox.aar ../SFAxtnd/app/libs/
           cd ../SFAxtnd
@@ -65,3 +80,4 @@ jobs:
         with:
           name: SFAxtnd-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
+          

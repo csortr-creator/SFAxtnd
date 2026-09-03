@@ -26,6 +26,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Download libbox.aar
+        run: |
+          mkdir -p app/libs
+          LATEST_TAG=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
+          echo "Using sing-box core version: $LATEST_TAG"
+          DOWNLOAD_URL="https://github.com/SagerNet/sing-box/releases/download/${LATEST_TAG}/libbox-${LATEST_TAG#v}.aar"
+          curl -L -f -o app/libs/libbox.aar "$DOWNLOAD_URL" || \
+          curl -L -f -o app/libs/libbox.aar "https://github.com/SagerNet/sing-box/releases/download/v1.11.4/libbox-1.11.4.aar"
+          ls -la app/libs/
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 

@@ -44,7 +44,8 @@ jobs:
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
           export PATH=$PATH:$(go env GOPATH)/bin
-          go run ./cmd/internal/build_libbox -target android/arm64,android/arm
+          gomobile init
+          go run ./cmd/internal/build_libbox -target android
           mkdir -p ../SFAxtnd/app/libs
           cp libbox.aar ../SFAxtnd/app/libs/
           cd ../SFAxtnd

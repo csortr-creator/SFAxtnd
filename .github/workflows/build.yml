@@ -34,6 +34,13 @@ jobs:
         with:
           ndk-version: r28b
           add-to-path: true
+          link-to-sdk: true
+
+      - name: Configure NDK environment
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ndk.dir=${{ steps.setup-ndk.outputs.ndk-path }}" >> local.properties
 
       - name: Build libbox.aar
         run: |
@@ -64,11 +71,11 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SFAxtnd-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: SFAxtnd-APK
+          path: app/build/outputs/apk/**/debug/*.apk
           

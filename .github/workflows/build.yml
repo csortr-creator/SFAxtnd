@@ -74,7 +74,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
+        run: ./gradlew clean assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
+
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

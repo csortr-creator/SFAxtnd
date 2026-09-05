@@ -81,18 +81,23 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew clean assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
 
-      - name: Prepare APKs for Release
+      - name: Prepare and Rename APKs
         run: |
           mkdir -p release-apks
-          find app/build/outputs/apk -type f -name "*.apk" -exec cp {} release-apks/ \;
-          ls -la release-apks/
+          for file in $(find app/build/outputs/apk -type f -name "*.apk"); do
+            base_name=$(basename "$file")
+            # Заменяем префикс SFA- на SFAxtnd- и вырезаем слово -debug
+            clean_name=$(echo "$base_name" | sed 's/^SFA-/SFAxtnd-/' | sed 's/-debug//')
+            cp "$file" "release-apks/$clean_name"
+          done
+          ls -lh release-apks/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "SFAxtnd Build #${{ github.run_number }}"
-          body: "Готовые APK для раздельной установки SFAxtnd."
+          body: "Готовые файлы APK клиента SFAxtnd."
           draft: false
           prerelease: false
           files: release-apks/*.apk

@@ -102,41 +102,62 @@ class HTTPClient : Closeable {
         }
 
         val contentToParse = tryDecodeBase64(trimmed)
-        val nodes = parseUriLines(contentToParse)
-        if (nodes.isEmpty()) {
-            return trimmed
+
+        if (contentToParse.startsWith("{") && (contentToParse.contains("\"outbounds\"") || contentToParse.contains("\"route\""))) {
+            return contentToParse
         }
 
-        return buildSingBoxConfig(nodes)
+        if (contentToParse.startsWith("[")) {
+            try {
+                val jsonArray = JSONArray(contentToParse)
+                val nodes = mutableListOf<JSONObject>()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.optJSONObject(i) ?: continue
+                    nodes.add(obj)
+                }
+                if (nodes.isNotEmpty()) {
+                    return buildSingBoxConfig(nodes)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        val nodes = parseUriLines(contentToParse)
+        if (nodes.isNotEmpty()) {
+            return buildSingBoxConfig(nodes)
+        }
+
+        return trimmed
     }
 
     private fun tryDecodeBase64(text: String): String {
         val clean = text.replace("\r", "").replace("\n", "").trim()
         if (clean.startsWith("vless://") || clean.startsWith("vmess://") ||
-            clean.startsWith("trojan://") || clean.startsWith("ss://")) {
+            clean.startsWith("trojan://") || clean.startsWith("ss://") ||
+            clean.startsWith("{") || clean.startsWith("[")) {
             return text
         }
-        return try {
-            val decoded = Base64.decode(clean, Base64.DEFAULT)
-            val decodedStr = String(decoded, StandardCharsets.UTF_8).trim()
-            if (decodedStr.contains("://")) decodedStr else text
-        } catch (_: Exception) {
+        for (flags in intArrayOf(Base64.DEFAULT, Base64.URL_SAFE)) {
             try {
-                val decoded = Base64.decode(clean, Base64.URL_SAFE)
+                val decoded = Base64.decode(clean, flags)
                 val decodedStr = String(decoded, StandardCharsets.UTF_8).trim()
-                if (decodedStr.contains("://")) decodedStr else text
+                if (decodedStr.contains("://") || decodedStr.startsWith("{") || decodedStr.startsWith("[")) {
+                    return decodedStr
+                }
             } catch (_: Exception) {
-                text
             }
         }
+        return text
     }
 
     private fun cleanNodeName(rawTag: String?): String {
-        if (rawTag.isNullOrBlank()) return "Node"
+        if (rawTag.isNullOrBlank()) return "Proxy"
+        val trimmed = rawTag.trim()
+        if (!trimmed.contains("%")) return trimmed
         return try {
-            URLDecoder.decode(rawTag, StandardCharsets.UTF_8.name()).trim()
+            URLDecoder.decode(trimmed, StandardCharsets.UTF_8.name()).trim()
         } catch (_: Exception) {
-            rawTag.trim()
+            trimmed
         }
     }
 
@@ -372,13 +393,33 @@ class HTTPClient : Closeable {
 
     private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
         val usedTags = mutableMapOf<String, Int>()
+        usedTags["proxy"] = 1
+        usedTags["direct"] = 1
+        usedTags["block"] = 1
+        usedTags["dns-out"] = 1
+
+        val proxyTags = mutableListOf<String>()
+
         for (node in nodes) {
-            val originalTag = node.getString("tag")
-            val count = usedTags.getOrDefault(originalTag, 0)
-            if (count > 0) {
-                node.put("tag", "$originalTag ($count)")
+            val rawTag = node.optString("tag").ifEmpty {
+                node.optString("server").ifEmpty { "Proxy" }
             }
-            usedTags[originalTag] = count + 1
+            val cleanTag = cleanNodeName(rawTag)
+            val count = usedTags.getOrDefault(cleanTag, 0)
+            val uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
+            usedTags[cleanTag] = count + 1
+            node.put("tag", uniqueTag)
+
+            val type = node.optString("type")
+            if (type !in listOf("selector", "urltest", "direct", "block", "dns")) {
+                proxyTags.add(uniqueTag)
+            }
+        }
+
+        if (proxyTags.isEmpty()) {
+            for (node in nodes) {
+                proxyTags.add(node.getString("tag"))
+            }
         }
 
         val root = JSONObject()
@@ -411,10 +452,6 @@ class HTTPClient : Closeable {
         dnsObj.put("servers", dnsServers)
         dnsObj.put("rules", JSONArray().apply {
             put(JSONObject().apply {
-                put("outbound", "any")
-                put("server", "dns-direct")
-            })
-            put(JSONObject().apply {
                 put("domain_suffix", JSONArray().apply {
                     put(".ru")
                     put(".su")
@@ -446,28 +483,37 @@ class HTTPClient : Closeable {
 
         val outboundsArr = JSONArray()
 
-        val selector = JSONObject().apply {
-            put("type", "selector")
-            put("tag", "proxy")
-            val selectorOutbounds = JSONArray()
-            for (node in nodes) {
-                selectorOutbounds.put(node.getString("tag"))
+        val hasProxySelector = nodes.any { it.optString("tag") == "proxy" }
+        if (!hasProxySelector) {
+            val selector = JSONObject().apply {
+                put("type", "selector")
+                put("tag", "proxy")
+                val selectorOutbounds = JSONArray()
+                for (t in proxyTags) {
+                    selectorOutbounds.put(t)
+                }
+                selectorOutbounds.put("direct")
+                put("outbounds", selectorOutbounds)
+                if (proxyTags.isNotEmpty()) {
+                    put("default", proxyTags[0])
+                }
             }
-            selectorOutbounds.put("direct")
-            put("outbounds", selectorOutbounds)
-            if (nodes.isNotEmpty()) {
-                put("default", nodes[0].getString("tag"))
-            }
+            outboundsArr.put(selector)
         }
-        outboundsArr.put(selector)
 
         for (node in nodes) {
             outboundsArr.put(node)
         }
 
-        outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
-        outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
-        outboundsArr.put(JSONObject().apply { put("type", "dns"); put("tag", "dns-out") })
+        if (nodes.none { it.optString("tag") == "direct" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
+        }
+        if (nodes.none { it.optString("tag") == "block" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
+        }
+        if (nodes.none { it.optString("tag") == "dns-out" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "dns"); put("tag", "dns-out") })
+        }
         root.put("outbounds", outboundsArr)
 
         root.put("route", JSONObject().apply {
@@ -500,7 +546,4 @@ class HTTPClient : Closeable {
     }
 
     companion object {
-        const val userAgent = "SFAxtnd"
-        private val hwidMemoryCache = ConcurrentHashMap<String, String>()
-    }
-}
+        c

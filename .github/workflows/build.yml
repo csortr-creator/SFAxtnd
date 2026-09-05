@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  APP_VERSION: "0.0.7"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -71,6 +74,8 @@ jobs:
           sed -i -E 's/namespace\s*=\s*".*"/namespace = "io.nekohasekai.sfa"/' app/build.gradle.kts || true
           sed -i -E 's/applicationId\s*=\s*"io\.nekohasekai\.sfa"/applicationId = "io.nekohasekai.sfaxtnd"/' app/build.gradle.kts || true
           find app/src/main/res -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">SFAxtnd<\/string>/g' {} +
+          sed -i -E 's/versionName\s*=\s*".*"/versionName = "'"$APP_VERSION"'"/' app/build.gradle.kts || true
+          sed -i -E 's/versionCode\s*=\s*[0-9]+/versionCode = ${{ github.run_number }}/' app/build.gradle.kts || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -86,8 +91,8 @@ jobs:
           mkdir -p release-apks
           for file in $(find app/build/outputs/apk -type f -name "*.apk"); do
             base_name=$(basename "$file")
-            # Заменяем префикс SFA- на SFAxtnd- и вырезаем слово -debug
-            clean_name=$(echo "$base_name" | sed 's/^SFA-/SFAxtnd-/' | sed 's/-debug//')
+            # Заменяем старую версию sing-box на SFAxtnd-0.0.7
+            clean_name=$(echo "$base_name" | sed -E "s/SFA-[0-9]+\.[0-9]+\.[0-9]+/SFAxtnd-${APP_VERSION}/" | sed 's/-debug//')
             cp "$file" "release-apks/$clean_name"
           done
           ls -lh release-apks/
@@ -95,9 +100,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: "SFAxtnd Build #${{ github.run_number }}"
-          body: "Готовые файлы APK клиента SFAxtnd."
+          tag_name: v${{ env.APP_VERSION }}
+          name: "SFAxtnd v${{ env.APP_VERSION }}"
+          body: "Релиз SFAxtnd версии ${{ env.APP_VERSION }}."
           draft: false
           prerelease: false
           files: release-apks/*.apk

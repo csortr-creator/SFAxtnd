@@ -63,9 +63,19 @@ jobs:
           cd "${{ github.workspace }}"
           ls -lh app/libs/
 
-      - name: Patch HTTPClient userAgent
+      - name: Patch project and customize package
         run: |
+          # 1. Заменяем отсутствующий HTTPClient.userAgent на валидную строку
           find app/src -type f -name "*.kt" -exec sed -i 's/HTTPClient\.userAgent/"SFAxtnd"/g' {} +
+
+          # 2. Гарантируем исходный namespace, чтобы компилятор не терял ссылки на класс R
+          sed -i -E 's/namespace\s*=\s*".*"/namespace = "io.nekohasekai.sfa"/' app/build.gradle.kts || true
+
+          # 3. Меняем applicationId на уникальный для параллельной установки с оригиналом
+          sed -i -E 's/applicationId\s*=\s*"io\.nekohasekai\.sfa"/applicationId = "io.nekohasekai.sfaxtnd"/' app/build.gradle.kts || true
+
+          # 4. Меняем отображаемое имя во всех языковых ресурсах strings.xml
+          find app/src/main/res -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">SFAxtnd<\/string>/g' {} +
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -76,10 +86,9 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew clean assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
 
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SFAxtnd-Debug-APK
-          path: app/build/outputs/apk/**/*.apk
+          path: app/build/outputs/apk/**/debug/*.apk
           

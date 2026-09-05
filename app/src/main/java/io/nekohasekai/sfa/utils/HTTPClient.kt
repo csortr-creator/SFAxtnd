@@ -26,7 +26,6 @@ class HTTPClient : Closeable {
         val request = client.newRequest()
         request.setURL(url)
 
-        // Получаем постоянный HWID для этой конкретной ссылки
         val hwid = getOrCreateHwid(url)
 
         request.setUserAgent("Happ/3.20.4")
@@ -56,10 +55,8 @@ class HTTPClient : Closeable {
             normalizedUrl.hashCode().toString()
         }
 
-        // 1. Проверяем кэш в оперативной памяти
         hwidMemoryCache[urlKey]?.let { return it }
 
-        // 2. Ищем сохранённый HWID в SharedPreferences
         val context = getApplicationContext()
         if (context != null) {
             val prefs = context.getSharedPreferences("subscription_hwid_store", Context.MODE_PRIVATE)
@@ -69,14 +66,12 @@ class HTTPClient : Closeable {
                 return savedHwid
             }
 
-            // 3. Если ссылка новая — генерируем один раз и навсегда сохраняем
             val newHwid = UUID.randomUUID().toString().replace("-", "").take(16)
             prefs.edit().putString(urlKey, newHwid).apply()
             hwidMemoryCache[urlKey] = newHwid
             return newHwid
         }
 
-        // Резерв на случай недоступности контекста: стабильный 16-значный ID по хэшу URL
         val fallbackHwid = urlKey.take(16)
         hwidMemoryCache[urlKey] = fallbackHwid
         return fallbackHwid
@@ -159,7 +154,6 @@ class HTTPClient : Closeable {
                     line.startsWith("ss://") -> parseShadowsocks(line)?.let { outbounds.add(it) }
                 }
             } catch (_: Exception) {
-                // Игнорируем битые строки
             }
         }
         return outbounds
@@ -390,7 +384,7 @@ class HTTPClient : Closeable {
         val root = JSONObject()
 
         root.put("log", JSONObject().apply {
-            put("level", "info")
+            put("level", "warn")
             put("timestamp", true)
         })
 
@@ -420,9 +414,21 @@ class HTTPClient : Closeable {
                 put("outbound", "any")
                 put("server", "dns-direct")
             })
+            put(JSONObject().apply {
+                put("domain_suffix", JSONArray().apply {
+                    put(".ru")
+                    put(".su")
+                    put(".xn--p1ai")
+                    put("vk.com")
+                    put("yandex.ru")
+                    put("gosuslugi.ru")
+                })
+                put("server", "dns-direct")
+            })
         })
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
+        dnsObj.put("independent_cache", true)
         root.put("dns", dnsObj)
 
         root.put("inbounds", JSONArray().apply {
@@ -432,8 +438,8 @@ class HTTPClient : Closeable {
                 put("interface_name", "tun0")
                 put("inet4_address", "172.19.0.1/30")
                 put("auto_route", true)
-                put("strict_route", true)
-                put("stack", "mixed")
+                put("strict_route", false)
+                put("stack", "gvisor")
                 put("sniff", true)
             })
         })
@@ -472,6 +478,13 @@ class HTTPClient : Closeable {
                 })
                 put(JSONObject().apply {
                     put("ip_is_private", true)
+                    put("outbound", "direct")
+                })
+                put(JSONObject().apply {
+                    put("package_name", JSONArray().apply {
+                        put("ru.vk.store")
+                        put("com.vk.store")
+                    })
                     put("outbound", "direct")
                 })
             })

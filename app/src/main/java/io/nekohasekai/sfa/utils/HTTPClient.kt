@@ -28,14 +28,13 @@ class HTTPClient : Closeable {
 
         val hwid = getOrCreateHwid(url)
 
-        request.setUserAgent("Happ/3.20.4")
+        request.setUserAgent("sing-box/1.14.0 SFAxtnd/0.0.7")
         request.setHeader("HWID", hwid)
         request.setHeader("hwid", hwid)
         request.setHeader("X-HWID", hwid)
         request.setHeader("Device-ID", hwid)
         request.setHeader("Happ-HWID", hwid)
-        request.setHeader("App-Name", "Happ")
-        request.setHeader("App-Version", "3.20.4")
+        request.setHeader("App-Name", "SFAxtnd")
         request.setHeader("Platform", "Android")
         request.setHeader("Accept", "*/*")
 
@@ -465,7 +464,7 @@ class HTTPClient : Closeable {
         })
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
-        dnsObj.put("independent_cache", true)
+        dnsObj.put("optimistic", true)
         root.put("dns", dnsObj)
 
         root.put("inbounds", JSONArray().apply {
@@ -546,4 +545,5 @@ class HTTPClient : Closeable {
     }
 
     companion object {
-        c
+        const val userAgent = "SFAxtnd"
+      

@@ -1,32 +1,28 @@
-# SFA
+# SFAxtnd
 
-Experimental Android client for sing-box, the universal proxy platform.
+Модифицированный клиент **sing-box для Android (SFA)** с расширенной поддержкой панелей подписок и гибкой обработкой узлов.
 
-## Documentation
+---
 
-https://sing-box.sagernet.org/installation/clients/sfa/
+### Основные отличия и доработки
 
-## License
+* **Умный HWID подписок:** Генерация уникального 16-значного идентификатора устройства (`HWID`) индивидуально для каждой ссылки с сохранением в постоянное хранилище. При повторном обновлении профиля передается тот же ключ.
+* **Поддержка форматов Happ и Sing-box:** Встроенный парсер на лету принимает и преобразует как сырые JSON-массивы нод, так и стандартные ссылки (`vless://`, `vmess://`, `trojan://`, `ss://`).
+* **Автоматические релизы:** CI/CD пайплайн в GitHub Actions компилирует раздельные `.apk` под каждую архитектуру (`arm64-v8a`, `armeabi-v7a`, `universal`) без необходимости распаковывать zip-архивы.
 
-```
-Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
+---
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+### Установка
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+Перейдите во вкладку [Releases](../../releases) репозитория и скачайте нужный файл:
+* **`SFAxtnd-...-arm64-v8a.apk`** — для подавляющего большинства современных смартфонов.
+* **`SFAxtnd-...-armeabi-v7a.apk`** — для старых 32-битных устройств.
+* **`SFAxtnd-...-universal.apk`** — универсальный пакет со всеми библиотеками.
 
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <http://www.gnu.org/licenses/>.
+---
 
-In addition, no derivative work may use the name or imply association
-with this application without prior consent.
-```
+### Лицензия и авторские права
 
-Under the license, that forks of the app are not allowed to be listed on F-Droid or other app stores
-under the original name.
+Данный проект является форком [SFA (sing-box-for-android)](https://github.com/SagerNet/sing-box-for-android) от Nekohasekai.
+
+Распространяется на условиях лицензии **GNU General Public License v3.0**. В соответствии с требованиями лицензии, форк переименован в **SFAxtnd** и не позиционируется как официальный клиент проекта sing-box.

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: "1.0.0"
+  APP_VERSION: "0.0.8"
 
 jobs:
   build:
@@ -23,12 +23,6 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -42,12 +36,17 @@ jobs:
           ndk-version: r28b
           link-to-sdk: true
 
+      - name: Setup Java 17 (for libbox build)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Build libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          set -e
           git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
           cd ../sing-box-core
 
@@ -64,15 +63,21 @@ jobs:
           gomobile init
 
           echo "ANDROID_NDK_HOME is: $ANDROID_NDK_HOME"
-          echo "ANDROID_NDK_ROOT is: $ANDROID_NDK_ROOT"
-          
-          go run ./cmd/internal/build_libbox -target android
+          echo "Java version being used:"
+          java -version
+          go run ./cmd/internal/build_libbox -target android/arm64,android/arm
 
           cd -
           mkdir -p app/libs
           find ../sing-box-core -name "libbox.aar" -exec cp {} app/libs/ \;
           ls -la app/libs/
           test -f app/libs/libbox.aar || (echo "ERROR: libbox.aar was not built!" && exit 1)
+
+      - name: Setup Java 21 (for Gradle build)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
       - name: Setup fixed debug keystore
         run: |
@@ -152,4 +157,3 @@ jobs:
           files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          

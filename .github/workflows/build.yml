@@ -1,20 +1,20 @@
 name: Build and Release APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - dev
-
-permissions:
-  contents: write
+      - main
+  workflow_dispatch:
 
 env:
-  APP_VERSION: "0.0.9"
+  APP_VERSION: "1.0.0."
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -23,89 +23,94 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: '1.24'
+          cache: false
 
-      - name: Setup Android NDK r28b
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r28b
-          add-to-path: true
-          link-to-sdk: true
-
-      - name: Configure NDK environment
+      - name: Setup fixed debug keystore
         run: |
-          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-
-      - name: Build libbox.aar
-        run: |
-          export ANDROID_NDK_HOME="${{ steps.setup-ndk.outputs.ndk-path }}"
-          export ANDROID_NDK_ROOT="${{ steps.setup-ndk.outputs.ndk-path }}"
-          export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-
-          git clone --depth=1 https://github.com/SagerNet/sing-box.git /tmp/sing-box-core
-          cd /tmp/sing-box-core
-
-          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
-          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
-          export PATH=$PATH:$(go env GOPATH)/bin
-
-          gomobile init
-          go run ./cmd/internal/build_libbox -target android
-
-          mkdir -p "${{ github.workspace }}/app/libs"
-          cp libbox.aar "${{ github.workspace }}/app/libs/"
-
-          cd "${{ github.workspace }}"
-
-      - name: Patch project and customize package
-        run: |
-          find app/src -type f -name "*.kt" -exec sed -i 's/HTTPClient\.userAgent/"SFAxtnd"/g' {} +
-          sed -i -E 's/namespace\s*=\s*".*"/namespace = "io.nekohasekai.sfa"/' app/build.gradle.kts || true
-          sed -i -E 's/applicationId\s*=\s*"io\.nekohasekai\.sfa"/applicationId = "io.nekohasekai.sfaxtnd"/' app/build.gradle.kts || true
-          find app/src/main/res -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">SFAxtnd<\/string>/g' {} +
-          sed -i -E 's/versionName\s*=\s*".*"/versionName = "'"$APP_VERSION"'"/' app/build.gradle.kts || true
-          sed -i -E 's/versionCode\s*=\s*[0-9]+/versionCode = ${{ github.run_number }}/' app/build.gradle.kts || true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+          mkdir -p ~/.android
+          cat << 'EOF' | base64 -d > ~/.android/debug.keystore
+          MIIKZgIBAzCCChAGCSqGSIb3DQEHAaCCCgEEggn9MIIJ+TCCBcAGCSqGSIb3DQEHAaCCBbEEggWt
+          MIIFqTCCBaUGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUM
+          MCsEFKEMdMSXxeaEqEP+9fV96242/RY8AgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQB
+          KgQQf91TDLjuGZcxddU2chkk5QSCBNBV69m/YjB5QHI2PvqY260f+v9TRiaBdQOqJFJq40RpfwLJ
+          bZ7OpaJI6Mtq6LfLmWKUXSnaGSmmB6jw05vRVPNBMBoDR/ccPefl4Di72N/kOcXff8vOE0XoS05E
+          1Or/t/DXjgi1Sdsu9Ipwqqp4DDoTXaTExqth5+Pfc4QgAM3pVD+GVaTo15sFClIXPgqhT4vPviI/
+          U56+rnBx3/CD+KtoZ1vHxsQ/wmnXevFhqbx0LQqgCt6Spj6JrN1GHpBvPXuz+V6+4aBayA4a26Eo
+          eGKRhHfru0+dDqhi6KQ4Yl/cK8XA5YruEST068CCoNkcvAdFLJ8aabz2Jck4BKAE4r7BLOfcpIme
+          Xo2lu5bNMC+djtKKzSKInm8oU8zScDLgYMEHk0ahF38YUBhA/INkTnqaB72GiEikYPA7MgxHF1d2
+          i2ASoh53zYEjYfuXC4oFOCGtfl+9EmUw2CrrM1ACW7i1Kix5vnbhgqrtnANC+RJ8LX4WgXsU2Lfj
+          mLnXOFwQ2igdt2C3f847hE+gJt/bYPBKHk5HVgI7rBfDYdWZCUvB6JM3fCciTT10v9qUBHqxKx/H
+          F2ifqFhLKsxYL6eyyplmp1VjIIivrxmWh9o8Sj+VOiLF4GYWPu8/EWXA6oNH74Y8J+ZajXYLqUkC
+          S7HaPl67upCDcu0EyWh5mf+BzQkNg9xtYuQ3FgtTA9sjrv0D85jxQvYyhM9aiddU56ipDp8+H3lS
+          lCS/pGPl9M4EksRBeeMFlXiSsOiQEmhOMnbT15tiqKPlTbR3nN8iwa8tW4rR8ZFM5JL0TdBGwW+X
+          NowbKfCrZG1ndq84k2c8/8CPemLfPWekQqz33myTRektV5O8lkXA4xWeCpFxdIuOw/4mylD5kSxy
+          DTzOXpsVbLW3dIBvZkktcCkgDCA0qIwFqiFc4YUUnynAkW+5WfajEOgNhMrhN+NrMgM1OWu6N3BK
+          BBA6WEsEfioi8NzECMTJ4hYfmhYVJvhGRMIhtqtqTZZArwXPIoP8vgy13klJR87Zg3SE73ok2z5h
+          RswiLNrNv7G7DIedCAewkHGpq1MH5OFL5CigH3kYP2vGynOkhmp9U4YIMGDMIm2WP77b/anEaNax
+          nBMZAatPERT3R6i5PS0a0yst277+quf0wDW6wrWkiCvpeqRpMv3941VfdxA6oyZ7iCK6/BLkV8rb
+          WbFeA6a/bN/CqLjcfXBxEnKVy8TciDbgcuqq4UvNlIbU08ivHYOrYNfzSmiBIUpvY6joRqNcnztV
+          KFSiv5ZpYKSfAtUvPSXNaCql4vIOcBNhdON3VqSupSx1W0gHfPrb/VcHmFDCW1jTMAgrWfvT3V2p
+          sKDahSuaAawJfcRtVoV3eX6R3NC92al1bvv14XZj0Bk1XNMOj8/+IvyJSCs+2g8aVoJsEkvpHq5L
+          ijW8pYoCd3MwY4luz41O+P3W4vQygG/KImpfenKnBJrpG8NEm9oCQNBBZ16OEZMMuetFqFSyctRK
+          afkrA9WP8ESwO0Y9OlnlKGvwaM/tyxCz+gKg+4suiHsbAnzs62tjhbZomJhdZl6PIHAVC5aqBsHp
+          P4lMI1BTz2nO1u7nwT9hT30aznzpNmwStlzO1ESaRRwtCrMXvxgscxoYcy4//c4bA7COF9SlDhqc
+          gDFSMC0GCSqGSIb3DQEJFDEgHh4AYQBuAGQAcgBvAGkAZABkAGUAYgB1AGcAawBlAHkwIQYJKoZI
+          hvcNAQkVMRQEElRpbWUgMTc4ODcwMzE1NjUzNzCCBDEGCSqGSIb3DQEHBqCCBCIwggQeAgEAMIIE
+          FwYJKoZIhvcNAQcBMGYGCSqGSIb3DQEFDTBZMDgGCSqGSIb3DQEFDDArBBRogwJm+3M+CTgtAe9Y
+          n7+HwsnKfQICJxACASAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEM3Bqk5eUrX7hmASJPuG
+          vrKAggOgDMw4s6OiBIg8HUnyCDbjMV15LjQAeMqat6saboSs3uxQ2dL89h34sAQ6gnfjV1kjwSaO
+          bgXOh82ow6Obvr/jzZXpPrzG/VH9tbakgXEUwxXDZfjlt1QWpajs6AUb0rzhbI6Z84CVLoUzJ0q2
+          gZ/oFexIfWi7BUwk/k0B39uw//yk5FN8BrN0qXry83NWOgUP9tlbkn8qYVuJV2COtIjJY/qtN7Ug
+          LBM1qO3duSjjTDP3L2wZLh7lr3tiJWtjDAAsc7QYy7iw/YPaGax7vTRihoAhhoIxicqnMVx9IfaS
+          d12EO07+JxpyrFvVWx4GC6nASugcFtEriJxHNrP38sd/tRMxIhTeBB3AhOpn8Ycz1hOKkKTfAL1k
+          zWIblq5sE89mZvWzVxAyhdeO8Cc5814XbNkxJ4RrnwYk19YfO3AEngkV+z/lPxcGIxzhRKvIy/3n
+          NenWD091knX4lK3einCMcHXBw/A6GLL/afeMrHkkwg0e/xoCvuNpbrOwpEh5eJSfpnlqZF2ASa9n
+          zJNcEMO2hyx7MeP12Qc49mSK+N4r94tX0lrYkKnjb7QoS+Jc4P5ef+kSxKvtr75a0Qqb4ezmwGf6
+          R2hB2RRmJTrCHFpPZfx3uTTAyUi0QRHwiuN7OziCV+zIHTuF4Pex7jKUYrimj8s5+HRTLML7tpsL
+          ZZb+jJ4zp2L/XthNRAnwtmZ+JrNVWjnsi9v7Awm0ebZ+ai6oueCcOq9XE0aq5ouXv88/PmNo/cOj
+          HqRLTpI/35PsFcuTo3nQDA73f+HAHtgW7Ot3EjuZCNS5tgDOsa4uh2tOShTQsktbxNFEbGoOTMTp
+          5b1fS4HrZomnOv/whtmZ37poVsTKK2ILkZbtWCMnyshB7VL+wZEwPR4YqKYIDPpvL6dghFIiiJWW
+          vLNCrqEDq0pdVIkrWQRft6kaHHTqtbEP+Fw4FUB24013i4Lt3vIysSKO0ni6OleUeizhwhDeBdxe
+          0csmV+xBeWdRP54g1OxK7AdSCzgAkroMbaf3YpznC/B08C3n8LmtbFm5dvR/r7N7VyCZdPms0RXr
+          hGbF0a0ooW+D3tOJlXxC2s/TEXx6lqFPo9duhNV7pQl2TDhAJ0VZW1YdYc6Wt6ARgBJkA7mRT5rA
+          Ig2dmWwEeJUVSe134d21M6X655vRubnas5jLAKFV/CjsNRPBycFkxO5NqlmrK/lqiTFPWfMgFkMW
+          fJNBwvkfyILrIUaCHMLbqi5scJpM+jBNMDEwDQYJYIZIAWUDBAIBBQAEIKURv74z+q3ikAAN5ZZh
+          fzpAsFjAGDd8F0DLMTa4i5wvBBTsD6dtdE/nd7S21PvmQhQoyI636AICJxA=
+          EOF
 
       - name: Make gradlew executable
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
       - name: Build with Gradle
         run: ./gradlew clean assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
 
       - name: Prepare and Rename APKs
         run: |
-          mkdir -p release-apks
-          for file in $(find app/build/outputs/apk -type f -name "*.apk"); do
-            base_name=$(basename "$file")
-            # Заменяем старую версию sing-box на SFAxtnd-0.0.7
-            clean_name=$(echo "$base_name" | sed -E "s/SFA-[0-9]+\.[0-9]+\.[0-9]+/SFAxtnd-${APP_VERSION}/" | sed 's/-debug//')
-            cp "$file" "release-apks/$clean_name"
+          mkdir -p release_apks
+          find app/build/outputs/apk/other/debug -type f -name "*.apk" | while read -r file; do
+            filename=$(basename "$file")
+            new_name=$(echo "$filename" | sed "s/app-other-debug/SFAxtnd-${APP_VERSION}/g; s/app-other-/SFAxtnd-${APP_VERSION}-/g")
+            cp "$file" "release_apks/$new_name"
           done
-          ls -lh release-apks/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
-          name: "SFAxtnd v${{ env.APP_VERSION }}"
-          body: "Релиз SFAxtnd версии ${{ env.APP_VERSION }}."
+          name: SFAxtnd v${{ env.APP_VERSION }}
           draft: false
           prerelease: false
-          files: release-apks/*.apk
+          files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           

@@ -30,7 +30,7 @@ class HTTPClient : Closeable {
 
         val hwid = getOrCreateHwid(url)
 
-        request.setUserAgent("sing-box/1.14.0 SFAxtnd/0.0.7")
+        request.setUserAgent("sing-box/1.14.0 SFAxtnd/0.0.8")
         request.setHeader("HWID", hwid)
         request.setHeader("hwid", hwid)
         request.setHeader("X-HWID", hwid)
@@ -102,13 +102,13 @@ class HTTPClient : Closeable {
         val trimmed = raw.trim()
 
         if (trimmed.startsWith("{") && (trimmed.contains("\"outbounds\"") || trimmed.contains("\"route\""))) {
-            return trimmed
+            return sanitizeAndMigrateConfig(trimmed)
         }
 
         val contentToParse = tryDecodeBase64(trimmed)
 
         if (contentToParse.startsWith("{") && (contentToParse.contains("\"outbounds\"") || contentToParse.contains("\"route\""))) {
-            return contentToParse
+            return sanitizeAndMigrateConfig(contentToParse)
         }
 
         if (contentToParse.startsWith("[")) {
@@ -131,7 +131,66 @@ class HTTPClient : Closeable {
             return buildSingBoxConfig(nodes)
         }
 
-        return trimmed
+        return sanitizeAndMigrateConfig(trimmed)
+    }
+
+    private fun sanitizeAndMigrateConfig(jsonStr: String): String {
+        return try {
+            val root = JSONObject(jsonStr)
+            val dns = root.optJSONObject("dns")
+            if (dns != null) {
+                dns.remove("independent_cache")
+                val servers = dns.optJSONArray("servers")
+                if (servers != null) {
+                    for (i in 0 until servers.length()) {
+                        val server = servers.optJSONObject(i) ?: continue
+                        if (server.has("address") && !server.has("type")) {
+                            val addr = server.remove("address").toString().trim()
+                            when {
+                                addr == "local" -> server.put("type", "local")
+                                addr.startsWith("rcode://") -> {
+                                    server.put("type", "rcode")
+                                    server.put("code", addr.removePrefix("rcode://"))
+                                }
+                                addr.startsWith("https://") -> {
+                                    server.put("type", "https")
+                                    val uri = URI(addr)
+                                    server.put("server", uri.host ?: addr.removePrefix("https://").substringBefore("/"))
+                                    val path = uri.rawPath
+                                    server.put("path", if (!path.isNullOrEmpty()) path else "/dns-query")
+                                }
+                                addr.startsWith("tls://") -> {
+                                    server.put("type", "tls")
+                                    val uri = URI(addr)
+                                    server.put("server", uri.host ?: addr.removePrefix("tls://").substringBefore(":"))
+                                }
+                                addr.startsWith("tcp://") -> {
+                                    server.put("type", "tcp")
+                                    val uri = URI(addr)
+                                    server.put("server", uri.host ?: addr.removePrefix("tcp://").substringBefore(":"))
+                                }
+                                addr.startsWith("udp://") -> {
+                                    server.put("type", "udp")
+                                    val uri = URI(addr)
+                                    server.put("server", uri.host ?: addr.removePrefix("udp://").substringBefore(":"))
+                                }
+                                else -> {
+                                    server.put("type", "udp")
+                                    server.put("server", addr)
+                                }
+                            }
+                        }
+                        if (server.has("address_resolver")) {
+                            val res = server.remove("address_resolver")
+                            server.put("server_resolver", res)
+                        }
+                    }
+                }
+            }
+            root.toString(2)
+        } catch (e: Exception) {
+            jsonStr
+        }
     }
 
     private fun tryDecodeBase64(text: String): String {
@@ -433,24 +492,30 @@ class HTTPClient : Closeable {
             put("timestamp", true)
         })
 
+        // DNS-серверы стандарта sing-box 1.14 / 1.15
         val dnsObj = JSONObject()
         val dnsServers = JSONArray().apply {
             put(JSONObject().apply {
                 put("tag", "dns-remote")
-                put("address", "https://1.1.1.1/dns-query")
-                put("address_resolver", "dns-direct")
+                put("type", "https")
+                put("server", "1.1.1.1")
+                put("path", "/dns-query")
+                put("server_resolver", "dns-direct")
                 put("strategy", "ipv4_only")
                 put("detour", "proxy")
             })
             put(JSONObject().apply {
                 put("tag", "dns-direct")
-                put("address", "77.88.8.8")
+                put("type", "udp")
+                put("server", "77.88.8.8")
+                put("server_port", 53)
                 put("strategy", "ipv4_only")
                 put("detour", "direct")
             })
             put(JSONObject().apply {
                 put("tag", "dns-block")
-                put("address", "rcode://success")
+                put("type", "rcode")
+                put("code", "success")
             })
         }
         dnsObj.put("servers", dnsServers)
@@ -460,16 +525,29 @@ class HTTPClient : Closeable {
                     put(".ru")
                     put(".su")
                     put(".xn--p1ai")
+                    put(".by")
+                    put(".kz")
                     put("vk.com")
+                    put("vk.ru")
                     put("yandex.ru")
+                    put("ya.ru")
                     put("gosuslugi.ru")
+                    put("tinkoff.ru")
+                    put("tbank.ru")
+                    put("sberbank.ru")
+                    put("sber.ru")
+                    put("alfabank.ru")
+                    put("vtb.ru")
+                    put("ozon.ru")
+                    put("wildberries.ru")
+                    put("avito.ru")
+                    put("kinopoisk.ru")
                 })
                 put("server", "dns-direct")
             })
         })
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
-        dnsObj.put("optimistic", true)
         root.put("dns", dnsObj)
 
         root.put("inbounds", JSONArray().apply {
@@ -534,6 +612,31 @@ class HTTPClient : Closeable {
                     put("package_name", JSONArray().apply {
                         put("ru.vk.store")
                         put("com.vk.store")
+                    })
+                    put("outbound", "direct")
+                })
+                put(JSONObject().apply {
+                    put("domain_suffix", JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                        put(".by")
+                        put(".kz")
+                        put("vk.com")
+                        put("vk.ru")
+                        put("yandex.ru")
+                        put("ya.ru")
+                        put("gosuslugi.ru")
+                        put("tinkoff.ru")
+                        put("tbank.ru")
+                        put("sberbank.ru")
+                        put("sber.ru")
+                        put("alfabank.ru")
+                        put("vtb.ru")
+                        put("ozon.ru")
+                        put("wildberries.ru")
+                        put("avito.ru")
+                        put("kinopoisk.ru")
                     })
                     put("outbound", "direct")
                 })

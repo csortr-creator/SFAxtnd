@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: "1.0.0"
+  APP_VERSION: "0.0.8"
 
 jobs:
   build:
@@ -43,16 +43,17 @@ jobs:
 
       - name: Build libbox
         run: |
+          git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
+          cd ../sing-box-core
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
-          if [ -f "Makefile" ]; then
-            make libbox || go run ./cmd/internal/build-libbox || true
-          else
-            go run ./cmd/internal/build-libbox || true
-          fi
+          go run ./cmd/internal/build_libbox -target android/arm64,android/arm
+          cd -
           mkdir -p app/libs
-          find . -name "libbox.aar" -exec cp {} app/libs/ \;
+          find ../sing-box-core -name "libbox.aar" -exec cp {} app/libs/ \;
+          ls -la app/libs/
+          test -f app/libs/libbox.aar || (echo "ERROR: libbox.aar was not built!" && exit 1)
 
       - name: Setup fixed debug keystore
         run: |
@@ -132,4 +133,3 @@ jobs:
           files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          

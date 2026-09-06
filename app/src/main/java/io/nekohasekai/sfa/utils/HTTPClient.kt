@@ -14,6 +14,8 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+private val hwidMemoryCache = ConcurrentHashMap<String, String>()
+
 class HTTPClient : Closeable {
 
     private val client = Libbox.newHTTPClient()
@@ -50,11 +52,14 @@ class HTTPClient : Closeable {
             val digest = MessageDigest.getInstance("SHA-256")
             val hash = digest.digest(normalizedUrl.toByteArray(StandardCharsets.UTF_8))
             hash.joinToString("") { "%02x".format(it) }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             normalizedUrl.hashCode().toString()
         }
 
-        hwidMemoryCache[urlKey]?.let { return it }
+        val memoryHwid = hwidMemoryCache[urlKey]
+        if (!memoryHwid.isNullOrBlank()) {
+            return memoryHwid
+        }
 
         val context = getApplicationContext()
         if (context != null) {
@@ -82,12 +87,12 @@ class HTTPClient : Closeable {
             val field = appClass.getDeclaredField("application")
             field.isAccessible = true
             field.get(null) as? Context
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             try {
                 val activityThreadClass = Class.forName("android.app.ActivityThread")
                 val currentAppMethod = activityThreadClass.getMethod("currentApplication")
                 currentAppMethod.invoke(null) as? Context
-            } catch (_: Exception) {
+            } catch (e2: Exception) {
                 null
             }
         }
@@ -117,7 +122,7 @@ class HTTPClient : Closeable {
                 if (nodes.isNotEmpty()) {
                     return buildSingBoxConfig(nodes)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
             }
         }
 
@@ -143,7 +148,7 @@ class HTTPClient : Closeable {
                 if (decodedStr.contains("://") || decodedStr.startsWith("{") || decodedStr.startsWith("[")) {
                     return decodedStr
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
             }
         }
         return text
@@ -155,7 +160,7 @@ class HTTPClient : Closeable {
         if (!trimmed.contains("%")) return trimmed
         return try {
             URLDecoder.decode(trimmed, StandardCharsets.UTF_8.name()).trim()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             trimmed
         }
     }
@@ -173,7 +178,7 @@ class HTTPClient : Closeable {
                     line.startsWith("trojan://") -> parseTrojan(line)?.let { outbounds.add(it) }
                     line.startsWith("ss://") -> parseShadowsocks(line)?.let { outbounds.add(it) }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
             }
         }
         return outbounds
@@ -242,7 +247,7 @@ class HTTPClient : Closeable {
         val b64 = uriStr.removePrefix("vmess://").trim()
         val jsonStr = try {
             String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e1: Exception) {
             String(Base64.decode(b64, Base64.URL_SAFE), StandardCharsets.UTF_8)
         }
         val vmessJson = JSONObject(jsonStr)
@@ -338,7 +343,7 @@ class HTTPClient : Closeable {
         if (uri.userInfo != null) {
             val decodedUserInfo = try {
                 String(Base64.decode(uri.userInfo, Base64.DEFAULT), StandardCharsets.UTF_8)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 uri.userInfo
             }
             val parts = decodedUserInfo.split(":", limit = 2)
@@ -352,7 +357,7 @@ class HTTPClient : Closeable {
             val b64Part = uriStr.removePrefix("ss://").substringBefore("#").trim()
             val decoded = try {
                 String(Base64.decode(b64Part, Base64.DEFAULT), StandardCharsets.UTF_8)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 String(Base64.decode(b64Part, Base64.URL_SAFE), StandardCharsets.UTF_8)
             }
             val atSplit = decoded.split("@", limit = 2)
@@ -537,13 +542,4 @@ class HTTPClient : Closeable {
             put("auto_detect_interface", true)
         })
 
-        return root.toString(2)
-    }
-
-    override fun close() {
-        client.close()
-    }
-
-    companion object {
-        const val userAgent = "SFAxtnd"
-      
+        return 

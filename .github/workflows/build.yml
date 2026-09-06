@@ -37,11 +37,15 @@ jobs:
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
           ndk-version: r28b
           link-to-sdk: true
 
       - name: Build libbox
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
           cd ../sing-box-core
@@ -58,6 +62,8 @@ jobs:
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
+          echo "ANDROID_NDK_HOME is: $ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_ROOT is: $ANDROID_NDK_ROOT"
           go run ./cmd/internal/build_libbox -target android/arm64,android/arm
 
           cd -

@@ -542,4 +542,14 @@ class HTTPClient : Closeable {
             put("auto_detect_interface", true)
         })
 
-        return 
+        return root.toString(2)
+    }
+
+    override fun close() {
+        client.close()
+    }
+
+    companion object {
+        const val userAgent = "SFAxtnd"
+    }
+}

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: "1.0.0."
+  APP_VERSION: "1.0.0"
 
 jobs:
   build:
@@ -34,6 +34,25 @@ jobs:
         with:
           go-version: '1.24'
           cache: false
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28b
+          link-to-sdk: true
+
+      - name: Build libbox
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          if [ -f "Makefile" ]; then
+            make libbox || go run ./cmd/internal/build-libbox || true
+          else
+            go run ./cmd/internal/build-libbox || true
+          fi
+          mkdir -p app/libs
+          find . -name "libbox.aar" -exec cp {} app/libs/ \;
 
       - name: Setup fixed debug keystore
         run: |

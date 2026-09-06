@@ -47,6 +47,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
+          set -e
           git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
           cd ../sing-box-core
 
@@ -64,7 +65,8 @@ jobs:
 
           echo "ANDROID_NDK_HOME is: $ANDROID_NDK_HOME"
           echo "ANDROID_NDK_ROOT is: $ANDROID_NDK_ROOT"
-          go run ./cmd/internal/build_libbox -target android/arm64,android/arm
+          
+          go run ./cmd/internal/build_libbox -target android
 
           cd -
           mkdir -p app/libs
@@ -150,3 +152,4 @@ jobs:
           files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          

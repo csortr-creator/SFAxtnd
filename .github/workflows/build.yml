@@ -45,10 +45,21 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/SagerNet/sing-box.git ../sing-box-core
           cd ../sing-box-core
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+
+          GOMOBILE_VER=$(grep 'github.com/sagernet/gomobile' go.mod | awk '{print $2}')
+          if [ -z "$GOMOBILE_VER" ]; then
+            echo "WARNING: gomobile version not found in go.mod, falling back to latest tagged release"
+            GOMOBILE_VER=$(git ls-remote --tags https://github.com/sagernet/gomobile.git | awk -F/ '{print $NF}' | sort -V | tail -n1)
+          fi
+          echo "Using gomobile version: $GOMOBILE_VER"
+
+          go install github.com/sagernet/gomobile/cmd/gomobile@${GOMOBILE_VER}
+          go install github.com/sagernet/gomobile/cmd/gobind@${GOMOBILE_VER}
+          export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
+
           go run ./cmd/internal/build_libbox -target android/arm64,android/arm
+
           cd -
           mkdir -p app/libs
           find ../sing-box-core -name "libbox.aar" -exec cp {} app/libs/ \;

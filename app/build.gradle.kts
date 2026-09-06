@@ -54,7 +54,7 @@ fun getVersionProps(propName: String): String {
 }
 
 android {
-    namespace = "io.nekonasekai.sfa"
+    namespace = "io.nekohasekai.sfa"
     compileSdk = 37
     compileSdkMinor = 1
 

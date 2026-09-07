@@ -48,6 +48,9 @@ jobs:
       - name: Build libbox
         if: steps.cache-libbox.outputs.cache-hit != 'true'
         run: |
+          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.12
+          export PATH="$(go env GOPATH)/bin:$PATH"
           cd libbox
           go run ./cmd/internal/build_libbox
           mkdir -p ../app/libs

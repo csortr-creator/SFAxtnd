@@ -38,27 +38,36 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Resolve libbox submodule path
+        id: libbox-path
+        run: |
+          echo "=== submodule status ==="
+          git submodule status
+          MODDIR=$(find . -maxdepth 3 -name "go.mod" -not -path "./go.mod" -exec dirname {} \; | head -n1)
+          if [ -z "$MODDIR" ]; then
+            echo "No submodule go.mod found — check .gitmodules"
+            exit 1
+          fi
+          MODDIR=${MODDIR#./}
+          echo "dir=$MODDIR" >> "$GITHUB_OUTPUT"
+          SHA=$(git rev-parse HEAD:"$MODDIR")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Using module dir: $MODDIR (commit $SHA)"
+
       - name: Cache libbox
         id: cache-libbox
         uses: actions/cache@v4
         with:
           path: app/libs/libbox.aar
-          key: ${{ runner.os }}-libbox-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          key: ${{ runner.os }}-libbox-${{ steps.libbox-path.outputs.sha }}
 
       - name: Build libbox
         if: steps.cache-libbox.outputs.cache-hit != 'true'
         run: |
-          git submodule update --init --recursive
-          if [ -d "libbox" ]; then
-            cd libbox
-          elif [ -d "sing-box" ]; then
-            cd sing-box
-          fi
+          cd "${{ steps.libbox-path.outputs.dir }}"
           go run ./cmd/internal/build-libbox || go run ./cmd/internal/build-libbox -target android || go run ./cmd/internal/build_libbox || go run ./cmd/internal/build_libbox -target android
-          mkdir -p ../app/libs
-          if [ -f "libbox.aar" ]; then
-            cp -f libbox.aar ../app/libs/
-          fi
+          mkdir -p "$GITHUB_WORKSPACE/app/libs"
+          find . -name "libbox.aar" -exec cp -f {} "$GITHUB_WORKSPACE/app/libs/" \;
 
       - name: Setup Java 21 (for Gradle build)
         uses: actions/setup-java@v4
@@ -97,4 +106,3 @@ jobs:
           files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          

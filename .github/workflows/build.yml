@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -27,37 +28,55 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: temurin
+          java-version: '17'
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25.5'
+          cache: false
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26d
+          ndk-version: r28d
+
+      - name: Verify build environment
+        run: |
+          java --version
+          go version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          echo "JAVA_HOME=$JAVA_HOME"
+
+      - name: Install SagerNet gomobile
+        working-directory: libbox
+        run: |
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
+          go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+          gomobile version || true
+          gobind -version || true
 
       - name: Build libbox
+        working-directory: libbox
         run: |
-          mkdir -p app/libs
-          # 1. Скачиваем актуальные исходники ядра sing-box
-          git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box-core
-          cd sing-box-core
-          
-          # 2. Устанавливаем зависимости для Go Mobile
-          go get -tool golang.org/x/mobile/cmd/gobind
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          gomobile init
-          
-          # 3. Собираем ядро (убран устаревший тег with_ech)
-          gomobile bind -v -target android -androidapi 21 -javapkg io.nekohasekai -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls" -o ../app/libs/libbox.aar ./experimental/libbox
-          
-          cd ..
-          ls -lh app/libs/libbox.aar
+          go run ./cmd/internal/build_libbox -target android
+
+          ls -lh libbox.aar
+          ls -lh libbox-legacy.aar
+
+          cp libbox.aar ../app/libs/libbox.aar
+          cp libbox-legacy.aar ../app/libs/libbox-legacy.aar
+
+      - name: Verify generated libraries
+        run: |
+          ls -lh app/libs/
+          test -f app/libs/libbox.aar
+          test -f app/libs/libbox-legacy.aar
 
       - name: Auto Bump Version
         run: |
@@ -65,36 +84,54 @@ jobs:
           PATCH_VERSION="${{ github.run_number }}"
           FULL_VERSION="${BASE_VERSION}.${PATCH_VERSION}"
 
-          echo "VERSION_CODE=$PATCH_VERSION" > version.properties
-          echo "VERSION_NAME=$FULL_VERSION" >> version.properties
+          {
+            echo "VERSION_CODE=$PATCH_VERSION"
+            echo "VERSION_NAME=$FULL_VERSION"
+          } > version.properties
 
-          echo "APP_VERSION=$FULL_VERSION" >> $GITHUB_ENV
-          echo "Building SFAxtnd version $FULL_VERSION (Code: $PATCH_VERSION)"
+          echo "APP_VERSION=$FULL_VERSION" >> "$GITHUB_ENV"
+
+          echo "Building SFAxtnd version $FULL_VERSION"
+          cat version.properties
 
       - name: Setup Keystore
         run: |
           mkdir -p ~/.android
+
           if [ -n "${{ secrets.DEBUG_KEYSTORE }}" ]; then
             echo "${{ secrets.DEBUG_KEYSTORE }}" | base64 -d > ~/.android/debug.keystore
           fi
 
-      - name: Build with Gradle
+      - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
 
-      - name: Prepare and Rename APKs
+          ./gradlew clean assembleOtherDebug \
+            -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" \
+            --stacktrace
+
+      - name: Prepare APKs
         run: |
           mkdir -p dist
-          find app/build/outputs/apk/ -type f -name "*.apk" | while read -r file; do
+
+          find app/build/outputs/apk -type f -name "*.apk" | while read -r file; do
+
             filename=$(basename "$file")
-            arch=$(echo "$filename" | grep -o -E '(arm64-v8a|armeabi-v7a|x86_64|x86|universal)' || true)
+
+            arch=$(echo "$filename" | grep -oE \
+              '(arm64-v8a|armeabi-v7a|x86_64|x86|universal)' || true)
+
             if [ -n "$arch" ]; then
-              cp "$file" "dist/SFAxtnd-${APP_VERSION}-${arch}.apk"
+              cp "$file" \
+                "dist/SFAxtnd-${APP_VERSION}-${arch}.apk"
             else
-              cp "$file" "dist/SFAxtnd-${APP_VERSION}-universal.apk"
+              cp "$file" \
+                "dist/SFAxtnd-${APP_VERSION}-universal.apk"
             fi
+
           done
+
+          echo "Generated APKs:"
           ls -lh dist/
 
       - name: Publish Release
@@ -104,10 +141,11 @@ jobs:
           name: "SFAxtnd v${{ env.APP_VERSION }}"
           body: |
             ### SFAxtnd v${{ env.APP_VERSION }}
-            - Сборка на коммите: `${{ github.sha }}`
-            - Скомпилировано ядро sing-box
-            - Версия билда: `${{ env.APP_VERSION }}`
+
+            - Commit: `${{ github.sha }}`
+            - Core: sing-box libbox
+            - Version: `${{ env.APP_VERSION }}`
+            - Run: `${{ github.run_number }}`
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          

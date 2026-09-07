@@ -21,7 +21,7 @@ jobs:
     steps:
 
       # =========================
-      # CHECKOUT
+      # CHECKOUT APPLICATION
       # =========================
 
       - name: Checkout repository
@@ -43,14 +43,55 @@ jobs:
 
 
       # =========================
+      # CLONE SING-BOX FIRST
+      # =========================
+
+      - name: Clone sing-box
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git clone \
+            --depth 1 \
+            https://github.com/SagerNet/sing-box.git \
+            sing-box-core
+
+          cd sing-box-core
+
+          echo "Sing-box commit:"
+          git rev-parse HEAD
+
+          echo "Sing-box Go requirement:"
+          grep '^go ' go.mod
+
+
+      # =========================
       # GO
+      # VERSION FROM SING-BOX go.mod
       # =========================
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.5'
+          go-version-file: sing-box-core/go.mod
           cache: false
+
+
+      # =========================
+      # VERIFY GO VERSION
+      # =========================
+
+      - name: Verify Go version
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          go version
+
+          cd sing-box-core
+
+          echo "Required Go version:"
+          grep '^go ' go.mod
 
 
       # =========================
@@ -65,12 +106,20 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-          # Ищем sdkmanager независимо от текущего PATH
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f \
+            -name sdkmanager \
+            | head -n 1)"
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found"
-            find "$ANDROID_HOME" -maxdepth 5 -type f 2>/dev/null | head -n 100
+
+            find "$ANDROID_HOME" \
+              -maxdepth 5 \
+              -type f \
+              2>/dev/null \
+              | head -n 100
+
             exit 1
           fi
 
@@ -90,18 +139,18 @@ jobs:
 
           "$SDKMANAGER" \
             "platform-tools" \
+            "platforms;android-24" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
-            "ndk;28.0.13004108"
+            "ndk;28.2.13676358"
 
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.0.13004108" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" \
+            >> "$GITHUB_ENV"
 
-          echo "Android environment:"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" \
+            >> "$GITHUB_ENV"
 
-          ls -lah "$ANDROID_HOME/ndk/28.0.13004108"
+          echo "Android SDK and NDK installed."
 
 
       # =========================
@@ -119,9 +168,10 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
 
-          find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager
-
+          test -d "$ANDROID_HOME"
           test -d "$ANDROID_NDK_HOME"
+
+          ls -lah "$ANDROID_NDK_HOME"
 
 
       # =========================
@@ -133,19 +183,26 @@ jobs:
         run: |
           set -euxo pipefail
 
-          go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
-          go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+          go install \
+            -v \
+            github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
 
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install \
+            -v \
+            github.com/sagernet/gomobile/cmd/gobind@v0.1.13
 
           export PATH="$(go env GOPATH)/bin:$PATH"
 
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
           gomobile version || true
+
           gobind -version || true
 
 
       # =========================
       # BUILD LIBBOX
+      # USING OFFICIAL SING-BOX SCRIPT
       # =========================
 
       - name: Build libbox
@@ -155,35 +212,43 @@ jobs:
 
           export PATH="$(go env GOPATH)/bin:$PATH"
 
-          mkdir -p app/libs
-
-          echo "Cloning sing-box..."
-
-          git clone \
-            --depth 1 \
-            https://github.com/SagerNet/sing-box.git \
-            sing-box-core
-
           cd sing-box-core
 
-          echo "Sing-box commit:"
+          echo "Current commit:"
           git rev-parse HEAD
 
-          echo "Building libbox..."
+          echo "Building libbox using sing-box internal builder..."
 
-          gomobile bind \
-            -v \
-            -target android \
-            -androidapi 24 \
-            -javapkg=io.nekohasekai \
-            -libname=box \
-            -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls" \
-            -o ../app/libs/libbox.aar \
-            ./experimental/libbox
+          go run \
+            ./cmd/internal/build_libbox \
+            -target android
+
+          echo "Build finished."
+
+          ls -lah
+
+          if [ ! -f "libbox.aar" ]; then
+            echo "ERROR: libbox.aar was not generated"
+
+            find . \
+              -maxdepth 3 \
+              -type f \
+              \( -name "*.aar" -o -name "*.so" \) \
+              -print
+
+            exit 1
+          fi
+
+          mkdir -p ../app/libs
+
+          cp \
+            libbox.aar \
+            ../app/libs/libbox.aar
 
           cd ..
 
           echo "Generated libraries:"
+
           ls -lah app/libs/
 
           test -f app/libs/libbox.aar
@@ -202,10 +267,14 @@ jobs:
           PATCH_VERSION="${{ github.run_number }}"
           FULL_VERSION="${BASE_VERSION}.${PATCH_VERSION}"
 
-          echo "VERSION_CODE=$PATCH_VERSION" > version.properties
-          echo "VERSION_NAME=$FULL_VERSION" >> version.properties
+          echo "VERSION_CODE=$PATCH_VERSION" \
+            > version.properties
 
-          echo "APP_VERSION=$FULL_VERSION" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$FULL_VERSION" \
+            >> version.properties
+
+          echo "APP_VERSION=$FULL_VERSION" \
+            >> "$GITHUB_ENV"
 
           echo "Building SFAxtnd version:"
           echo "$FULL_VERSION"
@@ -223,12 +292,18 @@ jobs:
           mkdir -p ~/.android
 
           if [ -n "${{ secrets.DEBUG_KEYSTORE }}" ]; then
+
             echo "${{ secrets.DEBUG_KEYSTORE }}" \
               | base64 -d \
               > ~/.android/debug.keystore
+
+            echo "Custom debug keystore installed."
+
           else
+
             echo "DEBUG_KEYSTORE secret not found."
             echo "Using default debug signing configuration."
+
           fi
 
 
@@ -273,13 +348,17 @@ jobs:
                   || true)
 
                 if [ -n "$arch" ]; then
+
                   cp \
                     "$file" \
                     "dist/SFAxtnd-${APP_VERSION}-${arch}.apk"
+
                 else
+
                   cp \
                     "$file" \
                     "dist/SFAxtnd-${APP_VERSION}-universal.apk"
+
                 fi
 
               done
@@ -288,7 +367,11 @@ jobs:
 
           ls -lah dist/
 
-          test "$(find dist -name '*.apk' | wc -l)" -gt 0
+          APK_COUNT="$(find dist -name '*.apk' | wc -l)"
+
+          echo "APK count: $APK_COUNT"
+
+          test "$APK_COUNT" -gt 0
 
 
       # =========================

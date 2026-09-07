@@ -182,7 +182,7 @@ class HTTPClient : Closeable {
                         }
                         if (server.has("address_resolver")) {
                             val res = server.remove("address_resolver")
-                            server.put("server_resolver", res)
+                            server.put("domain_resolver", res)
                         }
                     }
                 }
@@ -500,7 +500,7 @@ class HTTPClient : Closeable {
                 put("type", "https")
                 put("server", "1.1.1.1")
                 put("path", "/dns-query")
-                put("server_resolver", "dns-direct")
+                put("domain_resolver", "dns-direct")
                 put("strategy", "ipv4_only")
                 put("detour", "proxy")
             })

@@ -180,6 +180,10 @@ class HTTPClient : Closeable {
                             continue
                         }
 
+                        if (server.optString("detour") == "direct") {
+                            server.remove("detour")
+                        }
+
                         if (server.has("address") && !server.has("type")) {
                             val addr = server.remove("address").toString().trim()
                             try {
@@ -273,12 +277,24 @@ class HTTPClient : Closeable {
             if (route != null) {
                 val rules = route.optJSONArray("rules")
                 if (rules != null) {
+                    var hasSniff = false
                     for (i in 0 until rules.length()) {
                         val rule = rules.optJSONObject(i) ?: continue
+                        if (rule.optString("action") == "sniff") {
+                            hasSniff = true
+                        }
                         if (rule.optString("protocol") == "dns" || rule.optString("outbound") == "dns-out") {
                             rule.remove("outbound")
                             rule.put("action", "hijack-dns")
                         }
+                    }
+                    if (!hasSniff) {
+                        val newRules = JSONArray()
+                        newRules.put(JSONObject().apply { put("action", "sniff") })
+                        for (i in 0 until rules.length()) {
+                            newRules.put(rules.get(i))
+                        }
+                        route.put("rules", newRules)
                     }
                 }
             }
@@ -603,7 +619,6 @@ class HTTPClient : Closeable {
                 put("type", "udp")
                 put("server", "77.88.8.8")
                 put("server_port", 53)
-                put("detour", "direct")
             })
         }
         dnsObj.put("servers", dnsServers)

@@ -8,7 +8,6 @@ import io.nekohasekai.sfa.ktx.unwrap
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.Closeable
-import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -191,25 +190,26 @@ class HTTPClient : Closeable {
                                     addr == "local" || addr.startsWith("rcode://") -> server.put("type", "local")
                                     addr.startsWith("https://") -> {
                                         server.put("type", "https")
-                                        val uri = URI(addr)
-                                        server.put("server", uri.host ?: addr.removePrefix("https://").substringBefore("/"))
-                                        val path = uri.rawPath
-                                        server.put("path", if (!path.isNullOrEmpty()) path else "/dns-query")
+                                        val cleanAddr = addr.removePrefix("https://")
+                                        val host = cleanAddr.substringBefore("/").substringBefore(":")
+                                        val path = if (cleanAddr.contains("/")) "/" + cleanAddr.substringAfter("/") else "/dns-query"
+                                        server.put("server", host)
+                                        server.put("path", path)
                                     }
                                     addr.startsWith("tls://") -> {
                                         server.put("type", "tls")
-                                        val uri = URI(addr)
-                                        server.put("server", uri.host ?: addr.removePrefix("tls://").substringBefore(":"))
+                                        val cleanAddr = addr.removePrefix("tls://")
+                                        server.put("server", cleanAddr.substringBefore(":"))
                                     }
                                     addr.startsWith("tcp://") -> {
                                         server.put("type", "tcp")
-                                        val uri = URI(addr)
-                                        server.put("server", uri.host ?: addr.removePrefix("tcp://").substringBefore(":"))
+                                        val cleanAddr = addr.removePrefix("tcp://")
+                                        server.put("server", cleanAddr.substringBefore(":"))
                                     }
                                     addr.startsWith("udp://") -> {
                                         server.put("type", "udp")
-                                        val uri = URI(addr)
-                                        server.put("server", uri.host ?: addr.removePrefix("udp://").substringBefore(":"))
+                                        val cleanAddr = addr.removePrefix("udp://")
+                                        server.put("server", cleanAddr.substringBefore(":"))
                                     }
                                     else -> {
                                         server.put("type", "udp")
@@ -310,15 +310,18 @@ class HTTPClient : Closeable {
     }
 
     private fun tryDecodeBase64(text: String): String {
-        val clean = text.replace("\r", "").replace("\n", "").trim()
-        if (clean.startsWith("vless://") || clean.startsWith("vmess://") ||
-            clean.startsWith("trojan://") || clean.startsWith("ss://") ||
-            clean.startsWith("{") || clean.startsWith("[")) {
-            return text
+        val trimmed = text.trim()
+        if (trimmed.contains("://") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return trimmed
         }
+        val nonCommentLines = text.lines().filter {
+            val t = it.trim()
+            t.isNotEmpty() && !t.startsWith("//") && !t.startsWith("#")
+        }.joinToString("")
+
         for (flags in intArrayOf(Base64.DEFAULT, Base64.URL_SAFE)) {
             try {
-                val decoded = Base64.decode(clean, flags)
+                val decoded = Base64.decode(nonCommentLines, flags)
                 val decodedStr = String(decoded, StandardCharsets.UTF_8).trim()
                 if (decodedStr.contains("://") || decodedStr.startsWith("{") || decodedStr.startsWith("[")) {
                     return decodedStr
@@ -326,7 +329,7 @@ class HTTPClient : Closeable {
             } catch (e: Exception) {
             }
         }
-        return text
+        return trimmed
     }
 
     private fun cleanNodeName(rawTag: String?): String {
@@ -358,14 +361,37 @@ class HTTPClient : Closeable {
         return outbounds
     }
 
-    private fun parseVless(uriStr: String): JSONObject? {
-        val uri = URI(uriStr)
-        val uuid = uri.userInfo ?: return null
-        val server = uri.host ?: return null
-        val port = if (uri.port > 0) uri.port else 443
-        val tag = cleanNodeName(uri.rawFragment ?: uri.fragment)
-        val params = parseQueryParams(uri.rawQuery)
+    private fun parseVless(line: String): JSONObject? {
+        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val tag = cleanNodeName(rawTag)
 
+        val withoutTag = line.substringBefore("#")
+        val queryStr = if (withoutTag.contains("?")) withoutTag.substringAfter("?") else ""
+        val mainPart = withoutTag.substringBefore("?").removePrefix("vless://")
+
+        if (!mainPart.contains("@")) return null
+
+        val uuid = mainPart.substringBefore("@").trim()
+        val hostPort = mainPart.substringAfter("@").trim()
+        if (uuid.isEmpty() || hostPort.isEmpty()) return null
+
+        val server: String
+        val port: Int
+
+        if (hostPort.startsWith("[") && hostPort.contains("]:")) {
+            server = hostPort.substringBefore("]:") + "]"
+            port = hostPort.substringAfter("]:").toIntOrNull() ?: 443
+        } else if (hostPort.contains(":") && !hostPort.startsWith("[")) {
+            server = hostPort.substringBeforeLast(":")
+            port = hostPort.substringAfterLast(":").toIntOrNull() ?: 443
+        } else {
+            server = hostPort
+            port = 443
+        }
+
+        if (server.isEmpty()) return null
+
+        val params = parseQueryParams(queryStr)
         val outbound = JSONObject()
         outbound.put("type", "vless")
         outbound.put("tag", tag)
@@ -417,8 +443,8 @@ class HTTPClient : Closeable {
         return outbound
     }
 
-    private fun parseVmess(uriStr: String): JSONObject? {
-        val b64 = uriStr.removePrefix("vmess://").trim()
+    private fun parseVmess(line: String): JSONObject? {
+        val b64 = line.removePrefix("vmess://").trim()
         val jsonStr = try {
             String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8)
         } catch (e1: Exception) {
@@ -470,14 +496,37 @@ class HTTPClient : Closeable {
         return outbound
     }
 
-    private fun parseTrojan(uriStr: String): JSONObject? {
-        val uri = URI(uriStr)
-        val password = uri.userInfo ?: return null
-        val server = uri.host ?: return null
-        val port = if (uri.port > 0) uri.port else 443
-        val tag = cleanNodeName(uri.rawFragment ?: uri.fragment)
-        val params = parseQueryParams(uri.rawQuery)
+    private fun parseTrojan(line: String): JSONObject? {
+        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val tag = cleanNodeName(rawTag)
 
+        val withoutTag = line.substringBefore("#")
+        val queryStr = if (withoutTag.contains("?")) withoutTag.substringAfter("?") else ""
+        val mainPart = withoutTag.substringBefore("?").removePrefix("trojan://")
+
+        if (!mainPart.contains("@")) return null
+
+        val password = mainPart.substringBefore("@").trim()
+        val hostPort = mainPart.substringAfter("@").trim()
+        if (password.isEmpty() || hostPort.isEmpty()) return null
+
+        val server: String
+        val port: Int
+
+        if (hostPort.startsWith("[") && hostPort.contains("]:")) {
+            server = hostPort.substringBefore("]:") + "]"
+            port = hostPort.substringAfter("]:").toIntOrNull() ?: 443
+        } else if (hostPort.contains(":") && !hostPort.startsWith("[")) {
+            server = hostPort.substringBeforeLast(":")
+            port = hostPort.substringAfterLast(":").toIntOrNull() ?: 443
+        } else {
+            server = hostPort
+            port = 443
+        }
+
+        if (server.isEmpty()) return null
+
+        val params = parseQueryParams(queryStr)
         val outbound = JSONObject()
         outbound.put("type", "trojan")
         outbound.put("tag", tag)
@@ -505,43 +554,66 @@ class HTTPClient : Closeable {
         return outbound
     }
 
-    private fun parseShadowsocks(uriStr: String): JSONObject? {
-        val uri = URI(uriStr)
-        val tag = cleanNodeName(uri.rawFragment ?: uri.fragment)
+    private fun parseShadowsocks(line: String): JSONObject? {
+        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val tag = cleanNodeName(rawTag)
 
+        val withoutTag = line.substringBefore("#").removePrefix("ss://").trim()
         var method = ""
         var password = ""
         var server = ""
         var port = 8388
 
-        if (uri.userInfo != null) {
+        if (withoutTag.contains("@")) {
+            val userPart = withoutTag.substringBefore("@")
+            val hostPort = withoutTag.substringAfter("@")
+
             val decodedUserInfo = try {
-                String(Base64.decode(uri.userInfo, Base64.DEFAULT), StandardCharsets.UTF_8)
+                String(Base64.decode(userPart, Base64.DEFAULT), StandardCharsets.UTF_8)
             } catch (e: Exception) {
-                uri.userInfo
+                userPart
             }
+
             val parts = decodedUserInfo.split(":", limit = 2)
             if (parts.size == 2) {
                 method = parts[0]
                 password = parts[1]
             }
-            server = uri.host ?: ""
-            port = if (uri.port > 0) uri.port else 8388
+
+            if (hostPort.startsWith("[") && hostPort.contains("]:")) {
+                server = hostPort.substringBefore("]:") + "]"
+                port = hostPort.substringAfter("]:").toIntOrNull() ?: 8388
+            } else if (hostPort.contains(":")) {
+                server = hostPort.substringBeforeLast(":")
+                port = hostPort.substringAfterLast(":").toIntOrNull() ?: 8388
+            } else {
+                server = hostPort
+            }
         } else {
-            val b64Part = uriStr.removePrefix("ss://").substringBefore("#").trim()
             val decoded = try {
-                String(Base64.decode(b64Part, Base64.DEFAULT), StandardCharsets.UTF_8)
+                String(Base64.decode(withoutTag, Base64.DEFAULT), StandardCharsets.UTF_8)
             } catch (e: Exception) {
-                String(Base64.decode(b64Part, Base64.URL_SAFE), StandardCharsets.UTF_8)
+                try {
+                    String(Base64.decode(withoutTag, Base64.URL_SAFE), StandardCharsets.UTF_8)
+                } catch (e2: Exception) {
+                    ""
+                }
             }
             val atSplit = decoded.split("@", limit = 2)
             if (atSplit.size == 2) {
                 val creds = atSplit[0].split(":", limit = 2)
                 method = creds[0]
                 password = creds.getOrElse(1) { "" }
-                val hostPort = atSplit[1].split(":", limit = 2)
-                server = hostPort[0]
-                port = hostPort.getOrElse(1) { "8388" }.toIntOrNull() ?: 8388
+                val hostPort = atSplit[1]
+                if (hostPort.startsWith("[") && hostPort.contains("]:")) {
+                    server = hostPort.substringBefore("]:") + "]"
+                    port = hostPort.substringAfter("]:").toIntOrNull() ?: 8388
+                } else if (hostPort.contains(":")) {
+                    server = hostPort.substringBeforeLast(":")
+                    port = hostPort.substringAfterLast(":").toIntOrNull() ?: 8388
+                } else {
+                    server = hostPort
+                }
             }
         }
 

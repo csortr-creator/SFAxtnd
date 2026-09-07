@@ -701,7 +701,17 @@ class HTTPClient : Closeable {
         dnsObj.put("rules", JSONArray().apply {
             put(JSONObject().apply {
                 put("rule_set", JSONArray().apply {
-                    put("geosite-ru")
+                    put("geosite-category-ru")
+                })
+                put("server", "dns-direct")
+            })
+            put(JSONObject().apply {
+                put("domain_suffix", JSONArray().apply {
+                    put(".ru")
+                    put(".su")
+                    put(".xn--p1ai")
+                    put(".by")
+                    put(".kz")
                 })
                 put("server", "dns-direct")
             })
@@ -761,10 +771,10 @@ class HTTPClient : Closeable {
 
             put("rule_set", JSONArray().apply {
                 put(JSONObject().apply {
-                    put("tag", "geosite-ru")
+                    put("tag", "geosite-category-ru")
                     put("type", "remote")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
                     put("download_detour", "Выбор сервера")
                 })
                 put(JSONObject().apply {
@@ -797,8 +807,18 @@ class HTTPClient : Closeable {
                 })
                 put(JSONObject().apply {
                     put("rule_set", JSONArray().apply {
-                        put("geosite-ru")
+                        put("geosite-category-ru")
                         put("geoip-ru")
+                    })
+                    put("outbound", "direct")
+                })
+                put(JSONObject().apply {
+                    put("domain_suffix", JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                        put(".by")
+                        put(".kz")
                     })
                     put("outbound", "direct")
                 })

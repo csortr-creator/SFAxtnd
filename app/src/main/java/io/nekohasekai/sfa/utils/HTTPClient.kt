@@ -510,3 +510,149 @@ class HTTPClient : Closeable {
                 put("server", "77.88.8.8")
                 put("server_port", 53)
                 put("strategy", "ipv4_only")
+                put("detour", "direct")
+            })
+            put(JSONObject().apply {
+                put("tag", "dns-block")
+                put("type", "rcode")
+                put("code", "success")
+            })
+        }
+        dnsObj.put("servers", dnsServers)
+        dnsObj.put("rules", JSONArray().apply {
+            put(JSONObject().apply {
+                put("domain_suffix", JSONArray().apply {
+                    put(".ru")
+                    put(".su")
+                    put(".xn--p1ai")
+                    put(".by")
+                    put(".kz")
+                    put("vk.com")
+                    put("vk.ru")
+                    put("yandex.ru")
+                    put("ya.ru")
+                    put("gosuslugi.ru")
+                    put("tinkoff.ru")
+                    put("tbank.ru")
+                    put("sberbank.ru")
+                    put("sber.ru")
+                    put("alfabank.ru")
+                    put("vtb.ru")
+                    put("ozon.ru")
+                    put("wildberries.ru")
+                    put("avito.ru")
+                    put("kinopoisk.ru")
+                })
+                put("server", "dns-direct")
+            })
+        })
+        dnsObj.put("final", "dns-remote")
+        dnsObj.put("strategy", "ipv4_only")
+        root.put("dns", dnsObj)
+
+        root.put("inbounds", JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "tun")
+                put("tag", "tun-in")
+                put("interface_name", "tun0")
+                put("inet4_address", "172.19.0.1/30")
+                put("auto_route", true)
+                put("strict_route", false)
+                put("stack", "gvisor")
+                put("sniff", true)
+            })
+        })
+
+        val outboundsArr = JSONArray()
+
+        val hasProxySelector = nodes.any { it.optString("tag") == "proxy" }
+        if (!hasProxySelector) {
+            val selector = JSONObject().apply {
+                put("type", "selector")
+                put("tag", "proxy")
+                val selectorOutbounds = JSONArray()
+                for (t in proxyTags) {
+                    selectorOutbounds.put(t)
+                }
+                selectorOutbounds.put("direct")
+                put("outbounds", selectorOutbounds)
+                if (proxyTags.isNotEmpty()) {
+                    put("default", proxyTags[0])
+                }
+            }
+            outboundsArr.put(selector)
+        }
+
+        for (node in nodes) {
+            outboundsArr.put(node)
+        }
+
+        if (nodes.none { it.optString("tag") == "direct" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
+        }
+        if (nodes.none { it.optString("tag") == "block" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
+        }
+        if (nodes.none { it.optString("tag") == "dns-out" }) {
+            outboundsArr.put(JSONObject().apply { put("type", "dns"); put("tag", "dns-out") })
+        }
+        root.put("outbounds", outboundsArr)
+
+        root.put("route", JSONObject().apply {
+            put("rules", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("protocol", "dns")
+                    put("outbound", "dns-out")
+                })
+                put(JSONObject().apply {
+                    put("ip_is_private", true)
+                    put("outbound", "direct")
+                })
+                put(JSONObject().apply {
+                    put("package_name", JSONArray().apply {
+                        put("ru.vk.store")
+                        put("com.vk.store")
+                    })
+                    put("outbound", "direct")
+                })
+                put(JSONObject().apply {
+                    put("domain_suffix", JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                        put(".by")
+                        put(".kz")
+                        put("vk.com")
+                        put("vk.ru")
+                        put("yandex.ru")
+                        put("ya.ru")
+                        put("gosuslugi.ru")
+                        put("tinkoff.ru")
+                        put("tbank.ru")
+                        put("sberbank.ru")
+                        put("sber.ru")
+                        put("alfabank.ru")
+                        put("vtb.ru")
+                        put("ozon.ru")
+                        put("wildberries.ru")
+                        put("avito.ru")
+                        put("kinopoisk.ru")
+                    })
+                    put("outbound", "direct")
+                })
+            })
+            put("final", "proxy")
+            put("auto_detect_interface", true)
+        })
+
+        return root.toString(2)
+    }
+
+    override fun close() {
+        client.close()
+    }
+
+    companion object {
+        const val userAgent = "SFAxtnd"
+    }
+}

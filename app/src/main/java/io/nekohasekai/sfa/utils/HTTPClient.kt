@@ -700,27 +700,8 @@ class HTTPClient : Closeable {
         dnsObj.put("servers", dnsServers)
         dnsObj.put("rules", JSONArray().apply {
             put(JSONObject().apply {
-                put("domain_suffix", JSONArray().apply {
-                    put(".ru")
-                    put(".su")
-                    put(".xn--p1ai")
-                    put(".by")
-                    put(".kz")
-                    put("vk.com")
-                    put("vk.ru")
-                    put("yandex.ru")
-                    put("ya.ru")
-                    put("gosuslugi.ru")
-                    put("tinkoff.ru")
-                    put("tbank.ru")
-                    put("sberbank.ru")
-                    put("sber.ru")
-                    put("alfabank.ru")
-                    put("vtb.ru")
-                    put("ozon.ru")
-                    put("wildberries.ru")
-                    put("avito.ru")
-                    put("kinopoisk.ru")
+                put("rule_set", JSONArray().apply {
+                    put("geosite-ru")
                 })
                 put("server", "dns-direct")
             })
@@ -777,6 +758,24 @@ class HTTPClient : Closeable {
 
         root.put("route", JSONObject().apply {
             put("default_domain_resolver", "dns-direct")
+
+            put("rule_set", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("tag", "geosite-ru")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs")
+                    put("download_detour", "Выбор сервера")
+                })
+                put(JSONObject().apply {
+                    put("tag", "geoip-ru")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
+                    put("download_detour", "Выбор сервера")
+                })
+            })
+
             put("rules", JSONArray().apply {
                 put(JSONObject().apply {
                     put("action", "sniff")
@@ -797,27 +796,9 @@ class HTTPClient : Closeable {
                     put("outbound", "direct")
                 })
                 put(JSONObject().apply {
-                    put("domain_suffix", JSONArray().apply {
-                        put(".ru")
-                        put(".su")
-                        put(".xn--p1ai")
-                        put(".by")
-                        put(".kz")
-                        put("vk.com")
-                        put("vk.ru")
-                        put("yandex.ru")
-                        put("ya.ru")
-                        put("gosuslugi.ru")
-                        put("tinkoff.ru")
-                        put("tbank.ru")
-                        put("sberbank.ru")
-                        put("sber.ru")
-                        put("alfabank.ru")
-                        put("vtb.ru")
-                        put("ozon.ru")
-                        put("wildberries.ru")
-                        put("avito.ru")
-                        put("kinopoisk.ru")
+                    put("rule_set", JSONArray().apply {
+                        put("geosite-ru")
+                        put("geoip-ru")
                     })
                     put("outbound", "direct")
                 })

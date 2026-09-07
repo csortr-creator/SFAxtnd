@@ -43,17 +43,12 @@ jobs:
       - name: Build libbox
         run: |
           mkdir -p app/libs
-          # Клонируем исходники ядра sing-box
           git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box-core
           cd sing-box-core
-          # Инициализируем окружение сборки для Android
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
-          # Собираем libbox.aar
-          go run ./cmd/internal/build-libbox
-          # Копируем скомпилированную библиотеку в клиент
-          find . -name "*.aar" -exec cp {} ../app/libs/libbox.aar \;
+          gomobile bind -v -target android -androidapi 21 -javapkg io.nekohasekai -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_ech,with_utls" -o ../app/libs/libbox.aar ./experimental/libbox
           cd ..
           ls -lh app/libs/libbox.aar
 
@@ -102,9 +97,9 @@ jobs:
           name: "SFAxtnd v${{ env.APP_VERSION }}"
           body: |
             ### SFAxtnd v${{ env.APP_VERSION }}
-            - Коммит: `${{ github.sha }}`
-            - Версия приложения: `${{ env.APP_VERSION }}`
-            - Скомпилировано ядро `libbox.aar`
+            - Сборка на коммите: `${{ github.sha }}`
+            - Скомпилировано ядро sing-box с поддержкой gVisor
+            - Версия билда: `${{ env.APP_VERSION }}`
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

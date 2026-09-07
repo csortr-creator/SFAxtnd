@@ -275,6 +275,10 @@ class HTTPClient : Closeable {
 
             val route = root.optJSONObject("route")
             if (route != null) {
+                if (!route.has("default_domain_resolver")) {
+                    route.put("default_domain_resolver", "dns-direct")
+                }
+
                 val rules = route.optJSONArray("rules")
                 if (rules != null) {
                     var hasSniff = false
@@ -569,7 +573,7 @@ class HTTPClient : Closeable {
         val validNodes = nodes.filter { it.optString("type") != "dns" }
 
         val usedTags = mutableMapOf<String, Int>()
-        usedTags["proxy"] = 1
+        usedTags["Выбор сервера"] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
 
@@ -612,7 +616,7 @@ class HTTPClient : Closeable {
                 put("server", "1.1.1.1")
                 put("path", "/dns-query")
                 put("domain_resolver", "dns-direct")
-                put("detour", "proxy")
+                put("detour", "Выбор сервера")
             })
             put(JSONObject().apply {
                 put("tag", "dns-direct")
@@ -669,11 +673,11 @@ class HTTPClient : Closeable {
 
         val outboundsArr = JSONArray()
 
-        val hasProxySelector = validNodes.any { it.optString("tag") == "proxy" }
+        val hasProxySelector = validNodes.any { it.optString("tag") == "Выбор сервера" }
         if (!hasProxySelector) {
             val selector = JSONObject().apply {
                 put("type", "selector")
-                put("tag", "proxy")
+                put("tag", "Выбор сервера")
                 val selectorOutbounds = JSONArray()
                 for (t in proxyTags) {
                     selectorOutbounds.put(t)
@@ -700,6 +704,7 @@ class HTTPClient : Closeable {
         root.put("outbounds", outboundsArr)
 
         root.put("route", JSONObject().apply {
+            put("default_domain_resolver", "dns-direct")
             put("rules", JSONArray().apply {
                 put(JSONObject().apply {
                     put("action", "sniff")
@@ -745,7 +750,7 @@ class HTTPClient : Closeable {
                     put("outbound", "direct")
                 })
             })
-            put("final", "proxy")
+            put("final", "Выбор сервера")
             put("auto_detect_interface", true)
         })
 

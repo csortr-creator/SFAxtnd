@@ -29,9 +29,8 @@ jobs:
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
-        id: setup-ndk
         with:
-          ndk-version: r27c
+          ndk-version: r28b
 
       - name: Setup Java 17 (for libbox build)
         uses: actions/setup-java@v4
@@ -39,44 +38,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Resolve libbox submodule path
-        id: libbox-path
-        run: |
-          echo "=== submodule status ==="
-          git submodule status
-          MODDIR=$(find . -maxdepth 3 -name "go.mod" -not -path "./go.mod" -exec dirname {} \; | head -n1)
-          if [ -z "$MODDIR" ]; then
-            echo "No submodule go.mod found — check .gitmodules"
-            exit 1
-          fi
-          MODDIR=${MODDIR#./}
-          echo "dir=$MODDIR" >> "$GITHUB_OUTPUT"
-          SHA=$(git rev-parse HEAD:"$MODDIR")
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Using module dir: $MODDIR (commit $SHA)"
-
-      - name: Install gomobile tools
-        run: |
-          go install -v github.com/sagernet/gomobile/cmd/gomobile@latest
-          go install -v github.com/sagernet/gomobile/cmd/gobind@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
       - name: Cache libbox
         id: cache-libbox
         uses: actions/cache@v4
         with:
           path: app/libs/libbox.aar
-          key: ${{ runner.os }}-libbox-${{ steps.libbox-path.outputs.sha }}
+          key: ${{ runner.os }}-libbox-${{ hashFiles('libbox/**', '**/go.sum', '**/go.mod') }}
 
       - name: Build libbox
         if: steps.cache-libbox.outputs.cache-hit != 'true'
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          cd "${{ steps.libbox-path.outputs.dir }}"
-          go run ./cmd/internal/build_libbox || go run ./cmd/internal/build_libbox -target android || go run ./cmd/internal/build-libbox || go run ./cmd/internal/build-libbox -target android
-          mkdir -p "$GITHUB_WORKSPACE/app/libs"
-          find . -name "libbox.aar" -exec cp -f {} "$GITHUB_WORKSPACE/app/libs/" \;
+          cd libbox
+          go run ./cmd/internal/build-libbox
+          mkdir -p ../app/libs
+          find . -name "libbox.aar" -exec cp -f {} ../app/libs/ \;
 
       - name: Setup Java 21 (for Gradle build)
         uses: actions/setup-java@v4
@@ -115,3 +90,4 @@ jobs:
           files: release_apks/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          

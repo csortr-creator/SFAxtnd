@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.utils
 
 import android.content.Context
+import android.os.Build
 import android.util.Base64
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.ktx.unwrap
@@ -30,7 +31,14 @@ class HTTPClient : Closeable {
 
         val hwid = getOrCreateHwid(url)
 
-        request.setUserAgent("sing-box/1.14.0 SFAxtnd/0.0.8")
+        // Получаем параметры устройства для User-Agent
+        val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+        val model = Build.MODEL
+        val androidVer = Build.VERSION.RELEASE
+        
+        val userAgentStr = "SFAxtnd/1.0.1 (sing-box/1.14.0; Android $androidVer; $manufacturer $model) HWID/$hwid"
+
+        request.setUserAgent(userAgentStr)
         request.setHeader("HWID", hwid)
         request.setHeader("hwid", hwid)
         request.setHeader("X-HWID", hwid)

@@ -29,6 +29,7 @@ jobs:
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
           ndk-version: r27c
 
@@ -54,6 +55,12 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "Using module dir: $MODDIR (commit $SHA)"
 
+      - name: Install gomobile tools
+        run: |
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@latest
+          go install -v github.com/sagernet/gomobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Cache libbox
         id: cache-libbox
         uses: actions/cache@v4
@@ -63,9 +70,11 @@ jobs:
 
       - name: Build libbox
         if: steps.cache-libbox.outputs.cache-hit != 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cd "${{ steps.libbox-path.outputs.dir }}"
-          go run ./cmd/internal/build-libbox || go run ./cmd/internal/build-libbox -target android || go run ./cmd/internal/build_libbox || go run ./cmd/internal/build_libbox -target android
+          go run ./cmd/internal/build_libbox || go run ./cmd/internal/build_libbox -target android || go run ./cmd/internal/build-libbox || go run ./cmd/internal/build-libbox -target android
           mkdir -p "$GITHUB_WORKSPACE/app/libs"
           find . -name "libbox.aar" -exec cp -f {} "$GITHUB_WORKSPACE/app/libs/" \;
 

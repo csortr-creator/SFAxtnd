@@ -31,12 +31,11 @@ class HTTPClient : Closeable {
 
         val hwid = getOrCreateHwid(url)
 
-        // Получаем параметры устройства для User-Agent
         val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
         val model = Build.MODEL
         val androidVer = Build.VERSION.RELEASE
         
-        val userAgentStr = "SFAxtnd/1.0.1 (sing-box/1.14.0; Android $androidVer; $manufacturer $model) HWID/$hwid"
+        val userAgentStr = "SFAxtnd/0.0.8 (sing-box/1.14.0; Android $androidVer; $manufacturer $model) HWID/$hwid"
 
         request.setUserAgent(userAgentStr)
         request.setHeader("HWID", hwid)
@@ -148,10 +147,26 @@ class HTTPClient : Closeable {
             val dns = root.optJSONObject("dns")
             if (dns != null) {
                 dns.remove("independent_cache")
+
+                if (dns.has("address_strategy")) {
+                    val strat = dns.remove("address_strategy")
+                    if (!dns.has("strategy")) {
+                        dns.put("strategy", strat)
+                    }
+                }
+
                 val servers = dns.optJSONArray("servers")
                 if (servers != null) {
                     for (i in 0 until servers.length()) {
                         val server = servers.optJSONObject(i) ?: continue
+
+                        if (server.has("address_strategy")) {
+                            val strat = server.remove("address_strategy")
+                            if (!server.has("strategy")) {
+                                server.put("strategy", strat)
+                            }
+                        }
+
                         if (server.has("address") && !server.has("type")) {
                             val addr = server.remove("address").toString().trim()
                             when {
@@ -493,14 +508,13 @@ class HTTPClient : Closeable {
             }
         }
 
-        val root = JSONObject()
+            val root = JSONObject()
 
         root.put("log", JSONObject().apply {
             put("level", "warn")
             put("timestamp", true)
         })
 
-        // DNS-серверы стандарта sing-box 1.14 / 1.15
         val dnsObj = JSONObject()
         val dnsServers = JSONArray().apply {
             put(JSONObject().apply {

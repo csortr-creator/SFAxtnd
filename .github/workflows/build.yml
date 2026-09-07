@@ -144,7 +144,7 @@ jobs:
           mkdir -p release_apks
           find app/build/outputs/apk/other/debug -type f -name "*.apk" | while read -r file; do
             filename=$(basename "$file")
-            new_name=$(echo "$filename" | sed "s/app-other-debug/SFAxtnd-${APP_VERSION}/g; s/app-other-/SFAxtnd-${APP_VERSION}-/g")
+            new_name=$(echo "$filename" | sed -E "s/SFA-[0-9\.]+-/SFAxtnd-${APP_VERSION}-/g" | sed "s/-debug//g" | sed "s/app-other/SFAxtnd-${APP_VERSION}/g")
             cp "$file" "release_apks/$new_name"
           done
 

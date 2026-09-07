@@ -227,6 +227,36 @@ class HTTPClient : Closeable {
                 }
             }
 
+            val inbounds = root.optJSONArray("inbounds")
+            if (inbounds != null) {
+                for (i in 0 until inbounds.length()) {
+                    val inbound = inbounds.optJSONObject(i) ?: continue
+                    if (inbound.optString("type") == "tun") {
+                        val addresses = JSONArray()
+                        if (inbound.has("inet4_address")) {
+                            val v = inbound.remove("inet4_address")
+                            if (v is JSONArray) {
+                                for (j in 0 until v.length()) addresses.put(v.get(j))
+                            } else {
+                                addresses.put(v)
+                            }
+                        }
+                        if (inbound.has("inet6_address")) {
+                            val v = inbound.remove("inet6_address")
+                            if (v is JSONArray) {
+                                for (j in 0 until v.length()) addresses.put(v.get(j))
+                            } else {
+                                addresses.put(v)
+                            }
+                        }
+                        if (addresses.length() > 0 && !inbound.has("address")) {
+                            inbound.put("address", addresses)
+                        }
+                        inbound.remove("sniff")
+                    }
+                }
+            }
+
             val outbounds = root.optJSONArray("outbounds")
             if (outbounds != null) {
                 val cleanedOutbounds = JSONArray()
@@ -613,11 +643,12 @@ class HTTPClient : Closeable {
                 put("type", "tun")
                 put("tag", "tun-in")
                 put("interface_name", "tun0")
-                put("inet4_address", "172.19.0.1/30")
+                put("address", JSONArray().apply {
+                    put("172.19.0.1/30")
+                })
                 put("auto_route", true)
                 put("strict_route", false)
                 put("stack", "gvisor")
-                put("sniff", true)
             })
         })
 
@@ -655,6 +686,9 @@ class HTTPClient : Closeable {
 
         root.put("route", JSONObject().apply {
             put("rules", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("action", "sniff")
+                })
                 put(JSONObject().apply {
                     put("protocol", "dns")
                     put("action", "hijack-dns")

@@ -49,9 +49,9 @@ jobs:
         if: steps.cache-libbox.outputs.cache-hit != 'true'
         run: |
           cd libbox
-          go run ./cmd/internal/build-libbox
+          go run ./cmd/internal/build_libbox
           mkdir -p ../app/libs
-          find . -name "libbox.aar" -exec cp -f {} ../app/libs/ \;
+          find . -name "*.aar" -exec cp -f {} ../app/libs/libbox.aar \;
 
       - name: Setup Java 21 (for Gradle build)
         uses: actions/setup-java@v4

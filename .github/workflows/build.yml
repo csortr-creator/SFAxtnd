@@ -43,18 +43,18 @@ jobs:
       - name: Build libbox
         run: |
           mkdir -p app/libs
-          # 1. Скачиваем исходники ядра
+          # 1. Скачиваем актуальные исходники ядра sing-box
           git clone --depth 1 https://github.com/SagerNet/sing-box.git sing-box-core
           cd sing-box-core
           
-          # 2. Устанавливаем зависимости для Go Mobile (как просил лог ошибки)
+          # 2. Устанавливаем зависимости для Go Mobile
           go get -tool golang.org/x/mobile/cmd/gobind
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
           
-          # 3. Собираем ядро и кладем в папку клиента
-          gomobile bind -v -target android -androidapi 21 -javapkg io.nekohasekai -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_ech,with_utls" -o ../app/libs/libbox.aar ./experimental/libbox
+          # 3. Собираем ядро (убран устаревший тег with_ech)
+          gomobile bind -v -target android -androidapi 21 -javapkg io.nekohasekai -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls" -o ../app/libs/libbox.aar ./experimental/libbox
           
           cd ..
           ls -lh app/libs/libbox.aar
@@ -105,7 +105,7 @@ jobs:
           body: |
             ### SFAxtnd v${{ env.APP_VERSION }}
             - Сборка на коммите: `${{ github.sha }}`
-            - Скомпилировано ядро sing-box с поддержкой gVisor
+            - Скомпилировано ядро sing-box
             - Версия билда: `${{ env.APP_VERSION }}`
           files: dist/*.apk
         env:

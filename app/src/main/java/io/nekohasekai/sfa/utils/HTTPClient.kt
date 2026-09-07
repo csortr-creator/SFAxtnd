@@ -508,7 +508,7 @@ class HTTPClient : Closeable {
             }
         }
 
-            val root = JSONObject()
+        val root = JSONObject()
 
         root.put("log", JSONObject().apply {
             put("level", "warn")
@@ -523,7 +523,6 @@ class HTTPClient : Closeable {
                 put("server", "1.1.1.1")
                 put("path", "/dns-query")
                 put("domain_resolver", "dns-direct")
-                put("strategy", "ipv4_only")
                 put("detour", "proxy")
             })
             put(JSONObject().apply {
@@ -531,7 +530,6 @@ class HTTPClient : Closeable {
                 put("type", "udp")
                 put("server", "77.88.8.8")
                 put("server_port", 53)
-                put("strategy", "ipv4_only")
                 put("detour", "direct")
             })
             put(JSONObject().apply {

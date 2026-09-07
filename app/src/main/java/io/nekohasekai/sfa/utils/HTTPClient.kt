@@ -223,6 +223,33 @@ class HTTPClient : Closeable {
                     }
                 }
             }
+
+            val outbounds = root.optJSONArray("outbounds")
+            if (outbounds != null) {
+                val cleanedOutbounds = JSONArray()
+                for (i in 0 until outbounds.length()) {
+                    val ob = outbounds.optJSONObject(i) ?: continue
+                    if (ob.optString("type") != "dns") {
+                        cleanedOutbounds.put(ob)
+                    }
+                }
+                root.put("outbounds", cleanedOutbounds)
+            }
+
+            val route = root.optJSONObject("route")
+            if (route != null) {
+                val rules = route.optJSONArray("rules")
+                if (rules != null) {
+                    for (i in 0 until rules.length()) {
+                        val rule = rules.optJSONObject(i) ?: continue
+                        if (rule.optString("protocol") == "dns" || rule.optString("outbound") == "dns-out") {
+                            rule.remove("outbound")
+                            rule.put("action", "hijack-dns")
+                        }
+                    }
+                }
+            }
+
             root.toString(2)
         } catch (e: Exception) {
             jsonStr
@@ -259,7 +286,6 @@ class HTTPClient : Closeable {
             trimmed
         }
     }
-
     private fun parseUriLines(text: String): List<JSONObject> {
         val outbounds = mutableListOf<JSONObject>()
         for (rawLine in text.lines()) {
@@ -491,15 +517,16 @@ class HTTPClient : Closeable {
     }
 
     private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
+        val validNodes = nodes.filter { it.optString("type") != "dns" }
+
         val usedTags = mutableMapOf<String, Int>()
         usedTags["proxy"] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
-        usedTags["dns-out"] = 1
 
         val proxyTags = mutableListOf<String>()
 
-        for (node in nodes) {
+        for (node in validNodes) {
             val rawTag = node.optString("tag").ifEmpty {
                 node.optString("server").ifEmpty { "Proxy" }
             }
@@ -516,7 +543,7 @@ class HTTPClient : Closeable {
         }
 
         if (proxyTags.isEmpty()) {
-            for (node in nodes) {
+            for (node in validNodes) {
                 proxyTags.add(node.getString("tag"))
             }
         }
@@ -530,53 +557,58 @@ class HTTPClient : Closeable {
 
         val dnsObj = JSONObject()
         val dnsServers = JSONArray().apply {
-    put(JSONObject().apply {
-        put("tag", "dns-remote")
-        put("type", "https")
-        put("server", "1.1.1.1")
-        put("path", "/dns-query")
-        put("domain_resolver", "dns-direct")
-        put("detour", "proxy")
-    })
-    put(JSONObject().apply {
-        put("tag", "dns-direct")
-        put("type", "udp")
-        put("server", "77.88.8.8")
-        put("server_port", 53)
-        put("detour", "direct")
-    })
-}
-dnsObj.put("servers", dnsServers)
-dnsObj.put("rules", JSONArray().apply {
-    put(JSONObject().apply {
-        put("domain_suffix", JSONArray().apply {
-            put(".ru")
-            put(".su")
-            put(".xn--p1ai")
-            put(".by")
-            put(".kz")
-            put("vk.com")
-            put("vk.ru")
-            put("yandex.ru")
-            put("ya.ru")
-            put("gosuslugi.ru")
-            put("tinkoff.ru")
-            put("tbank.ru")
-            put("sberbank.ru")
-            put("sber.ru")
-            put("alfabank.ru")
-            put("vtb.ru")
-            put("ozon.ru")
-            put("wildberries.ru")
-            put("avito.ru")
-            put("kinopoisk.ru")
+            put(JSONObject().apply {
+                put("tag", "dns-remote")
+                put("type", "https")
+                put("server", "1.1.1.1")
+                put("path", "/dns-query")
+                put("domain_resolver", "dns-direct")
+                put("detour", "proxy")
+            })
+            put(JSONObject().apply {
+                put("tag", "dns-direct")
+                put("type", "udp")
+                put("server", "77.88.8.8")
+                put("server_port", 53)
+                put("detour", "direct")
+            })
+            put(JSONObject().apply {
+                put("tag", "dns-block")
+                put("type", "rcode")
+                put("code", "success")
+            })
+        }
+        dnsObj.put("servers", dnsServers)
+        dnsObj.put("rules", JSONArray().apply {
+            put(JSONObject().apply {
+                put("domain_suffix", JSONArray().apply {
+                    put(".ru")
+                    put(".su")
+                    put(".xn--p1ai")
+                    put(".by")
+                    put(".kz")
+                    put("vk.com")
+                    put("vk.ru")
+                    put("yandex.ru")
+                    put("ya.ru")
+                    put("gosuslugi.ru")
+                    put("tinkoff.ru")
+                    put("tbank.ru")
+                    put("sberbank.ru")
+                    put("sber.ru")
+                    put("alfabank.ru")
+                    put("vtb.ru")
+                    put("ozon.ru")
+                    put("wildberries.ru")
+                    put("avito.ru")
+                    put("kinopoisk.ru")
+                })
+                put("server", "dns-direct")
+            })
         })
-        put("server", "dns-direct")
-    })
-})
-dnsObj.put("final", "dns-remote")
-dnsObj.put("strategy", "ipv4_only")
-root.put("dns", dnsObj)
+        dnsObj.put("final", "dns-remote")
+        dnsObj.put("strategy", "ipv4_only")
+        root.put("dns", dnsObj)
 
         root.put("inbounds", JSONArray().apply {
             put(JSONObject().apply {
@@ -593,7 +625,7 @@ root.put("dns", dnsObj)
 
         val outboundsArr = JSONArray()
 
-        val hasProxySelector = nodes.any { it.optString("tag") == "proxy" }
+        val hasProxySelector = validNodes.any { it.optString("tag") == "proxy" }
         if (!hasProxySelector) {
             val selector = JSONObject().apply {
                 put("type", "selector")
@@ -611,18 +643,15 @@ root.put("dns", dnsObj)
             outboundsArr.put(selector)
         }
 
-        for (node in nodes) {
+        for (node in validNodes) {
             outboundsArr.put(node)
         }
 
-        if (nodes.none { it.optString("tag") == "direct" }) {
+        if (validNodes.none { it.optString("tag") == "direct" }) {
             outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
         }
-        if (nodes.none { it.optString("tag") == "block" }) {
+        if (validNodes.none { it.optString("tag") == "block" }) {
             outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
-        }
-        if (nodes.none { it.optString("tag") == "dns-out" }) {
-            outboundsArr.put(JSONObject().apply { put("type", "dns"); put("tag", "dns-out") })
         }
         root.put("outbounds", outboundsArr)
 
@@ -630,7 +659,7 @@ root.put("dns", dnsObj)
             put("rules", JSONArray().apply {
                 put(JSONObject().apply {
                     put("protocol", "dns")
-                    put("outbound", "dns-out")
+                    put("action", "hijack-dns")
                 })
                 put(JSONObject().apply {
                     put("ip_is_private", true)

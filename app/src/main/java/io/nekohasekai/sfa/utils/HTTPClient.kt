@@ -154,7 +154,11 @@ class HTTPClient : Closeable {
 
     private fun sanitizeAndMigrateConfig(jsonStr: String): String {
         return try {
-            val root = JSONObject(jsonStr)
+            val fixedRaw = jsonStr
+                .replace("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
+                .replace("\"geosite-ru\"", "\"geosite-category-ru\"")
+
+            val root = JSONObject(fixedRaw)
             val dns = root.optJSONObject("dns")
             if (dns != null) {
                 dns.remove("independent_cache")

@@ -28,9 +28,11 @@ jobs:
           cache: false
 
       - name: Setup Android NDK
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28b
+          link-to-sdk: true
 
       - name: Setup Java 17 (for libbox build)
         uses: actions/setup-java@v4
@@ -50,7 +52,14 @@ jobs:
         run: |
           go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
           go install github.com/sagernet/gomobile/cmd/gobind@v0.1.12
-          export PATH="$(go env GOPATH)/bin:$PATH"
+          
+          export ANDROID_NDK_HOME="${{ steps.setup-ndk.outputs.ndk-path }}"
+          export ANDROID_NDK_ROOT="${{ steps.setup-ndk.outputs.ndk-path }}"
+          export PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$(go env GOPATH)/bin:$PATH"
+          
+          echo "Using NDK: $ANDROID_NDK_HOME"
+          ld.lld --version
+          
           cd libbox
           go run ./cmd/internal/build_libbox
           mkdir -p ../app/libs

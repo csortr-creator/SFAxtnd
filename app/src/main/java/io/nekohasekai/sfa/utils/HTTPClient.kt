@@ -169,21 +169,22 @@ class HTTPClient : Closeable {
 
                 val servers = dns.optJSONArray("servers")
                 if (servers != null) {
+                    val cleanedServers = JSONArray()
                     for (i in 0 until servers.length()) {
                         val server = servers.optJSONObject(i) ?: continue
 
                         server.remove("strategy")
                         server.remove("address_strategy")
 
+                        if (server.optString("type") == "rcode") {
+                            continue
+                        }
+
                         if (server.has("address") && !server.has("type")) {
                             val addr = server.remove("address").toString().trim()
                             try {
                                 when {
-                                    addr == "local" -> server.put("type", "local")
-                                    addr.startsWith("rcode://") -> {
-                                        server.put("type", "rcode")
-                                        server.put("code", addr.removePrefix("rcode://"))
-                                    }
+                                    addr == "local" || addr.startsWith("rcode://") -> server.put("type", "local")
                                     addr.startsWith("https://") -> {
                                         server.put("type", "https")
                                         val uri = URI(addr)
@@ -220,7 +221,9 @@ class HTTPClient : Closeable {
                             val res = server.remove("address_resolver")
                             server.put("domain_resolver", res)
                         }
+                        cleanedServers.put(server)
                     }
+                    dns.put("servers", cleanedServers)
                 }
             }
 
@@ -286,7 +289,7 @@ class HTTPClient : Closeable {
             trimmed
         }
     }
-    private fun parseUriLines(text: String): List<JSONObject> {
+        private fun parseUriLines(text: String): List<JSONObject> {
         val outbounds = mutableListOf<JSONObject>()
         for (rawLine in text.lines()) {
             val line = rawLine.trim()
@@ -571,11 +574,6 @@ class HTTPClient : Closeable {
                 put("server", "77.88.8.8")
                 put("server_port", 53)
                 put("detour", "direct")
-            })
-            put(JSONObject().apply {
-                put("tag", "dns-block")
-                put("type", "rcode")
-                put("code", "success")
             })
         }
         dnsObj.put("servers", dnsServers)

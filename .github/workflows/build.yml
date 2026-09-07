@@ -40,6 +40,10 @@ jobs:
         with:
           ndk-version: r26d
 
+      - name: Build libbox
+        run: |
+          go run ./cmd/internal/build-libbox
+
       - name: Auto Bump Version
         run: |
           BASE_VERSION="1.0"
@@ -85,9 +89,9 @@ jobs:
           name: "SFAxtnd v${{ env.APP_VERSION }}"
           body: |
             ### SFAxtnd v${{ env.APP_VERSION }}
-            - Сборка на коммите: `${{ github.sha }}`
-            - Сплит-туннель: `geosite-category-ru.srs` & `geoip-ru.srs`
-            - Версия билда: `${{ env.APP_VERSION }}`
+            - Коммит: `${{ github.sha }}`
+            - Сборка ядра libbox через Go & NDK
+            - Версия: `${{ env.APP_VERSION }}`
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

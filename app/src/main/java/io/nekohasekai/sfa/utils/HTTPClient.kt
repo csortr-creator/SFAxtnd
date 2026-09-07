@@ -32,10 +32,12 @@ class HTTPClient : Closeable {
         val hwid = getOrCreateHwid(url)
 
         val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
-        val model = Build.MODEL
+        val rawModel = Build.MODEL
+        val model = if (rawModel.startsWith(manufacturer, ignoreCase = true)) rawModel else "$manufacturer $rawModel"
         val androidVer = Build.VERSION.RELEASE
-        
-        val userAgentStr = "SFAxtnd/0.0.8 (sing-box/1.14.0; Android $androidVer; $manufacturer $model) HWID/$hwid"
+        val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
+
+        val userAgentStr = "sing-box/1.14.0 SFAxtnd/0.0.8 (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
 
         request.setUserAgent(userAgentStr)
         request.setHeader("HWID", hwid)
@@ -43,6 +45,16 @@ class HTTPClient : Closeable {
         request.setHeader("X-HWID", hwid)
         request.setHeader("Device-ID", hwid)
         request.setHeader("Happ-HWID", hwid)
+
+        val fullDeviceTitle = "$model (Android $androidVer)"
+        request.setHeader("Device-Name", fullDeviceTitle)
+        request.setHeader("X-Device-Name", fullDeviceTitle)
+        request.setHeader("Happ-Device-Name", fullDeviceTitle)
+        request.setHeader("Device-Model", model)
+        request.setHeader("X-Device-Model", model)
+        request.setHeader("Device-OS", "Android $androidVer")
+        request.setHeader("X-Device-OS", "Android $androidVer")
+
         request.setHeader("App-Name", "SFAxtnd")
         request.setHeader("Platform", "Android")
         request.setHeader("Accept", "*/*")
@@ -160,47 +172,48 @@ class HTTPClient : Closeable {
                     for (i in 0 until servers.length()) {
                         val server = servers.optJSONObject(i) ?: continue
 
-                        if (server.has("address_strategy")) {
-                            val strat = server.remove("address_strategy")
-                            if (!server.has("strategy")) {
-                                server.put("strategy", strat)
-                            }
-                        }
+                        server.remove("strategy")
+                        server.remove("address_strategy")
 
                         if (server.has("address") && !server.has("type")) {
                             val addr = server.remove("address").toString().trim()
-                            when {
-                                addr == "local" -> server.put("type", "local")
-                                addr.startsWith("rcode://") -> {
-                                    server.put("type", "rcode")
-                                    server.put("code", addr.removePrefix("rcode://"))
+                            try {
+                                when {
+                                    addr == "local" -> server.put("type", "local")
+                                    addr.startsWith("rcode://") -> {
+                                        server.put("type", "rcode")
+                                        server.put("code", addr.removePrefix("rcode://"))
+                                    }
+                                    addr.startsWith("https://") -> {
+                                        server.put("type", "https")
+                                        val uri = URI(addr)
+                                        server.put("server", uri.host ?: addr.removePrefix("https://").substringBefore("/"))
+                                        val path = uri.rawPath
+                                        server.put("path", if (!path.isNullOrEmpty()) path else "/dns-query")
+                                    }
+                                    addr.startsWith("tls://") -> {
+                                        server.put("type", "tls")
+                                        val uri = URI(addr)
+                                        server.put("server", uri.host ?: addr.removePrefix("tls://").substringBefore(":"))
+                                    }
+                                    addr.startsWith("tcp://") -> {
+                                        server.put("type", "tcp")
+                                        val uri = URI(addr)
+                                        server.put("server", uri.host ?: addr.removePrefix("tcp://").substringBefore(":"))
+                                    }
+                                    addr.startsWith("udp://") -> {
+                                        server.put("type", "udp")
+                                        val uri = URI(addr)
+                                        server.put("server", uri.host ?: addr.removePrefix("udp://").substringBefore(":"))
+                                    }
+                                    else -> {
+                                        server.put("type", "udp")
+                                        server.put("server", addr)
+                                    }
                                 }
-                                addr.startsWith("https://") -> {
-                                    server.put("type", "https")
-                                    val uri = URI(addr)
-                                    server.put("server", uri.host ?: addr.removePrefix("https://").substringBefore("/"))
-                                    val path = uri.rawPath
-                                    server.put("path", if (!path.isNullOrEmpty()) path else "/dns-query")
-                                }
-                                addr.startsWith("tls://") -> {
-                                    server.put("type", "tls")
-                                    val uri = URI(addr)
-                                    server.put("server", uri.host ?: addr.removePrefix("tls://").substringBefore(":"))
-                                }
-                                addr.startsWith("tcp://") -> {
-                                    server.put("type", "tcp")
-                                    val uri = URI(addr)
-                                    server.put("server", uri.host ?: addr.removePrefix("tcp://").substringBefore(":"))
-                                }
-                                addr.startsWith("udp://") -> {
-                                    server.put("type", "udp")
-                                    val uri = URI(addr)
-                                    server.put("server", uri.host ?: addr.removePrefix("udp://").substringBefore(":"))
-                                }
-                                else -> {
-                                    server.put("type", "udp")
-                                    server.put("server", addr)
-                                }
+                            } catch (e: Exception) {
+                                server.put("type", "udp")
+                                server.put("server", addr.substringAfter("://").substringBefore("/"))
                             }
                         }
                         if (server.has("address_resolver")) {

@@ -16,6 +16,89 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 
+private val WHITELIST_KEYWORDS = listOf(
+    "whitelist", "обход", "белые", "белых", "списков", "списки"
+)
+
+private val SHORT_TAG_REGEX = Regex("(?i)(^|[^a-zA-Z0-9а-яА-ЯёЁ])(wl|lte|бс)([^a-zA-Z0-9а-яА-ЯёЁ]|$)")
+
+private fun isWhitelistServer(tag: String): Boolean {
+    val lower = tag.lowercase()
+    if (WHITELIST_KEYWORDS.any { lower.contains(it) }) return true
+    return SHORT_TAG_REGEX.containsMatchIn(tag)
+}
+
+private val WHITELIST_DOMAINS = listOf(
+    "anytimeru.com", "dbankcloud.ru", "1c-bitrix.ru", "1c.ru", "1cfresh.com", "1cloud.ru", "1internet.tv",
+    "2gis.ae", "2gis.am", "2gis.az", "2gis.by", "2gis.com", "2gis.com.cy", "2gis.cz", "2gis.ge", "2gis.kg",
+    "2gis.kz", "2gis.ru", "2gis.tj", "2gis.ua", "2gis.uz", "2ip.ru", "47news.ru", "4meeting.me", "5ka.ru",
+    "5post.market", "abr.ru", "aclub.ru", "adfox.ru", "admetrica.ru", "adygeya.ru", "aeroflot.ru",
+    "alfa-bank.com", "alfa-bank.ru", "alfa-finance.com", "alfa-fx.com", "alfa-pc.com", "alfa-usa.com",
+    "alfabank.com", "alfabank.ru", "alfafinance.biz", "alfafinance.ru", "alfafuture.com", "alfafuture.ru",
+    "alfafx.com", "alfaleasing.ru", "alfaprivate.com", "alformacap.com", "alformacapital.com", "altai.ru",
+    "amur.ru", "arkhangelsk.ru", "astrakhan.ru", "auth-nsdi.ru", "auto.ru", "av.ru", "avito.ru", "avito.st",
+    "baltbank.ru", "banka-ui.dev", "banki.ru", "bankline.ru", "bashkiria.ru", "beeline.ru", "belgorod.ru",
+    "beta-bank.com", "bir.ru", "bitrix24.ru", "bronevik.com", "bryansk.ru", "buryatia.ru", "cbg.ru", "cbr.ru",
+    "cdn-tinkoff.ru", "cdn-vk.ru", "checkip.amazonaws.com", "chel.ru", "chelyabinsk.ru", "chita.ru",
+    "chizhik.club", "chukotka.ru", "chuvashia.ru", "cikrf.ru", "citydrive.ru", "clstorage.net", "credistory.ru",
+    "crimea.ru", "csat.ru", "cscampus.ru", "dagestan.ru", "dbo-dengi.online", "dellin.ru", "dixy.ru",
+    "dnevnik.ru", "dns-shop.ru", "dodopizza.ru", "dom.ru", "domclick.ru", "donationalerts.com", "drweb.ru",
+    "dzen.ru", "dzeninfra.ru", "e5.ru", "ebs.ru", "edadeal.io", "edadeal.ru", "edu.ru", "ekburg.ru",
+    "emias.info", "fastvps.ru", "finuslugi.ru", "fivepost.ru", "fix-price.com", "gazeta.ru", "gazprombank.ru",
+    "gazprombank.tech", "gazprompay.ru", "gorodpay.ru", "goskey.ru", "gosuslugi.ru", "gov.ru", "government.ru",
+    "gpb.ru", "gpmdi.ru", "grfc.ru", "grozny.ru", "gu-st.ru", "hh.ru", "i-ola.ru", "idx5.ru", "ifconfig.me",
+    "imgsmail.ru", "investalfabank.com", "ip.sb", "ipapi.is", "ipify.org", "iplocate.io", "irk.ru", "irkutsk.ru",
+    "ivanovo.ru", "iz.ru", "izbirkom.ru", "izhevsk.ru", "jamal.ru", "jar.ru", "jivo.ru", "jivochat.com",
+    "jivosite.com", "jx5.ru", "kalmykia.ru", "kaluga.ru", "kamchatka.ru", "karelia.ru", "kaspersky.com",
+    "kaspersky.ru", "kazan.ru", "kazanexpress.ru", "kchr.ru", "kemerovo.ru", "khabarovsk.ru", "khakassia.ru",
+    "khv.ru", "kinopoisk-ru.clstorage.net", "kinopoisk.ru", "kirov.ru", "koenig.ru", "kommersant.ru",
+    "kostroma.ru", "kp.ru", "krasnodar.su", "krasnoyarsk.ru", "krasyar.ru", "krd.ru", "kremlin.ru", "kuban.ru",
+    "kuper.ru", "kurgan.ru", "kursk.ru", "lead-pro2023.online", "lemanapro.ru", "lenta.com", "lenta.ru",
+    "lipetsk.ru", "lmru.tech", "magadan.ru", "magnit.ru", "mail.ru", "mari-el.ru", "mari.ru", "marine.ru",
+    "max.ru", "megafon.ru", "megamarket.ru", "megamarket.tech", "memealerts.com", "mgfoms.ru", "mil.ru",
+    "mirpayonline.ru", "miya-news.online", "mm.ru", "mnogolososya.ru", "moex.com", "mordovia.ru", "mos.ru",
+    "mosreg.ru", "mradx.net", "mts.ru", "mtsdengi.ru", "murmansk.ru", "mvk.com", "myapelsin.ru", "mycdn.me",
+    "mymts.ru", "nalchik.ru", "nalog.ru", "naydex.net", "nbki.ru", "netmonet.co", "nn.ru", "nov.ru",
+    "novosibirsk.ru", "nsk.ru", "nspk.ru", "ok.ru", "okcdn.ru", "okko.sport", "okko.tv", "okolo.app",
+    "omsk.ru", "oneme.ru", "orb.ru", "oryol.ru", "ozon.ru", "ozone.ru", "ozonusercontent.com", "penza.ru",
+    "perekrestok.ru", "perm.ru", "pochta.ru", "psbank.ru", "psblog.ru", "psk", "psk.ru", "pskov.ru", "ptz.ru",
+    "qms.ru", "rambler.ru", "rbc.ru", "res-nsdi.ru", "rkomi.ru", "rnd.ru", "rostaxi.org", "rostelecom.ru",
+    "rshb.ru", "rt.ru", "rtbcdn.ru", "russiacalling.com", "rutube.ru", "rutubelist.ru", "ryazan.ru",
+    "rzd-bonus.ru", "rzd.ru", "sakhalin.ru", "samara.ru", "saratov.ru", "sbermarket.ru", "sbermegamarket.ru",
+    "sbpgpb.ru", "sev.ru", "sevastopol.ru", "simbirsk.ru", "sistema-capital.com", "smolensk.ru", "spb.ru",
+    "spvb.ru", "static-storage.net", "stavropol.ru", "stv.ru", "surgut.ru", "svoy.academy", "t2.ru", "tambov.ru",
+    "tamtam.chat", "tatarstan.ru", "taximaxim.ru", "taxsee.com", "tbank-online.com", "tele2.ru", "timeweb.cloud",
+    "timeweb.com", "tips.tips", "tnt-online.ru", "tochka-tech.com", "tochka.com", "tom.ru", "tomsk.ru",
+    "topdelivery.ru", "trbcdn.net", "tsaritsyn.ru", "tsk.ru", "tsx.x5static.net", "tu-tu.ru", "tula.ru",
+    "turbopages.org", "tutu.ru", "tuva.ru", "tver.ru", "tyumen.ru", "udm.ru", "udmurtia.ru", "ulan-ude.ru",
+    "usedesk.ru", "userapi.com", "uxfeedback.ru", "vgtrk.ru", "victoria-group.ru", "vk-analytics.ru",
+    "vk-apps.com", "vk-apps.ru", "vk-cdn.me", "vk-cdn.net", "vk-portal.net", "vk.cc", "vk.com", "vk.company",
+    "vk.design", "vk.link", "vk.me", "vk.ru", "vk.team", "vkcache.com", "vkcloud-static.ru", "vkgo.app",
+    "vklive.app", "vkmessenger.app", "vkmessenger.com", "vkontakte.ru", "vkuser.net", "vkuseraudio.com",
+    "vkuseraudio.net", "vkuseraudio.ru", "vkusercdn.ru", "vkuserlive.net", "vkuserphoto.ru", "vkuservideo.com",
+    "vkuservideo.net", "vkuservideo.ru", "vkusnoitochka.ru", "vkusvill.ru", "vkvideo.ru", "vl.ru",
+    "vladikavkaz.ru", "vladimir.ru", "vladivostok.ru", "vlg.ru", "volgograd.ru", "vologda.ru", "voronezh.ru",
+    "vrn.ru", "vtb-grants.fut.ru", "vtb-liga.fut.ru", "vtb-russia.com", "vtb.bank.in", "vtb.com", "vtb.corp.ru",
+    "vtb.digital", "vtb.fut.ru", "vtb.promo", "vtb.ru", "vtb24.com", "vtb24.ru", "vtbcareer.com", "vtbfamily.ru",
+    "vtbindia.com", "vtbkep.site", "vtbpartners.com", "vtbrussia.com", "vtbrussia.ru", "vtbstrana.ru",
+    "vyatka.ru", "wb.ru", "webvisor.com", "webvisor.org", "whoosh.bike", "wildberries.ru", "windsurf.com",
+    "wink.ru", "x5.ru", "x5.tech", "x5club.ru", "x5id.ru", "x5l.ru", "x5paket.ru", "x5q.ru",
+    "xn----7sb7akeedqd.xn--p1ai", "xn--80aacoonefzg3am8b1fsb.xn--p1ai", "xn--80acgfbsl1azdqr.xn--p1ai",
+    "xn--80ajghhoc2aj1c8b.xn--p1ai", "xn--90ab2c.xn--p1ai", "xn--90aifd0aza.site", "xn--b1aew.xn--p1ai",
+    "xn--d1acpjx3f.xn--p1ai", "ya.ru", "yads.tech", "yakutia.ru", "yamal.ru", "yandex", "yandex-bank.net",
+    "yandex-images.clstorage.net", "yandex-team.ru", "yandex.aero", "yandex.az", "yandex.by", "yandex.cloud",
+    "yandex.co.il", "yandex.com", "yandex.com.am", "yandex.com.ge", "yandex.com.ru", "yandex.com.tr",
+    "yandex.com.ua", "yandex.de", "yandex.ee", "yandex.eu", "yandex.fi", "yandex.fr", "yandex.jobs", "yandex.kg",
+    "yandex.kz", "yandex.lt", "yandex.lv", "yandex.md", "yandex.net", "yandex.org", "yandex.pl", "yandex.ru",
+    "yandex.st", "yandex.sx", "yandex.tj", "yandex.tm", "yandex.tr", "yandex.ua", "yandex.uz",
+    "yandexadexchange.net", "yandexcloud.net", "yandexcom.net", "yandexmetrica.com", "yandexwebcache.net",
+    "yandexwebcache.org", "yaroslavl.ru", "yastat.net", "yastatic-net.ru", "yastatic.net", "yota.ru",
+    "youla-web-static.mrgcdn.ru", "youla.io", "youla.ru", "yuzhno-sakhalinsk.ru", "zdrav10.ru", "zentotem.net",
+    "freestylediabetes.ru", "hematonix.ru", "ican-sinocare.ru", "lumiflex.ru", "medtrum.eu", "medtrum.ru",
+    "rsscenter.cloud", "ozon.app", "ozon.travel", "ozon.by", "ozon.kz", "cdek.ru", "cdek.shopping",
+    "tanki.su", "lesta.ru"
+)
+
 class HTTPClient : Closeable {
 
     private val client = Libbox.newHTTPClient()
@@ -260,6 +343,7 @@ class HTTPClient : Closeable {
                             inbound.put("address", addresses)
                         }
                         inbound.remove("sniff")
+                        inbound.remove("auto_detect_interface")
                     }
                 }
             }
@@ -683,13 +767,15 @@ class HTTPClient : Closeable {
                     "dns"
                 )
             ) {
-                if (uniqueTag.contains("обход", ignoreCase = true)) {
+                if (isWhitelistServer(uniqueTag)) {
                     bypassProxyTags.add(uniqueTag)
                 } else {
                     normalProxyTags.add(uniqueTag)
                 }
             }
         }
+
+        val hasWhitelistServers = bypassProxyTags.isNotEmpty()
 
         val root = JSONObject()
 
@@ -698,6 +784,9 @@ class HTTPClient : Closeable {
             put("timestamp", true)
         })
 
+        /*
+         * DNS
+         */
         val dnsObj = JSONObject()
         dnsObj.put("servers", JSONArray().apply {
             put(JSONObject().apply {
@@ -706,6 +795,7 @@ class HTTPClient : Closeable {
                 put("server", "77.88.8.8")
                 put("server_port", 53)
             })
+
             put(JSONObject().apply {
                 put("tag", "dns-remote")
                 put("type", "https")
@@ -715,26 +805,41 @@ class HTTPClient : Closeable {
                 put("detour", "Выбор режима")
             })
         })
+
         dnsObj.put("rules", JSONArray().apply {
-            put(JSONObject().apply {
-                put("rule_set", JSONArray().apply {
-                    put("geosite-category-ru")
+            if (hasWhitelistServers) {
+                put(JSONObject().apply {
+                    put("domain_suffix", JSONArray().apply {
+                        put("nalog.ru")
+                        put("gov.ru")
+                    })
+                    put("server", "dns-direct")
                 })
-                put("server", "dns-direct")
-            })
-            put(JSONObject().apply {
-                put("domain_suffix", JSONArray().apply {
-                    put(".ru")
-                    put(".su")
-                    put(".xn--p1ai")
+            } else {
+                put(JSONObject().apply {
+                    put("rule_set", JSONArray().apply {
+                        put("geosite-category-ru")
+                    })
+                    put("server", "dns-direct")
                 })
-                put("server", "dns-direct")
-            })
+                put(JSONObject().apply {
+                    put("domain_suffix", JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                    })
+                    put("server", "dns-direct")
+                })
+            }
         })
+
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
         root.put("dns", dnsObj)
 
+        /*
+         * TUN (без устаревшего auto_detect_interface)
+         */
         root.put("inbounds", JSONArray().apply {
             put(JSONObject().apply {
                 put("type", "tun")
@@ -750,6 +855,9 @@ class HTTPClient : Closeable {
             })
         })
 
+        /*
+         * OUTBOUNDS
+         */
         val outboundsArr = JSONArray()
 
         if (normalProxyTags.isNotEmpty()) {
@@ -757,7 +865,9 @@ class HTTPClient : Closeable {
                 put("type", "selector")
                 put("tag", "Обычные серверы")
                 put("outbounds", JSONArray().apply {
-                    for (tag in normalProxyTags) put(tag)
+                    for (tag in normalProxyTags) {
+                        put(tag)
+                    }
                 })
                 put("default", normalProxyTags.first())
             })
@@ -768,7 +878,9 @@ class HTTPClient : Closeable {
                 put("type", "selector")
                 put("tag", "Обход белых списков")
                 put("outbounds", JSONArray().apply {
-                    for (tag in bypassProxyTags) put(tag)
+                    for (tag in bypassProxyTags) {
+                        put(tag)
+                    }
                 })
                 put("default", bypassProxyTags.first())
             })
@@ -778,14 +890,25 @@ class HTTPClient : Closeable {
             put("type", "selector")
             put("tag", "Выбор режима")
             put("outbounds", JSONArray().apply {
-                if (normalProxyTags.isNotEmpty()) put("Обычные серверы")
-                if (bypassProxyTags.isNotEmpty()) put("Обход белых списков")
+                if (normalProxyTags.isNotEmpty()) {
+                    put("Обычные серверы")
+                }
+                if (bypassProxyTags.isNotEmpty()) {
+                    put("Обход белых списков")
+                }
                 put("direct")
             })
+
             when {
-                normalProxyTags.isNotEmpty() -> put("default", "Обычные серверы")
-                bypassProxyTags.isNotEmpty() -> put("default", "Обход белых списков")
-                else -> put("default", "direct")
+                bypassProxyTags.isNotEmpty() -> {
+                    put("default", "Обход белых списков")
+                }
+                normalProxyTags.isNotEmpty() -> {
+                    put("default", "Обычные серверы")
+                }
+                else -> {
+                    put("default", "direct")
+                }
             }
         }
         outboundsArr.put(modeSelector)
@@ -806,62 +929,112 @@ class HTTPClient : Closeable {
 
         root.put("outbounds", outboundsArr)
 
+        /*
+         * ROUTING
+         */
         root.put("route", JSONObject().apply {
             put("default_domain_resolver", "dns-direct")
-            put("rule_set", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("tag", "geosite-category-ru")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                    put("download_detour", "Выбор режима")
+
+            if (!hasWhitelistServers) {
+                put("rule_set", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("tag", "geosite-category-ru")
+                        put("type", "remote")
+                        put("format", "binary")
+                        put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
+                        put("download_detour", "Выбор режима")
+                    })
+                    put(JSONObject().apply {
+                        put("tag", "geoip-ru")
+                        put("type", "remote")
+                        put("format", "binary")
+                        put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
+                        put("download_detour", "Выбор режима")
+                    })
                 })
-                put(JSONObject().apply {
-                    put("tag", "geoip-ru")
-                    put("type", "remote")
-                    put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
-                    put("download_detour", "Выбор режима")
-                })
-            })
+            }
+
             put("rules", JSONArray().apply {
-                put(JSONObject().apply { put("action", "sniff") })
+                put(JSONObject().apply {
+                    put("action", "sniff")
+                })
                 put(JSONObject().apply {
                     put("protocol", "dns")
                     put("action", "hijack-dns")
                 })
-                put(JSONObject().apply {
-                    put("ip_is_private", true)
-                    put("outbound", "direct")
-                })
-                put(JSONObject().apply {
-                    put("package_name", JSONArray().apply {
-                        put("ru.vk.store")
-                        put("com.vk.store")
+
+                if (hasWhitelistServers) {
+                    put(JSONObject().apply {
+                        put("ip_cidr", JSONArray().apply {
+                            put("::/0")
+                        })
+                        put("outbound", "block")
                     })
-                    put("outbound", "direct")
-                })
-                put(JSONObject().apply {
-                    put("rule_set", JSONArray().apply {
-                        put("geosite-category-ru")
+                    put(JSONObject().apply {
+                        put("ip_is_private", true)
+                        put("outbound", "direct")
                     })
-                    put("outbound", "direct")
-                })
-                put(JSONObject().apply {
-                    put("rule_set", JSONArray().apply {
-                        put("geoip-ru")
+                    put(JSONObject().apply {
+                        put("protocol", "bittorrent")
+                        put("outbound", "direct")
                     })
-                    put("outbound", "direct")
-                })
-                put(JSONObject().apply {
-                    put("domain_suffix", JSONArray().apply {
-                        put(".ru")
-                        put(".su")
-                        put(".xn--p1ai")
+                    put(JSONObject().apply {
+                        put("domain_keyword", JSONArray().apply {
+                            put("speedtest")
+                        })
+                        put("outbound", "direct")
                     })
-                    put("outbound", "direct")
-                })
+                    put(JSONObject().apply {
+                        put("ip_cidr", JSONArray().apply {
+                            put("185.73.195.0/24")
+                            put("213.24.64.175/32")
+                            put("213.24.64.181/32")
+                        })
+                        put("outbound", "direct")
+                    })
+                    put(JSONObject().apply {
+                        put("domain_suffix", JSONArray().apply {
+                            for (domain in WHITELIST_DOMAINS) {
+                                put(domain)
+                            }
+                        })
+                        put("outbound", "direct")
+                    })
+                } else {
+                    put(JSONObject().apply {
+                        put("ip_is_private", true)
+                        put("outbound", "direct")
+                    })
+                    put(JSONObject().apply {
+                        put("package_name", JSONArray().apply {
+                            put("ru.vk.store")
+                            put("com.vk.store")
+                        })
+                        put("outbound", "direct")
+                    })
+                    put(JSONObject().apply {
+                        put("rule_set", JSONArray().apply {
+                            put("geosite-category-ru")
+                        })
+                        put("outbound", "direct")
+                    })
+                    put(JSONObject().apply {
+                        put("rule_set", JSONArray().apply {
+                            put("geoip-ru")
+                        })
+                        put("outbound", "direct")
+                    })
+                    put(JSONObject().apply {
+                        put("domain_suffix", JSONArray().apply {
+                            put(".ru")
+                            put(".su")
+                            put(".xn--p1ai")
+                        })
+                        put("outbound", "direct")
+                    })
+                }
             })
+
             put("final", "Выбор режима")
             put("auto_detect_interface", true)
         })

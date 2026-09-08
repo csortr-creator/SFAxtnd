@@ -346,7 +346,8 @@ class HTTPClient : Closeable {
             trimmed
         }
     }
-        private fun parseUriLines(text: String): List<JSONObject> {
+
+    private fun parseUriLines(text: String): List<JSONObject> {
         val outbounds = mutableListOf<JSONObject>()
         for (rawLine in text.lines()) {
             val line = rawLine.trim()
@@ -479,7 +480,7 @@ class HTTPClient : Closeable {
         }
 
         val net = vmessJson.optString("net", "tcp")
-        if (net == "ws" || net == "grpc") {
+                if (net == "ws" || net == "grpc") {
             val transportObj = JSONObject()
             transportObj.put("type", net)
             val path = vmessJson.optString("path")
@@ -644,36 +645,51 @@ class HTTPClient : Closeable {
         }
         return result
     }
-
-    private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
+        private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
         val validNodes = nodes.filter { it.optString("type") != "dns" }
 
         val usedTags = mutableMapOf<String, Int>()
-        usedTags["Выбор сервера"] = 1
+        usedTags["Выбор режима"] = 1
+        usedTags["Обычные серверы"] = 1
+        usedTags["Обход белых списков"] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
 
-        val proxyTags = mutableListOf<String>()
+        val normalProxyTags = mutableListOf<String>()
+        val bypassProxyTags = mutableListOf<String>()
 
         for (node in validNodes) {
             val rawTag = node.optString("tag").ifEmpty {
                 node.optString("server").ifEmpty { "Proxy" }
             }
+
             val cleanTag = cleanNodeName(rawTag)
             val count = usedTags.getOrDefault(cleanTag, 0)
-            val uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
+
+            val uniqueTag = if (count > 0) {
+                "$cleanTag ($count)"
+            } else {
+                cleanTag
+            }
+
             usedTags[cleanTag] = count + 1
             node.put("tag", uniqueTag)
 
             val type = node.optString("type")
-            if (type !in listOf("selector", "urltest", "direct", "block", "dns")) {
-                proxyTags.add(uniqueTag)
-            }
-        }
 
-        if (proxyTags.isEmpty()) {
-            for (node in validNodes) {
-                proxyTags.add(node.getString("tag"))
+            if (type !in listOf(
+                    "selector",
+                    "urltest",
+                    "direct",
+                    "block",
+                    "dns"
+                )
+            ) {
+                if (uniqueTag.contains("обход", ignoreCase = true)) {
+                    bypassProxyTags.add(uniqueTag)
+                } else {
+                    normalProxyTags.add(uniqueTag)
+                }
             }
         }
 
@@ -684,150 +700,344 @@ class HTTPClient : Closeable {
             put("timestamp", true)
         })
 
+        /*
+         * DNS
+         */
         val dnsObj = JSONObject()
-        val dnsServers = JSONArray().apply {
-            put(JSONObject().apply {
-                put("tag", "dns-remote")
-                put("type", "https")
-                put("server", "1.1.1.1")
-                put("path", "/dns-query")
-                put("domain_resolver", "dns-direct")
-                put("detour", "Выбор сервера")
-            })
+
+        dnsObj.put("servers", JSONArray().apply {
+
             put(JSONObject().apply {
                 put("tag", "dns-direct")
                 put("type", "udp")
                 put("server", "77.88.8.8")
                 put("server_port", 53)
             })
-        }
-        dnsObj.put("servers", dnsServers)
-        dnsObj.put("rules", JSONArray().apply {
+
             put(JSONObject().apply {
-                put("rule_set", JSONArray().apply {
-                    put("geosite-category-ru")
-                })
+                put("tag", "dns-remote")
+                put("type", "https")
+                put("server", "1.1.1.1")
+                put("path", "/dns-query")
+                put("domain_resolver", "dns-direct")
+                put("detour", "Выбор режима")
+            })
+        })
+
+        dnsObj.put("rules", JSONArray().apply {
+
+            put(JSONObject().apply {
+                put(
+                    "rule_set",
+                    JSONArray().apply {
+                        put("geosite-category-ru")
+                    }
+                )
                 put("server", "dns-direct")
             })
+
             put(JSONObject().apply {
-                put("domain_suffix", JSONArray().apply {
-                    put(".ru")
-                    put(".su")
-                    put(".xn--p1ai")
-                    put(".by")
-                    put(".kz")
-                })
+                put(
+                    "domain_suffix",
+                    JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                    }
+                )
                 put("server", "dns-direct")
             })
         })
+
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
+
         root.put("dns", dnsObj)
 
+        /*
+         * TUN
+         */
         root.put("inbounds", JSONArray().apply {
+
             put(JSONObject().apply {
                 put("type", "tun")
                 put("tag", "tun-in")
                 put("interface_name", "tun0")
-                put("address", JSONArray().apply {
-                    put("172.19.0.1/30")
-                })
+
+                put(
+                    "address",
+                    JSONArray().apply {
+                        put("172.19.0.1/30")
+                    }
+                )
+
                 put("auto_route", true)
                 put("strict_route", false)
+                put("auto_detect_interface", true)
                 put("stack", "gvisor")
+
+                put("sniff", true)
             })
         })
 
+        /*
+         * OUTBOUNDS
+         */
         val outboundsArr = JSONArray()
 
-        val hasProxySelector = validNodes.any { it.optString("tag") == "Выбор сервера" }
-        if (!hasProxySelector) {
-            val selector = JSONObject().apply {
+        /*
+         * Селектор обычных серверов
+         */
+        if (normalProxyTags.isNotEmpty()) {
+
+            outboundsArr.put(JSONObject().apply {
+
                 put("type", "selector")
-                put("tag", "Выбор сервера")
-                val selectorOutbounds = JSONArray()
-                for (t in proxyTags) {
-                    selectorOutbounds.put(t)
-                }
-                selectorOutbounds.put("direct")
-                put("outbounds", selectorOutbounds)
-                if (proxyTags.isNotEmpty()) {
-                    put("default", proxyTags[0])
-                }
-            }
-            outboundsArr.put(selector)
+                put("tag", "Обычные серверы")
+
+                put(
+                    "outbounds",
+                    JSONArray().apply {
+
+                        for (tag in normalProxyTags) {
+                            put(tag)
+                        }
+                    }
+                )
+
+                put("default", normalProxyTags.first())
+            })
         }
 
+        /*
+         * Селектор серверов обхода
+         */
+        if (bypassProxyTags.isNotEmpty()) {
+
+            outboundsArr.put(JSONObject().apply {
+
+                put("type", "selector")
+                put("tag", "Обход белых списков")
+
+                put(
+                    "outbounds",
+                    JSONArray().apply {
+
+                        for (tag in bypassProxyTags) {
+                            put(tag)
+                        }
+                    }
+                )
+
+                put("default", bypassProxyTags.first())
+            })
+        }
+
+        /*
+         * Главный selector: Выбор режима
+         */
+        val modeSelector = JSONObject().apply {
+
+            put("type", "selector")
+            put("tag", "Выбор режима")
+
+            put(
+                "outbounds",
+                JSONArray().apply {
+
+                    if (normalProxyTags.isNotEmpty()) {
+                        put("Обычные серверы")
+                    }
+
+                    if (bypassProxyTags.isNotEmpty()) {
+                        put("Обход белых списков")
+                    }
+
+                    put("direct")
+                }
+            )
+
+            when {
+                normalProxyTags.isNotEmpty() -> {
+                    put("default", "Обычные серверы")
+                }
+
+                bypassProxyTags.isNotEmpty() -> {
+                    put("default", "Обход белых списков")
+                }
+
+                else -> {
+                    put("default", "direct")
+                }
+            }
+        }
+
+        outboundsArr.put(modeSelector)
+
+        /*
+         * Сами серверы
+         */
         for (node in validNodes) {
             outboundsArr.put(node)
         }
 
-        if (validNodes.none { it.optString("tag") == "direct" }) {
-            outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
-        }
-        if (validNodes.none { it.optString("tag") == "block" }) {
-            outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
-        }
+        /*
+         * Direct
+         */
+        outboundsArr.put(
+            JSONObject().apply {
+                put("type", "direct")
+                put("tag", "direct")
+            }
+        )
+
+        /*
+         * Block
+         */
+        outboundsArr.put(
+            JSONObject().apply {
+                put("type", "block")
+                put("tag", "block")
+            }
+        )
+
         root.put("outbounds", outboundsArr)
 
+        /*
+         * ROUTING
+         */
         root.put("route", JSONObject().apply {
+
             put("default_domain_resolver", "dns-direct")
 
+            /*
+             * RULE SETS
+             */
             put("rule_set", JSONArray().apply {
+
                 put(JSONObject().apply {
                     put("tag", "geosite-category-ru")
                     put("type", "remote")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                    put("download_detour", "Выбор сервера")
+
+                    put(
+                        "url",
+                        "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"
+                    )
+
+                    put("download_detour", "Выбор режима")
                 })
+
                 put(JSONObject().apply {
                     put("tag", "geoip-ru")
                     put("type", "remote")
                     put("format", "binary")
-                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
-                    put("download_detour", "Выбор сервера")
+
+                    put(
+                        "url",
+                        "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"
+                    )
+
+                    put("download_detour", "Выбор режима")
                 })
             })
 
             put("rules", JSONArray().apply {
+
+                /*
+                 * Sniffing
+                 */
                 put(JSONObject().apply {
                     put("action", "sniff")
                 })
+
+                /*
+                 * DNS
+                 */
                 put(JSONObject().apply {
                     put("protocol", "dns")
                     put("action", "hijack-dns")
                 })
+
+                /*
+                 * Private сети напрямую
+                 */
                 put(JSONObject().apply {
                     put("ip_is_private", true)
                     put("outbound", "direct")
                 })
+
+                /*
+                 * Российские приложения
+                 */
                 put(JSONObject().apply {
-                    put("package_name", JSONArray().apply {
-                        put("ru.vk.store")
-                        put("com.vk.store")
-                    })
+
+                    put(
+                        "package_name",
+                        JSONArray().apply {
+
+                            put("ru.vk.store")
+                            put("com.vk.store")
+                        }
+                    )
+
                     put("outbound", "direct")
                 })
+
+                /*
+                 * Российские сайты напрямую
+                 */
                 put(JSONObject().apply {
-                    put("rule_set", JSONArray().apply {
-                        put("geosite-category-ru")
-                        put("geoip-ru")
-                    })
+
+                    put(
+                        "rule_set",
+                        JSONArray().apply {
+                            put("geosite-category-ru")
+                        }
+                    )
+
                     put("outbound", "direct")
                 })
+
+                /*
+                 * Российские IP напрямую
+                 */
                 put(JSONObject().apply {
-                    put("domain_suffix", JSONArray().apply {
-                        put(".ru")
-                        put(".su")
-                        put(".xn--p1ai")
-                        put(".by")
-                        put(".kz")
-                    })
+
+                    put(
+                        "rule_set",
+                        JSONArray().apply {
+                            put("geoip-ru")
+                        }
+                    )
+
+                    put("outbound", "direct")
+                })
+
+                /*
+                 * Русскоязычные зоны
+                 */
+                put(JSONObject().apply {
+
+                    put(
+                        "domain_suffix",
+                        JSONArray().apply {
+
+                            put(".ru")
+                            put(".su")
+                            put(".xn--p1ai")
+                        }
+                    )
+
                     put("outbound", "direct")
                 })
             })
-            put("final", "Выбор сервера")
+
+            /*
+             * Финальный маршрут
+             */
+            put("final", "Выбор режима")
+
             put("auto_detect_interface", true)
         })
 

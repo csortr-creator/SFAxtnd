@@ -645,7 +645,8 @@ class HTTPClient : Closeable {
         }
         return result
     }
-        private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
+
+    private fun buildSingBoxConfig(nodes: List<JSONObject>): String {
         val validNodes = nodes.filter { it.optString("type") != "dns" }
 
         val usedTags = mutableMapOf<String, Int>()
@@ -773,7 +774,6 @@ class HTTPClient : Closeable {
 
                 put("auto_route", true)
                 put("strict_route", false)
-                put("auto_detect_interface", true)
                 put("stack", "gvisor")
 
                 put("sniff", true)

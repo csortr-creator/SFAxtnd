@@ -315,105 +315,105 @@ class HTTPClient : Closeable {
         val trimmed = rawTag.trim()
         if (!trimmed.contains("%")) return trimmed
         return try {
-            URLDecoder.decode(trimmed, StandardCharsets.UTF_8.name()).trim()
+            URLDecoder.decode(trimmed, "UTF-8")
         } catch (e: Exception) {
             trimmed
         }
     }
 
     private fun parseUriLines(text: String): List<JSONObject> {
-        val outbounds = mutableListOf<JSONObject>()
-        for (rawLine in text.lines()) {
-            val line = rawLine.trim()
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith("//")) continue
-
-            try {
-                when {
-                    line.startsWith("vless://") -> parseVless(line)?.let { outbounds.add(it) }
-                    line.startsWith("vmess://") -> parseVmess(line)?.let { outbounds.add(it) }
-                    line.startsWith("trojan://") -> parseTrojan(line)?.let { outbounds.add(it) }
-                    line.startsWith("ss://") -> parseShadowsocks(line)?.let { outbounds.add(it) }
-                }
-            } catch (e: Exception) {
+        val nodes = mutableListOf<JSONObject>()
+        for (line in text.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("//")) continue
+            val node = when {
+                trimmed.startsWith("vless://") -> parseVless(trimmed)
+                trimmed.startsWith("vmess://") -> parseVmess(trimmed)
+                trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
+                trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
+                else -> null
             }
+            if (node != null) nodes.add(node)
         }
-        return outbounds
+        return nodes
     }
 
     private fun parseVless(line: String): JSONObject? {
-        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val withoutScheme = line.removePrefix("vless://")
+        val hashIdx = withoutScheme.lastIndexOf("#")
+        val rawTag = if (hashIdx >= 0) withoutScheme.substring(hashIdx + 1) else null
+        val main = if (hashIdx >= 0) withoutScheme.substring(0, hashIdx) else withoutScheme
         val tag = cleanNodeName(rawTag)
-        val withoutTag = line.substringBefore("#")
-        val queryStr = if (withoutTag.contains("?")) withoutTag.substringAfter("?") else ""
-        val mainPart = withoutTag.substringBefore("?").removePrefix("vless://")
 
-        if (!mainPart.contains("@")) return null
-        val uuid = mainPart.substringBefore("@").trim()
-        val hostPort = mainPart.substringAfter("@").trim()
-        if (uuid.isEmpty() || hostPort.isEmpty()) return null
+        val atIdx = main.indexOf("@")
+        if (atIdx < 0) return null
+        val uuid = main.substring(0, atIdx)
+        val rest = main.substring(atIdx + 1)
+        val qIdx = rest.indexOf("?")
+        val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
+        val query = if (qIdx >= 0) rest.substring(qIdx + 1) else null
+        val params = parseQueryParams(query)
 
-        val server: String
-        val port: Int
-        if (hostPort.startsWith("[") && hostPort.contains("]:")) {
-            server = hostPort.substringBefore("]:") + "]"
-            port = hostPort.substringAfter("]:").toIntOrNull() ?: 443
-        } else if (hostPort.contains(":") && !hostPort.startsWith("[")) {
-            server = hostPort.substringBeforeLast(":")
-            port = hostPort.substringAfterLast(":").toIntOrNull() ?: 443
-        } else {
-            server = hostPort
-            port = 443
-        }
-        if (server.isEmpty()) return null
-
-        val params = parseQueryParams(queryStr)
+        val host = hostPort.substringBefore(":")
+        val port = hostPort.substringAfter(":", "443").toIntOrNull() ?: 443
+        if (host.isEmpty() || uuid.isEmpty()) return null
 
         val outbound = JSONObject()
         outbound.put("type", "vless")
         outbound.put("tag", tag)
-        outbound.put("server", server)
+        outbound.put("server", host)
         outbound.put("server_port", port)
         outbound.put("uuid", uuid)
+        val flow = params["flow"]
+        if (!flow.isNullOrBlank()) outbound.put("flow", flow)
 
-        params["flow"]?.let { outbound.put("flow", it) }
-        outbound.put("packet_encoding", params["packetEncoding"] ?: "xudp")
-
+        val network = params["type"] ?: "tcp"
         val security = params["security"] ?: "none"
-        if (security == "tls" || security == "reality") {
-            val tlsObj = JSONObject()
-            tlsObj.put("enabled", true)
-            params["sni"]?.let { tlsObj.put("server_name", it) }
+        val sni = params["sni"] ?: params["host"] ?: host
+        val fp = params["fp"] ?: "chrome"
+        val alpn = params["alpn"]
+        val path = params["path"] ?: "/"
+        val hostHeader = params["host"] ?: sni
 
-            val utlsObj = JSONObject()
-            utlsObj.put("enabled", true)
-            utlsObj.put("fingerprint", params["fp"] ?: "chrome")
-            tlsObj.put("utls", utlsObj)
-
-            if (security == "reality") {
-                val realityObj = JSONObject()
-                realityObj.put("enabled", true)
-                params["pbk"]?.let { realityObj.put("public_key", it) }
-                params["sid"]?.let { realityObj.put("short_id", it) }
-                tlsObj.put("reality", realityObj)
+        if (security == "reality") {
+            val tls = JSONObject()
+            tls.put("enabled", true)
+            tls.put("server_name", sni)
+            tls.put("utls", JSONObject().apply {
+                put("enabled", true)
+                put("fingerprint", fp)
+            })
+            val pbk = params["pbk"]
+            val sid = params["sid"]
+            if (!pbk.isNullOrBlank()) {
+                tls.put("reality", JSONObject().apply {
+                    put("enabled", true)
+                    put("public_key", pbk)
+                    if (!sid.isNullOrBlank()) put("short_id", sid)
+                })
             }
-            outbound.put("tls", tlsObj)
+            outbound.put("tls", tls)
+        } else if (security == "tls") {
+            val tls = JSONObject()
+            tls.put("enabled", true)
+            tls.put("server_name", sni)
+            if (!alpn.isNullOrBlank()) {
+                tls.put("alpn", JSONArray(alpn.split(",")))
+            }
+            outbound.put("tls", tls)
         }
 
-        val transportType = params["type"] ?: "tcp"
-        if (transportType == "ws" || transportType == "grpc" || transportType == "http") {
-            val transportObj = JSONObject()
-            transportObj.put("type", transportType)
-            if (transportType == "ws") {
-                params["path"]?.let { transportObj.put("path", URLDecoder.decode(it, "UTF-8")) }
-                params["host"]?.let {
-                    val headers = JSONObject()
-                    headers.put("Host", URLDecoder.decode(it, "UTF-8"))
-                    transportObj.put("headers", headers)
-                }
-            } else if (transportType == "grpc") {
-                params["serviceName"]?.let { transportObj.put("service_name", URLDecoder.decode(it, "UTF-8")) }
-            }
-            outbound.put("transport", transportObj)
+        if (network == "ws") {
+            outbound.put("transport", JSONObject().apply {
+                put("type", "ws")
+                put("path", path)
+                put("headers", JSONObject().apply { put("Host", hostHeader) })
+            })
+        } else if (network == "grpc") {
+            outbound.put("transport", JSONObject().apply {
+                put("type", "grpc")
+                put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
+            })
         }
 
         return outbound
@@ -421,159 +421,163 @@ class HTTPClient : Closeable {
 
     private fun parseVmess(line: String): JSONObject? {
         val b64 = line.removePrefix("vmess://").trim()
-        val jsonStr = try {
-            String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8)
-        } catch (e1: Exception) {
-            String(Base64.decode(b64, Base64.URL_SAFE), StandardCharsets.UTF_8)
+        val decoded = try {
+            val raw = Base64.decode(b64, Base64.DEFAULT)
+            String(raw, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            try {
+                val raw = Base64.decode(b64, Base64.URL_SAFE)
+                String(raw, StandardCharsets.UTF_8)
+            } catch (e2: Exception) {
+                return null
+            }
         }
-        val vmessJson = JSONObject(jsonStr)
+        val vmessJson = try {
+            JSONObject(decoded)
+        } catch (e: Exception) {
+            return null
+        }
 
-        val server = vmessJson.optString("add")
+        val tag = cleanNodeName(vmessJson.optString("ps"))
+        val host = vmessJson.optString("add")
         val port = vmessJson.optInt("port", 443)
         val uuid = vmessJson.optString("id")
-        val tag = cleanNodeName(vmessJson.optString("ps"))
+        if (host.isEmpty() || uuid.isEmpty()) return null
 
         val outbound = JSONObject()
         outbound.put("type", "vmess")
         outbound.put("tag", tag)
-        outbound.put("server", server)
+        outbound.put("server", host)
         outbound.put("server_port", port)
         outbound.put("uuid", uuid)
-        outbound.put("alter_id", vmessJson.optInt("aid", 0))
         outbound.put("security", vmessJson.optString("scy", "auto"))
+        val aid = vmessJson.optInt("aid", 0)
+        if (aid > 0) outbound.put("alter_id", aid)
 
-        if (vmessJson.optString("tls").equals("tls", ignoreCase = true)) {
-            val tlsObj = JSONObject()
-            tlsObj.put("enabled", true)
-            val sni = vmessJson.optString("sni").ifEmpty { vmessJson.optString("host") }
-            if (sni.isNotEmpty()) tlsObj.put("server_name", sni)
-            outbound.put("tls", tlsObj)
+        val network = vmessJson.optString("net", "tcp")
+        val tlsFlag = vmessJson.optString("tls")
+        val sni = vmessJson.optString("sni").ifEmpty { vmessJson.optString("host").ifEmpty { host } }
+
+        if (tlsFlag.equals("tls", true)) {
+            outbound.put("tls", JSONObject().apply {
+                put("enabled", true)
+                put("server_name", sni)
+            })
         }
 
-        val net = vmessJson.optString("net", "tcp")
-        if (net == "ws" || net == "grpc") {
-            val transportObj = JSONObject()
-            transportObj.put("type", net)
-            val path = vmessJson.optString("path")
-            if (net == "ws") {
-                if (path.isNotEmpty()) transportObj.put("path", path)
-                val host = vmessJson.optString("host")
-                if (host.isNotEmpty()) {
-                    val headers = JSONObject()
-                    headers.put("Host", host)
-                    transportObj.put("headers", headers)
-                }
-            } else if (net == "grpc" && path.isNotEmpty()) {
-                transportObj.put("service_name", path)
-            }
-            outbound.put("transport", transportObj)
+        if (network == "ws") {
+            outbound.put("transport", JSONObject().apply {
+                put("type", "ws")
+                put("path", vmessJson.optString("path", "/"))
+                put("headers", JSONObject().apply {
+                    put("Host", vmessJson.optString("host").ifEmpty { sni })
+                })
+            })
+        } else if (network == "grpc") {
+            outbound.put("transport", JSONObject().apply {
+                put("type", "grpc")
+                put("service_name", vmessJson.optString("path", ""))
+            })
         }
 
         return outbound
     }
 
     private fun parseTrojan(line: String): JSONObject? {
-        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val withoutScheme = line.removePrefix("trojan://")
+        val hashIdx = withoutScheme.lastIndexOf("#")
+        val rawTag = if (hashIdx >= 0) withoutScheme.substring(hashIdx + 1) else null
+        val main = if (hashIdx >= 0) withoutScheme.substring(0, hashIdx) else withoutScheme
         val tag = cleanNodeName(rawTag)
-        val withoutTag = line.substringBefore("#")
-        val queryStr = if (withoutTag.contains("?")) withoutTag.substringAfter("?") else ""
-        val mainPart = withoutTag.substringBefore("?").removePrefix("trojan://")
-        if (!mainPart.contains("@")) return null
-        val password = mainPart.substringBefore("@").trim()
-        val hostPort = mainPart.substringAfter("@").trim()
-        if (password.isEmpty() || hostPort.isEmpty()) return null
-        val server: String
-        val port: Int
-        if (hostPort.startsWith("[") && hostPort.contains("]:")) {
-            server = hostPort.substringBefore("]:") + "]"
-            port = hostPort.substringAfter("]:").toIntOrNull() ?: 443
-        } else if (hostPort.contains(":") && !hostPort.startsWith("[")) {
-            server = hostPort.substringBeforeLast(":")
-            port = hostPort.substringAfterLast(":").toIntOrNull() ?: 443
-        } else {
-            server = hostPort
-            port = 443
-        }
-        if (server.isEmpty()) return null
-        val params = parseQueryParams(queryStr)
+
+        val atIdx = main.indexOf("@")
+        if (atIdx < 0) return null
+        val password = main.substring(0, atIdx)
+        val rest = main.substring(atIdx + 1)
+        val qIdx = rest.indexOf("?")
+        val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
+        val query = if (qIdx >= 0) rest.substring(qIdx + 1) else null
+        val params = parseQueryParams(query)
+
+        val host = hostPort.substringBefore(":")
+        val port = hostPort.substringAfter(":", "443").toIntOrNull() ?: 443
+        if (host.isEmpty() || password.isEmpty()) return null
+
         val outbound = JSONObject()
         outbound.put("type", "trojan")
         outbound.put("tag", tag)
-        outbound.put("server", server)
+        outbound.put("server", host)
         outbound.put("server_port", port)
         outbound.put("password", password)
-        val tlsObj = JSONObject()
-        tlsObj.put("enabled", true)
-        tlsObj.put("server_name", params["sni"] ?: params["peer"] ?: server)
-        outbound.put("tls", tlsObj)
-        val transportType = params["type"] ?: "tcp"
-        if (transportType == "ws" || transportType == "grpc") {
-            val transportObj = JSONObject()
-            transportObj.put("type", transportType)
-            if (transportType == "ws") {
-                params["path"]?.let { transportObj.put("path", URLDecoder.decode(it, "UTF-8")) }
-            } else if (transportType == "grpc") {
-                params["serviceName"]?.let { transportObj.put("service_name", URLDecoder.decode(it, "UTF-8")) }
-            }
-            outbound.put("transport", transportObj)
+
+        val sni = params["sni"] ?: params["host"] ?: host
+        outbound.put("tls", JSONObject().apply {
+            put("enabled", true)
+            put("server_name", sni)
+        })
+
+        val network = params["type"] ?: "tcp"
+        if (network == "ws") {
+            outbound.put("transport", JSONObject().apply {
+                put("type", "ws")
+                put("path", params["path"] ?: "/")
+                put("headers", JSONObject().apply {
+                    put("Host", params["host"] ?: sni)
+                })
+            })
         }
+
         return outbound
     }
+
     private fun parseShadowsocks(line: String): JSONObject? {
-        val rawTag = if (line.contains("#")) line.substringAfter("#") else ""
+        val withoutScheme = line.removePrefix("ss://")
+        val hashIdx = withoutScheme.lastIndexOf("#")
+        val rawTag = if (hashIdx >= 0) withoutScheme.substring(hashIdx + 1) else null
+        val main = if (hashIdx >= 0) withoutScheme.substring(0, hashIdx) else withoutScheme
         val tag = cleanNodeName(rawTag)
-        val withoutTag = line.substringBefore("#").removePrefix("ss://").trim()
+
         var method = ""
         var password = ""
         var server = ""
         var port = 8388
-        if (withoutTag.contains("@")) {
-            val userPart = withoutTag.substringBefore("@")
-            val hostPort = withoutTag.substringAfter("@")
-            val decodedUserInfo = try {
-                String(Base64.decode(userPart, Base64.DEFAULT), StandardCharsets.UTF_8)
+
+        val atIdx = main.indexOf("@")
+        if (atIdx >= 0) {
+            val userInfo = main.substring(0, atIdx)
+            val hostPort = main.substring(atIdx + 1).substringBefore("?")
+            try {
+                val decoded = String(Base64.decode(userInfo, Base64.DEFAULT), StandardCharsets.UTF_8)
+                method = decoded.substringBefore(":")
+                password = decoded.substringAfter(":")
             } catch (e: Exception) {
-                userPart
+                method = userInfo.substringBefore(":")
+                password = userInfo.substringAfter(":")
             }
-            val parts = decodedUserInfo.split(":", limit = 2)
-            if (parts.size == 2) {
-                method = parts[0]
-                password = parts[1]
-            }
-            if (hostPort.startsWith("[") && hostPort.contains("]:")) {
-                server = hostPort.substringBefore("]:") + "]"
-                port = hostPort.substringAfter("]:").toIntOrNull() ?: 8388
-            } else if (hostPort.contains(":")) {
+            if (hostPort.contains(":") && !hostPort.startsWith("[")) {
                 server = hostPort.substringBeforeLast(":")
                 port = hostPort.substringAfterLast(":").toIntOrNull() ?: 8388
             } else {
                 server = hostPort
             }
         } else {
-            val decoded = try {
-                String(Base64.decode(withoutTag, Base64.DEFAULT), StandardCharsets.UTF_8)
+            try {
+                val decoded = String(Base64.decode(main.substringBefore("?"), Base64.DEFAULT), StandardCharsets.UTF_8)
+                val at2 = decoded.indexOf("@")
+                if (at2 >= 0) {
+                    val userInfo = decoded.substring(0, at2)
+                    val hostPort = decoded.substring(at2 + 1)
+                    method = userInfo.substringBefore(":")
+                    password = userInfo.substringAfter(":")
+                    if (hostPort.contains(":")) {
+                        server = hostPort.substringBeforeLast(":")
+                        port = hostPort.substringAfterLast(":").toIntOrNull() ?: 8388
+                    } else {
+                        server = hostPort
+                    }
+                }
             } catch (e: Exception) {
-                try {
-                    String(Base64.decode(withoutTag, Base64.URL_SAFE), StandardCharsets.UTF_8)
-                } catch (e2: Exception) {
-                    ""
-                }
-            }
-            val atSplit = decoded.split("@", limit = 2)
-            if (atSplit.size == 2) {
-                val creds = atSplit[0].split(":", limit = 2)
-                method = creds[0]
-                password = creds.getOrElse(1) { "" }
-                val hostPort = atSplit[1]
-                if (hostPort.startsWith("[") && hostPort.contains("]:")) {
-                    server = hostPort.substringBefore("]:") + "]"
-                    port = hostPort.substringAfter("]:").toIntOrNull() ?: 8388
-                } else if (hostPort.contains(":")) {
-                    server = hostPort.substringBeforeLast(":")
-                    port = hostPort.substringAfterLast(":").toIntOrNull() ?: 8388
-                } else {
-                    server = hostPort
-                }
+                return null
             }
         }
         if (server.isEmpty() || method.isEmpty()) return null
@@ -586,6 +590,7 @@ class HTTPClient : Closeable {
         outbound.put("password", password)
         return outbound
     }
+
     private fun parseQueryParams(query: String?): Map<String, String> {
         if (query.isNullOrEmpty()) return emptyMap()
         val result = mutableMapOf<String, String>()
@@ -597,16 +602,17 @@ class HTTPClient : Closeable {
         }
         return result
     }
-
     private fun buildSingBoxConfig(nodes: List<JSONObject>, mode: SubscriptionRouting.Mode): String {
         val validNodes = nodes.filter { it.optString("type") != "dns" }
 
         val usedTags = mutableMapOf<String, Int>()
-        usedTags["Выбор сервера"] = 1
+        usedTags[SubscriptionRouting.NORMAL_SELECTOR_TAG] = 1
+        usedTags[SubscriptionRouting.WHITELIST_SELECTOR_TAG] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
 
-        val proxyTags = mutableListOf<String>()
+        val normalProxyTags = mutableListOf<String>()
+        val whitelistProxyTags = mutableListOf<String>()
 
         for (node in validNodes) {
             val rawTag = node.optString("tag").ifEmpty {
@@ -620,13 +626,17 @@ class HTTPClient : Closeable {
 
             val type = node.optString("type")
             if (type !in listOf("selector", "urltest", "direct", "block", "dns")) {
-                proxyTags.add(uniqueTag)
+                if (SubscriptionRouting.isWhitelistBypassTag(uniqueTag)) {
+                    whitelistProxyTags.add(uniqueTag)
+                } else {
+                    normalProxyTags.add(uniqueTag)
+                }
             }
         }
 
-        if (proxyTags.isEmpty()) {
+        if (normalProxyTags.isEmpty() && whitelistProxyTags.isEmpty()) {
             for (node in validNodes) {
-                proxyTags.add(node.getString("tag"))
+                normalProxyTags.add(node.getString("tag"))
             }
         }
 
@@ -636,6 +646,7 @@ class HTTPClient : Closeable {
             put("level", "warn")
             put("timestamp", true)
         })
+
         val dnsObj = JSONObject()
         val dnsServers = JSONArray().apply {
             put(JSONObject().apply {
@@ -644,7 +655,7 @@ class HTTPClient : Closeable {
                 put("server", "1.1.1.1")
                 put("path", "/dns-query")
                 put("domain_resolver", "dns-direct")
-                put("detour", "Выбор сервера")
+                put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
             })
             put(JSONObject().apply {
                 put("tag", "dns-direct")
@@ -656,161 +667,92 @@ class HTTPClient : Closeable {
         dnsObj.put("servers", dnsServers)
         dnsObj.put("rules", JSONArray().apply {
             put(JSONObject().apply {
-private fun buildSingBoxConfig(nodes: List<JSONObject>, mode: SubscriptionRouting.Mode): String {
-    val validNodes = nodes.filter { it.optString("type") != "dns" }
-
-    val usedTags = mutableMapOf<String, Int>()
-    usedTags[SubscriptionRouting.NORMAL_SELECTOR_TAG] = 1
-    usedTags[SubscriptionRouting.WHITELIST_SELECTOR_TAG] = 1
-    usedTags["direct"] = 1
-    usedTags["block"] = 1
-
-    val normalProxyTags = mutableListOf<String>()
-    val whitelistProxyTags = mutableListOf<String>()
-
-    for (node in validNodes) {
-        val rawTag = node.optString("tag").ifEmpty {
-            node.optString("server").ifEmpty { "Proxy" }
-        }
-        val cleanTag = cleanNodeName(rawTag)
-        val count = usedTags.getOrDefault(cleanTag, 0)
-        val uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
-        usedTags[cleanTag] = count + 1
-        node.put("tag", uniqueTag)
-
-        val type = node.optString("type")
-        if (type !in listOf("selector", "urltest", "direct", "block", "dns")) {
-            if (SubscriptionRouting.isWhitelistBypassTag(uniqueTag)) {
-                whitelistProxyTags.add(uniqueTag)
-            } else {
-                normalProxyTags.add(uniqueTag)
-            }
-        }
-    }
-
-    // fallback: если классификация пустая — все в normal
-    if (normalProxyTags.isEmpty() && whitelistProxyTags.isEmpty()) {
-        for (node in validNodes) {
-            normalProxyTags.add(node.getString("tag"))
-        }
-    }
-
-    val root = JSONObject()
-
-    root.put("log", JSONObject().apply {
-        put("level", "warn")
-        put("timestamp", true)
-    })
-
-    val dnsObj = JSONObject()
-    val dnsServers = JSONArray().apply {
-        put(JSONObject().apply {
-            put("tag", "dns-remote")
-            put("type", "https")
-            put("server", "1.1.1.1")
-            put("path", "/dns-query")
-            put("domain_resolver", "dns-direct")
-            put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
-        })
-        put(JSONObject().apply {
-            put("tag", "dns-direct")
-            put("type", "udp")
-            put("server", "77.88.8.8")
-            put("server_port", 53)
-        })
-    }
-    dnsObj.put("servers", dnsServers)
-    dnsObj.put("rules", JSONArray().apply {
-        put(JSONObject().apply {
-            put("rule_set", JSONArray().apply { put("geosite-category-ru") })
-            put("server", "dns-direct")
-        })
-        put(JSONObject().apply {
-            put("domain_suffix", JSONArray().apply {
-                put(".ru"); put(".su"); put(".xn--p1ai"); put(".by"); put(".kz")
+                put("rule_set", JSONArray().apply { put("geosite-category-ru") })
+                put("server", "dns-direct")
             })
-            put("server", "dns-direct")
+            put(JSONObject().apply {
+                put("domain_suffix", JSONArray().apply {
+                    put(".ru"); put(".su"); put(".xn--p1ai"); put(".by"); put(".kz")
+                })
+                put("server", "dns-direct")
+            })
         })
-    })
-    dnsObj.put("final", "dns-remote")
-    dnsObj.put("strategy", "ipv4_only")
-    root.put("dns", dnsObj)
+        dnsObj.put("final", "dns-remote")
+        dnsObj.put("strategy", "ipv4_only")
+        root.put("dns", dnsObj)
 
-    root.put("inbounds", JSONArray().apply {
-        put(JSONObject().apply {
-            put("type", "tun")
-            put("tag", "tun-in")
-            put("interface_name", "tun0")
-            put("address", JSONArray().apply { put("172.19.0.1/30") })
-            put("auto_route", true)
-            put("strict_route", false)
-            put("stack", "gvisor")
+        root.put("inbounds", JSONArray().apply {
+            put(JSONObject().apply {
+                put("type", "tun")
+                put("tag", "tun-in")
+                put("interface_name", "tun0")
+                put("address", JSONArray().apply { put("172.19.0.1/30") })
+                put("auto_route", true)
+                put("strict_route", false)
+                put("stack", "gvisor")
+            })
         })
-    })
 
-    val outboundsArr = JSONArray()
+        val outboundsArr = JSONArray()
 
-    // Обычный selector — всегда
-    val hasNormalSelector = validNodes.any {
-        it.optString("tag") == SubscriptionRouting.NORMAL_SELECTOR_TAG
+        val hasNormalSelector = validNodes.any {
+            it.optString("tag") == SubscriptionRouting.NORMAL_SELECTOR_TAG
+        }
+        if (!hasNormalSelector) {
+            val tagsForNormal = normalProxyTags.ifEmpty { whitelistProxyTags }
+            outboundsArr.put(JSONObject().apply {
+                put("type", "selector")
+                put("tag", SubscriptionRouting.NORMAL_SELECTOR_TAG)
+                val outs = JSONArray()
+                tagsForNormal.forEach { outs.put(it) }
+                outs.put("direct")
+                put("outbounds", outs)
+                if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
+            })
+        }
+
+        val needWhitelistSelector =
+            mode == SubscriptionRouting.Mode.WHITELIST_BYPASS || whitelistProxyTags.isNotEmpty()
+
+        val hasWhitelistSelector = validNodes.any {
+            it.optString("tag") == SubscriptionRouting.WHITELIST_SELECTOR_TAG
+        }
+        if (needWhitelistSelector && !hasWhitelistSelector) {
+            val tagsForWl = whitelistProxyTags.ifEmpty { normalProxyTags }
+            outboundsArr.put(JSONObject().apply {
+                put("type", "selector")
+                put("tag", SubscriptionRouting.WHITELIST_SELECTOR_TAG)
+                val outs = JSONArray()
+                tagsForWl.forEach { outs.put(it) }
+                outs.put("direct")
+                put("outbounds", outs)
+                if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
+            })
+        }
+
+        for (node in validNodes) {
+            outboundsArr.put(node)
+        }
+
+        if (validNodes.none { it.optString("tag") == "direct" }) {
+            outboundsArr.put(JSONObject().apply {
+                put("type", "direct")
+                put("tag", "direct")
+            })
+        }
+        if (validNodes.none { it.optString("tag") == "block" }) {
+            outboundsArr.put(JSONObject().apply {
+                put("type", "block")
+                put("tag", "block")
+            })
+        }
+
+        root.put("outbounds", outboundsArr)
+
+        SubscriptionRouting.apply(root, mode)
+
+        return root.toString(2)
     }
-    if (!hasNormalSelector) {
-        val tagsForNormal = normalProxyTags.ifEmpty { whitelistProxyTags }
-        outboundsArr.put(JSONObject().apply {
-            put("type", "selector")
-            put("tag", SubscriptionRouting.NORMAL_SELECTOR_TAG)
-            val outs = JSONArray()
-            tagsForNormal.forEach { outs.put(it) }
-            outs.put("direct")
-            put("outbounds", outs)
-            if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
-        })
-    }
-
-    // Whitelist selector — если режим bypass или есть bypass-ноды
-    val needWhitelistSelector =
-        mode == SubscriptionRouting.Mode.WHITELIST_BYPASS || whitelistProxyTags.isNotEmpty()
-
-    val hasWhitelistSelector = validNodes.any {
-        it.optString("tag") == SubscriptionRouting.WHITELIST_SELECTOR_TAG
-    }
-    if (needWhitelistSelector && !hasWhitelistSelector) {
-        val tagsForWl = whitelistProxyTags.ifEmpty { normalProxyTags }
-        outboundsArr.put(JSONObject().apply {
-            put("type", "selector")
-            put("tag", SubscriptionRouting.WHITELIST_SELECTOR_TAG)
-            val outs = JSONArray()
-            tagsForWl.forEach { outs.put(it) }
-            outs.put("direct")
-            put("outbounds", outs)
-            if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
-        })
-    }
-
-    for (node in validNodes) {
-        outboundsArr.put(node)
-    }
-
-    if (validNodes.none { it.optString("tag") == "direct" }) {
-        outboundsArr.put(JSONObject().apply {
-            put("type", "direct")
-            put("tag", "direct")
-        })
-    }
-    if (validNodes.none { it.optString("tag") == "block" }) {
-        outboundsArr.put(JSONObject().apply {
-            put("type", "block")
-            put("tag", "block")
-        })
-    }
-
-    root.put("outbounds", outboundsArr)
-
-    // Единственная точка передачи управления в SubscriptionRouting
-    SubscriptionRouting.apply(root, mode)
-
-    return root.toString(2)
-}
 
     override fun close() {
         client.close()

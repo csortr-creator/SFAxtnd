@@ -269,33 +269,63 @@ class HTTPClient : Closeable {
                             server.remove("detour")
                         }
 
-                        if (!server.has("address")) {
-                            val serverHost = server.optString("server")
-                            val sType = server.optString("type")
-                            val sPath = server.optString("path", "/dns-query")
-                            val addressStr = when {
-                                sType == "https" && serverHost.isNotEmpty() -> "https://$serverHost$sPath"
-                                sType == "tls" && serverHost.isNotEmpty() -> "tls://$serverHost"
-                                sType == "tcp" && serverHost.isNotEmpty() -> "tcp://$serverHost"
-                                serverHost.isNotEmpty() -> serverHost
-                                else -> ""
-                            }
-                            if (addressStr.isNotEmpty()) {
-                                server.put("address", addressStr)
+                        if (server.has("address")) {
+                            val addr = server.remove("address").toString().trim()
+                            server.remove("address_resolver")
+
+                            when {
+                                addr == "local" || addr.startsWith("local") -> {
+                                    server.put("type", "local")
+                                }
+                                addr.startsWith("https://") -> {
+                                    server.put("type", "https")
+                                    val cleanAddr = addr.removePrefix("https://")
+                                    val host = cleanAddr.substringBefore("/").substringBefore(":")
+                                    val path = if (cleanAddr.contains("/")) "/" + cleanAddr.substringAfter("/") else "/dns-query"
+                                    val port = cleanAddr.substringBefore("/").substringAfter(":", "").toIntOrNull()
+                                    server.put("server", host)
+                                    if (port != null && port != 443) server.put("server_port", port)
+                                    server.put("path", path)
+                                }
+                                addr.startsWith("tls://") -> {
+                                    server.put("type", "tls")
+                                    val cleanAddr = addr.removePrefix("tls://")
+                                    val host = cleanAddr.substringBefore(":")
+                                    val port = cleanAddr.substringAfter(":", "").toIntOrNull()
+                                    server.put("server", host)
+                                    if (port != null && port != 853) server.put("server_port", port)
+                                }
+                                addr.startsWith("tcp://") -> {
+                                    server.put("type", "tcp")
+                                    val cleanAddr = addr.removePrefix("tcp://")
+                                    val host = cleanAddr.substringBefore(":")
+                                    val port = cleanAddr.substringAfter(":", "").toIntOrNull()
+                                    server.put("server", host)
+                                    if (port != null && port != 53) server.put("server_port", port)
+                                }
+                                addr.startsWith("udp://") -> {
+                                    server.put("type", "udp")
+                                    val cleanAddr = addr.removePrefix("udp://")
+                                    val host = cleanAddr.substringBefore(":")
+                                    val port = cleanAddr.substringAfter(":", "").toIntOrNull()
+                                    server.put("server", host)
+                                    if (port != null && port != 53) server.put("server_port", port)
+                                }
+                                addr.startsWith("rcode://") -> {
+                                    continue
+                                }
+                                else -> {
+                                    server.put("type", "udp")
+                                    val host = addr.substringBefore(":")
+                                    val port = addr.substringAfter(":", "").toIntOrNull()
+                                    server.put("server", host)
+                                    if (port != null && port != 53) server.put("server_port", port)
+                                }
                             }
                         }
 
-                        server.remove("type")
-                        server.remove("server")
-                        server.remove("server_port")
-                        server.remove("path")
-
-                        if (server.has("domain_resolver")) {
-                            val res = server.remove("domain_resolver")
-                            if (!server.has("address_resolver")) {
-                                server.put("address_resolver", res)
-                            }
-                        }
+                        server.remove("address")
+                        server.remove("address_resolver")
 
                         cleanedServers.put(server)
                     }
@@ -776,20 +806,23 @@ class HTTPClient : Closeable {
         })
 
         /*
-         * DNS: формат адресов и резолверов для Sing-box 1.14
+         * DNS: Строгий типизированный формат Sing-box 1.12+ / 1.14
          */
         val dnsObj = JSONObject()
         dnsObj.put("servers", JSONArray().apply {
             put(JSONObject().apply {
                 put("tag", "dns-direct")
-                put("address", "77.88.8.8")
-                put("detour", "direct")
+                put("type", "udp")
+                put("server", "77.88.8.8")
+                put("server_port", 53)
             })
 
             put(JSONObject().apply {
                 put("tag", "dns-remote")
-                put("address", "https://1.1.1.1/dns-query")
-                put("address_resolver", "dns-direct")
+                put("type", "https")
+                put("server", "1.1.1.1")
+                put("path", "/dns-query")
+                put("domain_resolver", "dns-direct")
                 put("detour", "Выбор режима")
             })
         })
@@ -826,7 +859,7 @@ class HTTPClient : Closeable {
         root.put("dns", dnsObj)
 
         /*
-         * TUN (без legacy-полей sniff и auto_detect_interface)
+         * TUN (без sniff, auto_detect_interface и legacy-полей)
          */
         root.put("inbounds", JSONArray().apply {
             put(JSONObject().apply {

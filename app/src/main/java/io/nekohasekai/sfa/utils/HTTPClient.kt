@@ -153,6 +153,80 @@ class HTTPClient : Closeable {
 
         val context =
             getApplicationContext()
+            private fun processSubscriptionContent(
+    raw: String
+): String {
+    val trimmed = raw.trim()
+
+    if (
+        trimmed.startsWith("{") &&
+        (
+            trimmed.contains("\"outbounds\"") ||
+                trimmed.contains("\"route\"")
+            )
+    ) {
+        return sanitizeAndMigrateConfig(trimmed)
+    }
+
+    val contentToParse = tryDecodeBase64(trimmed)
+
+    if (
+        contentToParse.startsWith("{") &&
+        (
+            contentToParse.contains("\"outbounds\"") ||
+                contentToParse.contains("\"route\"")
+            )
+    ) {
+        return sanitizeAndMigrateConfig(contentToParse)
+    }
+
+    if (contentToParse.startsWith("[")) {
+        try {
+            val jsonArray = JSONArray(contentToParse)
+            val nodes = mutableListOf<JSONObject>()
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                nodes.add(obj)
+            }
+
+            if (nodes.isNotEmpty()) {
+                return buildSingBoxConfig(nodes)
+            }
+        } catch (_: Exception) {
+        }
+    }
+    
+    private fun cleanNodeName(
+    rawTag: String?
+): String {
+    if (rawTag.isNullOrBlank()) {
+        return "Proxy"
+    }
+
+    val trimmed = rawTag.trim()
+
+    if (!trimmed.contains("%")) {
+        return trimmed
+    }
+
+    return try {
+        URLDecoder.decode(
+            trimmed,
+            StandardCharsets.UTF_8.name()
+        ).trim()
+    } catch (_: Exception) {
+        trimmed
+    }
+}
+    val nodes = parseUriLines(contentToParse)
+
+    if (nodes.isNotEmpty()) {
+        return buildSingBoxConfig(nodes)
+    }
+
+    return sanitizeAndMigrateConfig(trimmed)
+            }
 
         if (context != null) {
 

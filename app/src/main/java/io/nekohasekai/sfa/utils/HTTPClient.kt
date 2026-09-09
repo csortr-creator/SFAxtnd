@@ -974,12 +974,6 @@ class HTTPClient : Closeable {
                         put("outbound", "direct")
                     })
                     put(JSONObject().apply {
-                        put("domain_keyword", JSONArray().apply {
-                            put("speedtest")
-                        })
-                        put("outbound", "direct")
-                    })
-                    put(JSONObject().apply {
                         put("ip_cidr", JSONArray().apply {
                             put("185.73.195.0/24")
                             put("213.24.64.175/32")

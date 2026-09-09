@@ -656,75 +656,161 @@ class HTTPClient : Closeable {
         dnsObj.put("servers", dnsServers)
         dnsObj.put("rules", JSONArray().apply {
             put(JSONObject().apply {
-                put("rule_set", JSONArray().apply {
-                    put("geosite-category-ru")
-                })
-                put("server", "dns-direct")
-            })
-            put(JSONObject().apply {
-                put("domain_suffix", JSONArray().apply {
-                    put(".ru")
-                    put(".su")
-                    put(".xn--p1ai")
-                    put(".by")
-                    put(".kz")
-                })
-                put("server", "dns-direct")
-            })
-        })
-        dnsObj.put("final", "dns-remote")
-        dnsObj.put("strategy", "ipv4_only")
-        root.put("dns", dnsObj)
-        root.put("inbounds", JSONArray().apply {
-            put(JSONObject().apply {
-                put("type", "tun")
-                put("tag", "tun-in")
-                put("interface_name", "tun0")
-                put("address", JSONArray().apply {
-                    put("172.19.0.1/30")
-                })
-                put("auto_route", true)
-                put("strict_route", false)
-                put("stack", "gvisor")
-            })
-        })
+private fun buildSingBoxConfig(nodes: List<JSONObject>, mode: SubscriptionRouting.Mode): String {
+    val validNodes = nodes.filter { it.optString("type") != "dns" }
 
-        val outboundsArr = JSONArray()
+    val usedTags = mutableMapOf<String, Int>()
+    usedTags[SubscriptionRouting.NORMAL_SELECTOR_TAG] = 1
+    usedTags[SubscriptionRouting.WHITELIST_SELECTOR_TAG] = 1
+    usedTags["direct"] = 1
+    usedTags["block"] = 1
 
-        val hasProxySelector = validNodes.any { it.optString("tag") == "Выбор сервера" }
-        if (!hasProxySelector) {
-            val selector = JSONObject().apply {
-                put("type", "selector")
-                put("tag", "Выбор сервера")
-                val selectorOutbounds = JSONArray()
-                for (t in proxyTags) {
-                    selectorOutbounds.put(t)
-                }
-                selectorOutbounds.put("direct")
-                put("outbounds", selectorOutbounds)
-                if (proxyTags.isNotEmpty()) {
-                    put("default", proxyTags[0])
-                }
+    val normalProxyTags = mutableListOf<String>()
+    val whitelistProxyTags = mutableListOf<String>()
+
+    for (node in validNodes) {
+        val rawTag = node.optString("tag").ifEmpty {
+            node.optString("server").ifEmpty { "Proxy" }
+        }
+        val cleanTag = cleanNodeName(rawTag)
+        val count = usedTags.getOrDefault(cleanTag, 0)
+        val uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
+        usedTags[cleanTag] = count + 1
+        node.put("tag", uniqueTag)
+
+        val type = node.optString("type")
+        if (type !in listOf("selector", "urltest", "direct", "block", "dns")) {
+            if (SubscriptionRouting.isWhitelistBypassTag(uniqueTag)) {
+                whitelistProxyTags.add(uniqueTag)
+            } else {
+                normalProxyTags.add(uniqueTag)
             }
-            outboundsArr.put(selector)
         }
-
-        for (node in validNodes) {
-            outboundsArr.put(node)
-        }
-
-        if (validNodes.none { it.optString("tag") == "direct" }) {
-            outboundsArr.put(JSONObject().apply { put("type", "direct"); put("tag", "direct") })
-        }
-        if (validNodes.none { it.optString("tag") == "block" }) {
-            outboundsArr.put(JSONObject().apply { put("type", "block"); put("tag", "block") })
-        }
-        root.put("outbounds", outboundsArr)
-
-        SubscriptionRouting.apply(root, mode)
-
-        return root.toString(2)
     }
+
+    // fallback: если классификация пустая — все в normal
+    if (normalProxyTags.isEmpty() && whitelistProxyTags.isEmpty()) {
+        for (node in validNodes) {
+            normalProxyTags.add(node.getString("tag"))
+        }
+    }
+
+    val root = JSONObject()
+
+    root.put("log", JSONObject().apply {
+        put("level", "warn")
+        put("timestamp", true)
+    })
+
+    val dnsObj = JSONObject()
+    val dnsServers = JSONArray().apply {
+        put(JSONObject().apply {
+            put("tag", "dns-remote")
+            put("type", "https")
+            put("server", "1.1.1.1")
+            put("path", "/dns-query")
+            put("domain_resolver", "dns-direct")
+            put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
+        })
+        put(JSONObject().apply {
+            put("tag", "dns-direct")
+            put("type", "udp")
+            put("server", "77.88.8.8")
+            put("server_port", 53)
+        })
+    }
+    dnsObj.put("servers", dnsServers)
+    dnsObj.put("rules", JSONArray().apply {
+        put(JSONObject().apply {
+            put("rule_set", JSONArray().apply { put("geosite-category-ru") })
+            put("server", "dns-direct")
+        })
+        put(JSONObject().apply {
+            put("domain_suffix", JSONArray().apply {
+                put(".ru"); put(".su"); put(".xn--p1ai"); put(".by"); put(".kz")
+            })
+            put("server", "dns-direct")
+        })
+    })
+    dnsObj.put("final", "dns-remote")
+    dnsObj.put("strategy", "ipv4_only")
+    root.put("dns", dnsObj)
+
+    root.put("inbounds", JSONArray().apply {
+        put(JSONObject().apply {
+            put("type", "tun")
+            put("tag", "tun-in")
+            put("interface_name", "tun0")
+            put("address", JSONArray().apply { put("172.19.0.1/30") })
+            put("auto_route", true)
+            put("strict_route", false)
+            put("stack", "gvisor")
+        })
+    })
+
+    val outboundsArr = JSONArray()
+
+    // Обычный selector — всегда
+    val hasNormalSelector = validNodes.any {
+        it.optString("tag") == SubscriptionRouting.NORMAL_SELECTOR_TAG
+    }
+    if (!hasNormalSelector) {
+        val tagsForNormal = normalProxyTags.ifEmpty { whitelistProxyTags }
+        outboundsArr.put(JSONObject().apply {
+            put("type", "selector")
+            put("tag", SubscriptionRouting.NORMAL_SELECTOR_TAG)
+            val outs = JSONArray()
+            tagsForNormal.forEach { outs.put(it) }
+            outs.put("direct")
+            put("outbounds", outs)
+            if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
+        })
+    }
+
+    // Whitelist selector — если режим bypass или есть bypass-ноды
+    val needWhitelistSelector =
+        mode == SubscriptionRouting.Mode.WHITELIST_BYPASS || whitelistProxyTags.isNotEmpty()
+
+    val hasWhitelistSelector = validNodes.any {
+        it.optString("tag") == SubscriptionRouting.WHITELIST_SELECTOR_TAG
+    }
+    if (needWhitelistSelector && !hasWhitelistSelector) {
+        val tagsForWl = whitelistProxyTags.ifEmpty { normalProxyTags }
+        outboundsArr.put(JSONObject().apply {
+            put("type", "selector")
+            put("tag", SubscriptionRouting.WHITELIST_SELECTOR_TAG)
+            val outs = JSONArray()
+            tagsForWl.forEach { outs.put(it) }
+            outs.put("direct")
+            put("outbounds", outs)
+            if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
+        })
+    }
+
+    for (node in validNodes) {
+        outboundsArr.put(node)
+    }
+
+    if (validNodes.none { it.optString("tag") == "direct" }) {
+        outboundsArr.put(JSONObject().apply {
+            put("type", "direct")
+            put("tag", "direct")
+        })
+    }
+    if (validNodes.none { it.optString("tag") == "block" }) {
+        outboundsArr.put(JSONObject().apply {
+            put("type", "block")
+            put("tag", "block")
+        })
+    }
+
+    root.put("outbounds", outboundsArr)
+
+    // Единственная точка передачи управления в SubscriptionRouting
+    SubscriptionRouting.apply(root, mode)
+
+    return root.toString(2)
+}
 
     override fun close() {
         client.close()

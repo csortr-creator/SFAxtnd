@@ -2295,48 +2295,146 @@ class HTTPClient : Closeable {
             JSONObject()
 
         root.put(
-            "log",
-            JSONObject().apply {
+private fun buildSingBoxConfig(
+    nodes: List<JSONObject>
+): String {
 
-                put(
-                    "level",
-                    "warn"
-                )
+    val validNodes =
+        nodes.filter {
+            it.optString("type") != "dns"
+        }
 
-                put(
-                    "timestamp",
-                    true
-                )
+    val usedTags =
+        mutableMapOf<String, Int>()
+
+    usedTags["Выбор сервера"] = 1
+    usedTags["Обычные серверы"] = 1
+    usedTags["Обход белых списков"] = 1
+    usedTags["direct"] = 1
+    usedTags["block"] = 1
+
+    val normalProxyTags =
+        mutableListOf<String>()
+
+    val bypassProxyTags =
+        mutableListOf<String>()
+
+    for (node in validNodes) {
+
+        val rawTag =
+            node.optString("tag")
+                .ifEmpty {
+                    node.optString("server")
+                        .ifEmpty {
+                            "Proxy"
+                        }
+                }
+
+        val cleanTag =
+            cleanNodeName(rawTag)
+
+        val count =
+            usedTags.getOrDefault(
+                cleanTag,
+                0
+            )
+
+        val uniqueTag =
+            if (count > 0) {
+                "$cleanTag ($count)"
+            } else {
+                cleanTag
             }
+
+        usedTags[cleanTag] =
+            count + 1
+
+        node.put(
+            "tag",
+            uniqueTag
         )
 
-        root.put(
-            "dns",
-            buildDnsConfig()
-        )
+        val type =
+            node.optString("type")
 
-        root.put(
-            "inbounds",
-            buildInbounds()
-        )
-
-        root.put(
-            "outbounds",
-            buildOutbounds(
-                validNodes,
-                proxyTags
+        if (
+            type !in listOf(
+                "selector",
+                "urltest",
+                "direct",
+                "block",
+                "dns"
             )
-        )
+        ) {
 
-        root.put(
-            "route",
-            buildRouteConfig(
-                bypassTags
-            )
-        )
+            when (
+                SubscriptionRouting.detectServerType(
+                    cleanTag
+                )
+            ) {
 
-        return root.toString(2)
+                ServerRoutingType.NORMAL -> {
+                    normalProxyTags.add(
+                        uniqueTag
+                    )
+                }
+
+                ServerRoutingType.WHITELIST_BYPASS -> {
+                    bypassProxyTags.add(
+                        uniqueTag
+                    )
+                }
+            }
+        }
     }
+
+    val root =
+        JSONObject()
+
+    root.put(
+        "log",
+        JSONObject().apply {
+            put(
+                "level",
+                "warn"
+            )
+
+            put(
+                "timestamp",
+                true
+            )
+        }
+    )
+
+    root.put(
+        "dns",
+        buildDnsConfig()
+    )
+
+    root.put(
+        "inbounds",
+        buildInbounds()
+    )
+
+    root.put(
+        "outbounds",
+        buildOutbounds(
+            nodes = validNodes,
+            normalProxyTags = normalProxyTags,
+            bypassProxyTags = bypassProxyTags
+        )
+    )
+
+    root.put(
+        "route",
+        buildRouteConfig(
+            normalProxyTags = normalProxyTags,
+            bypassProxyTags = bypassProxyTags
+        )
+    )
+
+    return root.toString(2)
+}
 
     private fun buildDnsConfig(): JSONObject {
 
@@ -2571,75 +2669,188 @@ class HTTPClient : Closeable {
                 selectorOutbounds
             )
 
-            if (
-                proxyTags.isNotEmpty()
-            ) {
+private fun buildOutbounds(
+    nodes: List<JSONObject>,
+    normalProxyTags: List<String>,
+    bypassProxyTags: List<String>
+): JSONArray {
 
-                selector.put(
+    val outbounds =
+        JSONArray()
+
+    if (normalProxyTags.isNotEmpty()) {
+
+        outbounds.put(
+            JSONObject().apply {
+
+                put(
+                    "type",
+                    "selector"
+                )
+
+                put(
+                    "tag",
+                    "Обычные серверы"
+                )
+
+                val selectorOutbounds =
+                    JSONArray()
+
+                for (tag in normalProxyTags) {
+                    selectorOutbounds.put(tag)
+                }
+
+                put(
+                    "outbounds",
+                    selectorOutbounds
+                )
+
+                put(
                     "default",
-                    proxyTags.first()
+                    normalProxyTags.first()
                 )
             }
-
-            outbounds.put(
-                selector
-            )
-        }
-
-        for (node in nodes) {
-
-            outbounds.put(node)
-        }
-
-        if (
-            nodes.none {
-                it.optString("tag") ==
-                    "direct"
-            }
-        ) {
-
-            outbounds.put(
-                JSONObject().apply {
-
-                    put(
-                        "type",
-                        "direct"
-                    )
-
-                    put(
-                        "tag",
-                        "direct"
-                    )
-                }
-            )
-        }
-
-        if (
-            nodes.none {
-                it.optString("tag") ==
-                    "block"
-            }
-        ) {
-
-            outbounds.put(
-                JSONObject().apply {
-
-                    put(
-                        "type",
-                        "block"
-                    )
-
-                    put(
-                        "tag",
-                        "block"
-                    )
-                }
-            )
-        }
-
-        return outbounds
+        )
     }
 
+    if (bypassProxyTags.isNotEmpty()) {
+
+        outbounds.put(
+            JSONObject().apply {
+
+                put(
+                    "type",
+                    "selector"
+                )
+
+                put(
+                    "tag",
+                    "Обход белых списков"
+                )
+
+                val selectorOutbounds =
+                    JSONArray()
+
+                for (tag in bypassProxyTags) {
+                    selectorOutbounds.put(tag)
+                }
+
+                put(
+                    "outbounds",
+                    selectorOutbounds
+                )
+
+                put(
+                    "default",
+                    bypassProxyTags.first()
+                )
+            }
+        )
+    }
+
+    val mainSelectorOutbounds =
+        JSONArray()
+
+    if (normalProxyTags.isNotEmpty()) {
+        mainSelectorOutbounds.put(
+            "Обычные серверы"
+        )
+    }
+
+    if (bypassProxyTags.isNotEmpty()) {
+        mainSelectorOutbounds.put(
+            "Обход белых списков"
+        )
+    }
+
+    if (mainSelectorOutbounds.length() > 0) {
+
+        outbounds.put(
+            JSONObject().apply {
+
+                put(
+                    "type",
+                    "selector"
+                )
+
+                put(
+                    "tag",
+                    "Выбор сервера"
+                )
+
+                put(
+                    "outbounds",
+                    mainSelectorOutbounds
+                )
+
+                if (normalProxyTags.isNotEmpty()) {
+
+                    put(
+                        "default",
+                        "Обычные серверы"
+                    )
+
+                } else if (bypassProxyTags.isNotEmpty()) {
+
+                    put(
+                        "default",
+                        "Обход белых списков"
+                    )
+                }
+            }
+        )
+    }
+
+    for (node in nodes) {
+        outbounds.put(node)
+    }
+
+    if (
+        nodes.none {
+            it.optString("tag") == "direct"
+        }
+    ) {
+
+        outbounds.put(
+            JSONObject().apply {
+
+                put(
+                    "type",
+                    "direct"
+                )
+
+                put(
+                    "tag",
+                    "direct"
+                )
+            }
+        )
+    }
+
+    if (
+        nodes.none {
+            it.optString("tag") == "block"
+        }
+    ) {
+
+        outbounds.put(
+            JSONObject().apply {
+
+                put(
+                    "type",
+                    "block"
+                )
+
+                put(
+                    "tag",
+                    "block"
+                )
+            }
+        )
+    }
+
+    return outbounds
+}
     private fun buildRouteConfig(
         bypassTags: Set<String>
     ): JSONObject {

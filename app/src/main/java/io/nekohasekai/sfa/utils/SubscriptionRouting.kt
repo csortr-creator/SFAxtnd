@@ -4,101 +4,374 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-enum class ServerRoutingType {
-    NORMAL,
-    WHITELIST_BYPASS
-}
-
 object SubscriptionRouting {
 
-    /**
-     * Определяет тип сервера по его названию.
-     *
-     * Обычный сервер:
-     * всё, что доступно в РФ -> direct
-     * остальное -> proxy
-     *
-     * Сервер обхода белых списков:
-     * используется специальный роутинг провайдера,
-     * обычно определяется словом "обход" в названии.
-     */
-    fun detectServerType(tag: String?): ServerRoutingType {
-        val normalized = tag
-            .orEmpty()
-            .lowercase(Locale.getDefault())
+    const val NORMAL_SELECTOR_TAG = "Proxy"
+    const val WHITELIST_SELECTOR_TAG = "Whitelist Bypass"
+
+    enum class Mode {
+        NORMAL,
+        WHITELIST_BYPASS
+    }
+
+    private enum class ServerRoutingType {
+        NORMAL,
+        WHITELIST_BYPASS
+    }
+
+    fun detectMode(
+        content: String
+    ): Mode {
+        val normalized =
+            content.lowercase(
+                Locale.ROOT
+            )
 
         return when {
-            normalized.contains("обход") -> ServerRoutingType.WHITELIST_BYPASS
-            normalized.contains("white list") -> ServerRoutingType.WHITELIST_BYPASS
-            normalized.contains("whitelist") -> ServerRoutingType.WHITELIST_BYPASS
-            normalized.contains("белый список") -> ServerRoutingType.WHITELIST_BYPASS
+            normalized.contains(
+                "white-list"
+            ) -> Mode.WHITELIST_BYPASS
 
-            else -> ServerRoutingType.NORMAL
+            normalized.contains(
+                "whitelist"
+            ) -> Mode.WHITELIST_BYPASS
+
+            normalized.contains(
+                "white list"
+            ) -> Mode.WHITELIST_BYPASS
+
+            normalized.contains(
+                "обход белых списков"
+            ) -> Mode.WHITELIST_BYPASS
+
+            else -> Mode.NORMAL
         }
     }
 
-    fun buildRouting(
-        serverType: ServerRoutingType,
-        proxyOutbound: String = "proxy",
-        directOutbound: String = "direct"
-    ): JSONObject {
-        return when (serverType) {
-            ServerRoutingType.NORMAL -> {
-                buildNormalRouting(
-                    proxyOutbound = proxyOutbound,
-                    directOutbound = directOutbound
+    fun isWhitelistBypassTag(
+        tag: String
+    ): Boolean {
+        return detectServerType(tag) ==
+            ServerRoutingType.WHITELIST_BYPASS
+    }
+
+    private fun detectServerType(
+        tag: String
+    ): ServerRoutingType {
+        val normalized =
+            tag
+                .lowercase(
+                    Locale.ROOT
                 )
+                .trim()
+
+        return when {
+            normalized.contains(
+                "обход"
+            ) &&
+                normalized.contains(
+                    "бел"
+                ) ->
+                ServerRoutingType.WHITELIST_BYPASS
+
+            normalized.contains(
+                "white list"
+            ) ->
+                ServerRoutingType.WHITELIST_BYPASS
+
+            normalized.contains(
+                "whitelist"
+            ) ->
+                ServerRoutingType.WHITELIST_BYPASS
+
+            normalized.contains(
+                "white-list"
+            ) ->
+                ServerRoutingType.WHITELIST_BYPASS
+
+            normalized.contains(
+                "bypass"
+            ) &&
+                (
+                    normalized.contains(
+                        "white"
+                    ) ||
+                        normalized.contains(
+                            "list"
+                        )
+                    ) ->
+                ServerRoutingType.WHITELIST_BYPASS
+
+            else ->
+                ServerRoutingType.NORMAL
+        }
+    }
+
+    fun apply(
+        root: JSONObject,
+        mode: Mode
+    ) {
+        ensureRoute(root)
+
+        when (mode) {
+            Mode.NORMAL -> {
+                applyNormalRouting(root)
             }
 
-            ServerRoutingType.WHITELIST_BYPASS -> {
-                buildWhitelistBypassRouting(
-                    proxyOutbound = proxyOutbound,
-                    directOutbound = directOutbound
-                )
+            Mode.WHITELIST_BYPASS -> {
+                applyWhitelistRouting(root)
             }
         }
     }
 
-    /**
-     * Обычный сервер.
-     *
-     * Логика:
-     *
-     * 1. DNS перехватывается.
-     * 2. Локальные IP идут напрямую.
-     * 3. Российские домены идут напрямую.
-     * 4. Российские IP идут напрямую.
-     * 5. Всё остальное идёт через proxy.
-     *
-     * Именно такая схема соответствует основной логике:
-     *
-     * доступное в РФ -> direct
-     * остальное -> proxy
-     */
-    private fun buildNormalRouting(
-        proxyOutbound: String,
-        directOutbound: String
+    private fun ensureRoute(
+        root: JSONObject
     ): JSONObject {
+        val route =
+            root.optJSONObject(
+                "route"
+            ) ?: JSONObject().also {
+                root.put(
+                    "route",
+                    it
+                )
+            }
 
-        val rules = JSONArray()
+        if (
+            route.optJSONArray(
+                "rules"
+            ) == null
+        ) {
+            route.put(
+                "rules",
+                JSONArray()
+            )
+        }
 
+        return route
+    }
+
+    private fun applyNormalRouting(
+        root: JSONObject
+    ) {
+        val route =
+            ensureRoute(root)
+
+        val oldRules =
+            route.optJSONArray(
+                "rules"
+            ) ?: JSONArray()
+
+        val rules =
+            JSONArray()
+
+        appendSystemRules(
+            rules,
+            oldRules
+        )
+
+        appendNormalDirectRules(
+            rules
+        )
+
+        route.put(
+            "rules",
+            rules
+        )
+
+        route.put(
+            "final",
+            NORMAL_SELECTOR_TAG
+        )
+
+        root.put(
+            "route",
+            route
+        )
+    }
+
+    private fun applyWhitelistRouting(
+        root: JSONObject
+    ) {
+        val route =
+            ensureRoute(root)
+
+        val oldRules =
+            route.optJSONArray(
+                "rules"
+            ) ?: JSONArray()
+
+        val rules =
+            JSONArray()
+
+        appendSystemRules(
+            rules,
+            oldRules
+        )
+
+        appendWhitelistDirectRules(
+            rules
+        )
+
+        route.put(
+            "rules",
+            rules
+        )
+
+        val availableTags =
+            getOutboundTags(root)
+
+        route.put(
+            "final",
+            if (
+                WHITELIST_SELECTOR_TAG in
+                availableTags
+            ) {
+                WHITELIST_SELECTOR_TAG
+            } else {
+                NORMAL_SELECTOR_TAG
+            }
+        )
+
+        root.put(
+            "route",
+            route
+        )
+    }
+
+    private fun appendSystemRules(
+        target: JSONArray,
+        source: JSONArray
+    ) {
+        var hasSniff =
+            false
+
+        var hasHijackDns =
+            false
+
+        for (
+            i in 0 until
+                source.length()
+        ) {
+            val rule =
+                source.optJSONObject(i)
+                    ?: continue
+
+            val action =
+                rule.optString(
+                    "action"
+                )
+
+            val protocol =
+                rule.optString(
+                    "protocol"
+                )
+
+            if (
+                action == "sniff"
+            ) {
+                hasSniff =
+                    true
+            }
+
+            if (
+                action == "hijack-dns" ||
+                protocol == "dns"
+            ) {
+                hasHijackDns =
+                    true
+            }
+
+            target.put(
+                JSONObject(
+                    rule.toString()
+                )
+            )
+        }
+
+        if (
+            !hasSniff
+        ) {
+            target.put(
+                0,
+                JSONObject().apply {
+                    put(
+                        "action",
+                        "sniff"
+                    )
+                }
+            )
+        }
+
+        if (
+            !hasHijackDns
+        ) {
+            val dnsRule =
+                JSONObject().apply {
+                    put(
+                        "protocol",
+                        "dns"
+                    )
+
+                    put(
+                        "action",
+                        "hijack-dns"
+                    )
+                }
+
+            target.put(
+                if (hasSniff) 1 else 1,
+                dnsRule
+            )
+        }
+    }
+
+    private fun appendNormalDirectRules(
+        rules: JSONArray
+    ) {
         rules.put(
             JSONObject().apply {
-                put("action", "sniff")
+                put(
+                    "ip_is_private",
+                    true
+                )
+
+                put(
+                    "action",
+                    "route"
+                )
+
+                put(
+                    "outbound",
+                    "direct"
+                )
             }
         )
 
         rules.put(
             JSONObject().apply {
-                put("protocol", "dns")
-                put("action", "hijack-dns")
-            }
-        )
+                put(
+                    "package_name",
+                    JSONArray().apply {
+                        put(
+                            "ru.vk.store"
+                        )
 
-        rules.put(
-            JSONObject().apply {
-                put("ip_is_private", true)
-                put("outbound", directOutbound)
+                        put(
+                            "com.vk.store"
+                        )
+                    }
+                )
+
+                put(
+                    "action",
+                    "route"
+                )
+
+                put(
+                    "outbound",
+                    "direct"
+                )
             }
         )
 
@@ -115,98 +388,99 @@ object SubscriptionRouting {
                     }
                 )
 
-                put("outbound", directOutbound)
-            }
-        )
-
-        rules.put(
-            JSONObject().apply {
                 put(
-                    "rule_set",
-                    JSONArray().apply {
-                        put("geosite-category-ru")
-                        put("geoip-ru")
-                    }
+                    "action",
+                    "route"
                 )
 
-                put("outbound", directOutbound)
+                put(
+                    "outbound",
+                    "direct"
+                )
             }
         )
-
-        return JSONObject().apply {
-            put("rules", rules)
-            put("final", proxyOutbound)
-            put("auto_detect_interface", true)
-            put("default_domain_resolver", "dns-direct")
-        }
     }
 
-    /**
-     * Сервер для обхода белых списков.
-     *
-     * Важно:
-     *
-     * Такой сервер не получает обычный routing
-     * с категорией доступных в РФ ресурсов.
-     *
-     * Здесь сохраняется отдельная логика маршрутизации.
-     *
-     * Пока базовая схема такая:
-     *
-     * локальные сети -> direct
-     * служебные DNS/IP -> direct
-     * остальное -> proxy
-     *
-     * В дальнейшем сюда будет вынесен полноценный
-     * отдельный список белого маршрута.
-     */
-    private fun buildWhitelistBypassRouting(
-        proxyOutbound: String,
-        directOutbound: String
-    ): JSONObject {
-
-        val rules = JSONArray()
-
+    private fun appendWhitelistDirectRules(
+        rules: JSONArray
+    ) {
         rules.put(
             JSONObject().apply {
-                put("action", "sniff")
-            }
-        )
+                put(
+                    "ip_is_private",
+                    true
+                )
 
-        rules.put(
-            JSONObject().apply {
-                put("protocol", "dns")
-                put("action", "hijack-dns")
-            }
-        )
+                put(
+                    "action",
+                    "route"
+                )
 
-        rules.put(
-            JSONObject().apply {
-                put("ip_is_private", true)
-                put("outbound", directOutbound)
+                put(
+                    "outbound",
+                    "direct"
+                )
             }
         )
 
         rules.put(
             JSONObject().apply {
                 put(
-                    "ip_cidr",
+                    "package_name",
                     JSONArray().apply {
-                        put("213.24.64.175/32")
-                        put("213.24.64.181/32")
-                        put("185.73.195.0/24")
+                        put(
+                            "ru.vk.store"
+                        )
+
+                        put(
+                            "com.vk.store"
+                        )
                     }
                 )
 
-                put("outbound", directOutbound)
+                put(
+                    "action",
+                    "route"
+                )
+
+                put(
+                    "outbound",
+                    "direct"
+                )
             }
         )
+    }
 
-        return JSONObject().apply {
-            put("rules", rules)
-            put("final", proxyOutbound)
-            put("auto_detect_interface", true)
-            put("default_domain_resolver", "dns-direct")
+    private fun getOutboundTags(
+        root: JSONObject
+    ): Set<String> {
+        val tags =
+            mutableSetOf<String>()
+
+        val outbounds =
+            root.optJSONArray(
+                "outbounds"
+            ) ?: return tags
+
+        for (
+            i in 0 until
+                outbounds.length()
+        ) {
+            val tag =
+                outbounds
+                    .optJSONObject(i)
+                    ?.optString(
+                        "tag"
+                    )
+                    ?.trim()
+
+            if (
+                !tag.isNullOrBlank()
+            ) {
+                tags.add(tag)
+            }
         }
+
+        return tags
     }
 }

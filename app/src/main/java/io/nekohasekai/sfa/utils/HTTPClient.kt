@@ -17,10 +17,28 @@ import java.util.concurrent.ConcurrentHashMap
 private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 
 private val WHITELIST_KEYWORDS = listOf(
-    "whitelist", "обход", "белые", "белых", "списков", "списки"
+    // Английские термины
+    "whitelist", "white list", "white-list", "white_list", "whitelisted",
+    "bypass", "blackout", "shutdown",
+    "anti-block", "antiblock", "anti-censorship", "antidpi", "anti-dpi",
+    "anti-filter", "antifilter",
+
+    // Русские термины
+    "обход", "вайтлист", "блэкаут", "блекаут", "шатдаун", "глушилка", "глушилки",
+    "антиблок", "антизапрет", "антифильтр", "антидпи", "тспу",
+
+    // Словоформы "белый список"
+    "белые", "белых", "белый", "белого", "белому", "белом", "белосписоч",
+    "списков", "списки", "список",
+
+    // Ранги серверов обхода
+    "lead", "copper", "cooper", "aluminium",
+    "gold", "cobalt", "platinum", "silver", "diamond", "obsidian"
 )
 
-private val SHORT_TAG_REGEX = Regex("(?i)(^|[^a-zA-Z0-9а-яА-ЯёЁ])(wl|lte|бс)([^a-zA-Z0-9а-яА-ЯёЁ]|$)")
+private val SHORT_TAG_REGEX = Regex(
+    "(?i)(^|[^a-zA-Z0-9а-яА-ЯёЁ])(wl|lte|бс|тспу|tspu)([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
+)
 
 private fun isWhitelistServer(tag: String): Boolean {
     val lower = tag.lowercase()
@@ -752,14 +770,12 @@ class HTTPClient : Closeable {
         val validNodes = nodes.filter { it.optString("type") != "dns" }
 
         val usedTags = mutableMapOf<String, Int>()
-        usedTags["Выбор режима"] = 1
-        usedTags["Обычные серверы"] = 1
-        usedTags["Обход белых списков"] = 1
+        usedTags["Выбор сервера"] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
 
-        val normalProxyTags = mutableListOf<String>()
-        val bypassProxyTags = mutableListOf<String>()
+        val proxyTags = mutableListOf<String>()
+        var hasWhitelistServers = false
 
         for (node in validNodes) {
             val rawTag = node.optString("tag").ifEmpty {
@@ -788,15 +804,12 @@ class HTTPClient : Closeable {
                     "dns"
                 )
             ) {
+                proxyTags.add(uniqueTag)
                 if (isWhitelistServer(uniqueTag)) {
-                    bypassProxyTags.add(uniqueTag)
-                } else {
-                    normalProxyTags.add(uniqueTag)
+                    hasWhitelistServers = true
                 }
             }
         }
-
-        val hasWhitelistServers = bypassProxyTags.isNotEmpty()
 
         val root = JSONObject()
 
@@ -806,7 +819,7 @@ class HTTPClient : Closeable {
         })
 
         /*
-         * DNS: Строгий типизированный формат Sing-box 1.12+ / 1.14
+         * DNS: Строгий типизированный формат Sing-box 1.14
          */
         val dnsObj = JSONObject()
         dnsObj.put("servers", JSONArray().apply {
@@ -823,7 +836,7 @@ class HTTPClient : Closeable {
                 put("server", "1.1.1.1")
                 put("path", "/dns-query")
                 put("domain_resolver", "dns-direct")
-                put("detour", "Выбор режима")
+                put("detour", "Выбор сервера")
             })
         })
 
@@ -876,62 +889,26 @@ class HTTPClient : Closeable {
         })
 
         /*
-         * OUTBOUNDS
+         * OUTBOUNDS: Единственный селектор "Выбор сервера"
          */
         val outboundsArr = JSONArray()
 
-        if (normalProxyTags.isNotEmpty()) {
-            outboundsArr.put(JSONObject().apply {
-                put("type", "selector")
-                put("tag", "Обычные серверы")
-                put("outbounds", JSONArray().apply {
-                    for (tag in normalProxyTags) {
-                        put(tag)
-                    }
-                })
-                put("default", normalProxyTags.first())
-            })
-        }
-
-        if (bypassProxyTags.isNotEmpty()) {
-            outboundsArr.put(JSONObject().apply {
-                put("type", "selector")
-                put("tag", "Обход белых списков")
-                put("outbounds", JSONArray().apply {
-                    for (tag in bypassProxyTags) {
-                        put(tag)
-                    }
-                })
-                put("default", bypassProxyTags.first())
-            })
-        }
-
-        val modeSelector = JSONObject().apply {
+        val serverSelector = JSONObject().apply {
             put("type", "selector")
-            put("tag", "Выбор режима")
+            put("tag", "Выбор сервера")
             put("outbounds", JSONArray().apply {
-                if (normalProxyTags.isNotEmpty()) {
-                    put("Обычные серверы")
-                }
-                if (bypassProxyTags.isNotEmpty()) {
-                    put("Обход белых списков")
+                for (tag in proxyTags) {
+                    put(tag)
                 }
                 put("direct")
             })
-
-            when {
-                bypassProxyTags.isNotEmpty() -> {
-                    put("default", "Обход белых списков")
-                }
-                normalProxyTags.isNotEmpty() -> {
-                    put("default", "Обычные серверы")
-                }
-                else -> {
-                    put("default", "direct")
-                }
+            if (proxyTags.isNotEmpty()) {
+                put("default", proxyTags.first())
+            } else {
+                put("default", "direct")
             }
         }
-        outboundsArr.put(modeSelector)
+        outboundsArr.put(serverSelector)
 
         for (node in validNodes) {
             outboundsArr.put(node)
@@ -962,14 +939,14 @@ class HTTPClient : Closeable {
                         put("type", "remote")
                         put("format", "binary")
                         put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                        put("download_detour", "Выбор режима")
+                        put("download_detour", "Выбор сервера")
                     })
                     put(JSONObject().apply {
                         put("tag", "geoip-ru")
                         put("type", "remote")
                         put("format", "binary")
                         put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
-                        put("download_detour", "Выбор режима")
+                        put("download_detour", "Выбор сервера")
                     })
                 })
             }
@@ -1053,7 +1030,7 @@ class HTTPClient : Closeable {
                 }
             })
 
-            put("final", "Выбор режима")
+            put("final", "Выбор сервера")
             put("auto_detect_interface", true)
         })
 

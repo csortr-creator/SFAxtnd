@@ -680,79 +680,444 @@ class HTTPClient : Closeable {
         }
 
         val rules = route.optJSONArray("rules")
+private fun migrateDnsServer(
+    server: JSONObject
+) {
+    server.remove("strategy")
+    server.remove("address_strategy")
 
-        if (rules != null) {
-            val newRules = JSONArray()
+    if (server.optString("type") == "rcode") {
+        return
+    }
 
-            var hasSniff = false
-            var hasHijackDns = false
+    if (server.optString("detour") == "direct") {
+        server.remove("detour")
+    }
 
-            for (i in 0 until rules.length()) {
-                val rule = rules.optJSONObject(i) ?: continue
+    if (server.has("address") && !server.has("type")) {
+        val address =
+            server
+                .remove("address")
+                .toString()
+                .trim()
 
-                when {
-                    rule.optString("action") == "sniff" -> {
-                        hasSniff = true
+        try {
+            when {
+                address == "local" ||
+                    address.startsWith("rcode://") -> {
+                    server.put(
+                        "type",
+                        "local"
+                    )
+                }
+
+                address.startsWith("https://") -> {
+                    val cleanAddress =
+                        address.removePrefix(
+                            "https://"
+                        )
+
+                    val hostPort =
+                        cleanAddress.substringBefore("/")
+
+                    val host =
+                        hostPort.substringBefore(":")
+
+                    val port =
+                        hostPort
+                            .substringAfter(
+                                ":",
+                                ""
+                            )
+                            .toIntOrNull()
+
+                    val path =
+                        if (cleanAddress.contains("/")) {
+                            "/" +
+                                cleanAddress.substringAfter("/")
+                        } else {
+                            "/dns-query"
+                        }
+
+                    server.put(
+                        "type",
+                        "https"
+                    )
+
+                    server.put(
+                        "server",
+                        host
+                    )
+
+                    if (port != null) {
+                        server.put(
+                            "server_port",
+                            port
+                        )
                     }
 
-                    rule.optString("action") == "hijack-dns" -> {
-                        hasHijackDns = true
-                    }
+                    server.put(
+                        "path",
+                        path
+                    )
+                }
 
-                    rule.optString("protocol") == "dns" ||
-                        rule.optString("outbound") == "dns-out" -> {
+                address.startsWith("tls://") -> {
+                    val cleanAddress =
+                        address.removePrefix(
+                            "tls://"
+                        )
 
-                        rule.remove("outbound")
-                        rule.remove("protocol")
-                        rule.put("action", "hijack-dns")
+                    val host =
+                        cleanAddress.substringBefore(":")
 
-                        hasHijackDns = true
+                    val port =
+                        cleanAddress
+                            .substringAfter(
+                                ":",
+                                ""
+                            )
+                            .toIntOrNull()
+
+                    server.put(
+                        "type",
+                        "tls"
+                    )
+
+                    server.put(
+                        "server",
+                        host
+                    )
+
+                    if (port != null) {
+                        server.put(
+                            "server_port",
+                            port
+                        )
                     }
                 }
 
-                newRules.put(rule)
-            }
+                address.startsWith("tcp://") -> {
+                    val cleanAddress =
+                        address.removePrefix(
+                            "tcp://"
+                        )
 
-            if (!hasSniff) {
-                newRules.put(
-                    0,
-                    JSONObject().apply {
-                        put("action", "sniff")
-                    }
-                )
-            }
+                    val host =
+                        cleanAddress.substringBefore(":")
 
-            if (!hasHijackDns) {
-                var insertIndex = 0
+                    val port =
+                        cleanAddress
+                            .substringAfter(
+                                ":",
+                                ""
+                            )
+                            .toIntOrNull()
 
-                for (i in 0 until newRules.length()) {
-                    val rule = newRules.optJSONObject(i)
+                    server.put(
+                        "type",
+                        "tcp"
+                    )
 
-                    if (rule?.optString("action") == "sniff") {
-                        insertIndex = i + 1
-                        break
+                    server.put(
+                        "server",
+                        host
+                    )
+
+                    if (port != null) {
+                        server.put(
+                            "server_port",
+                            port
+                        )
                     }
                 }
 
-                newRules.put(
-                    insertIndex,
-                    JSONObject().apply {
-                        put("protocol", "dns")
-                        put("action", "hijack-dns")
-                    }
-                )
-            }
+                address.startsWith("udp://") -> {
+                    val cleanAddress =
+                        address.removePrefix(
+                            "udp://"
+                        )
 
-            route.put("rules", newRules)
+                    val host =
+                        cleanAddress.substringBefore(":")
+
+                    val port =
+                        cleanAddress
+                            .substringAfter(
+                                ":",
+                                ""
+                            )
+                            .toIntOrNull()
+
+                    server.put(
+                        "type",
+                        "udp"
+                    )
+
+                    server.put(
+                        "server",
+                        host
+                    )
+
+                    if (port != null) {
+                        server.put(
+                            "server_port",
+                            port
+                        )
+                    }
+                }
+
+                else -> {
+                    val host =
+                        address
+                            .substringAfter("://")
+                            .substringBefore("/")
+
+                    server.put(
+                        "type",
+                        "udp"
+                    )
+
+                    server.put(
+                        "server",
+                        host
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            server.put(
+                "type",
+                "udp"
+            )
+
+            server.put(
+                "server",
+                address
+                    .substringAfter("://")
+                    .substringBefore("/")
+            )
         }
     }
 
-    SubscriptionRouting.apply(root)
+    if (server.has("address_resolver")) {
+        val resolver =
+            server.remove(
+                "address_resolver"
+            )
 
-    return root.toString(2)
-} catch (e: Exception) {
-    jsonStr
+        if (!server.has("domain_resolver")) {
+            server.put(
+                "domain_resolver",
+                resolver
+            )
+        }
+    }
 }
+
+private fun migrateInbounds(
+    root: JSONObject
+) {
+    val inbounds =
+        root.optJSONArray("inbounds")
+            ?: return
+
+    for (i in 0 until inbounds.length()) {
+        val inbound =
+            inbounds.optJSONObject(i)
+                ?: continue
+
+        if (inbound.optString("type") != "tun") {
+            continue
+        }
+
+        val addresses = JSONArray()
+
+        if (inbound.has("inet4_address")) {
+            val value =
+                inbound.remove("inet4_address")
+
+            when (value) {
+                is JSONArray -> {
+                    for (j in 0 until value.length()) {
+                        addresses.put(
+                            value.get(j)
+                        )
+                    }
+                }
+
+                null -> Unit
+
+                else -> {
+                    addresses.put(value)
+                }
+            }
+        }
+
+        if (inbound.has("inet6_address")) {
+            val value =
+                inbound.remove("inet6_address")
+
+            when (value) {
+                is JSONArray -> {
+                    for (j in 0 until value.length()) {
+                        addresses.put(
+                            value.get(j)
+                        )
+                    }
+                }
+
+                null -> Unit
+
+                else -> {
+                    addresses.put(value)
+                }
+            }
+        }
+
+        if (
+            addresses.length() > 0 &&
+            !inbound.has("address")
+        ) {
+            inbound.put(
+                "address",
+                addresses
+            )
+        }
+
+        // sniff больше не является legacy-полем inbound.
+        // В актуальном sing-box sniff должен задаваться
+        // через route rule с action = "sniff".
+        inbound.remove("sniff")
+    }
+}
+
+private fun migrateOutbounds(
+    root: JSONObject
+) {
+    val outbounds =
+        root.optJSONArray("outbounds")
+            ?: return
+
+    val cleanedOutbounds =
+        JSONArray()
+
+    for (i in 0 until outbounds.length()) {
+        val outbound =
+            outbounds.optJSONObject(i)
+                ?: continue
+
+        if (outbound.optString("type") == "dns") {
+            continue
+        }
+
+        cleanedOutbounds.put(outbound)
+    }
+
+    root.put(
+        "outbounds",
+        cleanedOutbounds
+    )
+}
+
+private fun migrateRoute(
+    root: JSONObject
+) {
+    val route =
+        root.optJSONObject("route")
+            ?: return
+
+    if (!route.has("default_domain_resolver")) {
+        route.put(
+            "default_domain_resolver",
+            "dns-direct"
+        )
+    }
+
+    val oldRules =
+        route.optJSONArray("rules")
+            ?: JSONArray()
+
+    val newRules =
+        JSONArray()
+
+    var hasSniff = false
+    var hasHijackDns = false
+
+    for (i in 0 until oldRules.length()) {
+        val rule =
+            oldRules.optJSONObject(i)
+                ?: continue
+
+        if (rule.optString("action") == "sniff") {
+            hasSniff = true
+        }
+
+        if (rule.optString("action") == "hijack-dns") {
+            hasHijackDns = true
+        }
+
+        val protocol =
+            rule.optString("protocol")
+
+        val outbound =
+            rule.optString("outbound")
+
+        if (
+            protocol == "dns" ||
+            outbound == "dns-out"
+        ) {
+            rule.remove("outbound")
+            rule.put(
+                "action",
+                "hijack-dns"
+            )
+
+            hasHijackDns = true
+        }
+
+        newRules.put(rule)
+    }
+
+    val finalRules =
+        JSONArray()
+
+    if (!hasSniff) {
+        finalRules.put(
+            JSONObject().apply {
+                put(
+                    "action",
+                    "sniff"
+                )
+            }
+        )
+    }
+
+    if (!hasHijackDns) {
+        finalRules.put(
+            JSONObject().apply {
+                put(
+                    "protocol",
+                    "dns"
+                )
+
+                put(
+                    "action",
+                    "hijack-dns"
+                )
+            }
+        )
+    }
+
+    for (i in 0 until newRules.length()) {
+        finalRules.put(
+            newRules.get(i)
+        )
+    }
+
+    route.put(
+        "rules",
+        finalRules
+    )
 }
 
 private fun tryDecodeBase64(text: String): String {

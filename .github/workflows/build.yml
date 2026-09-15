@@ -289,9 +289,9 @@ jobs:
         run: |
           set -euxo pipefail
 
-          echo "Decoding keystore from Base64..."
+          echo "Decoding keystore from Base64 (3 parts)..."
 
-          echo "${{ secrets.KEYSTORE_BASE64 }}" \
+          echo -n "${{ secrets.KEYSTORE_BASE64_1 }}${{ secrets.KEYSTORE_BASE64_2 }}${{ secrets.KEYSTORE_BASE64_3 }}" \
             | tr -d '\n\r ' \
             | base64 --decode \
             > app/release.keystore

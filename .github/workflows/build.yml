@@ -289,7 +289,29 @@ jobs:
         run: |
           set -euxo pipefail
 
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+          echo "Decoding keystore from Base64..."
+
+          echo "${{ secrets.KEYSTORE_BASE64 }}" \
+            | tr -d '\n\r ' \
+            | base64 --decode \
+            > app/release.keystore
+
+          echo "Verifying keystore file..."
+          ls -lah app/release.keystore
+          file app/release.keystore
+
+          echo "Checking keystore is valid..."
+
+          keytool -list \
+            -keystore app/release.keystore \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}" \
+            || {
+              echo "ERROR: keystore is invalid or password is wrong"
+              exit 1
+            }
+
+          echo "Creating local.properties..."
 
           cat > local.properties <<EOF
           KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}
@@ -297,10 +319,7 @@ jobs:
           ALIAS_PASS=${{ secrets.KEY_PASSWORD }}
           EOF
 
-          echo "release.keystore:"
-          ls -lah app/release.keystore
-
-          echo "local.properties (masked):"
+          echo "local.properties created (values masked):"
           sed 's/=.*/=***/' local.properties
 
 

@@ -281,30 +281,27 @@ jobs:
 
 
       # =========================
-      # KEYSTORE
+      # SETUP RELEASE KEYSTORE
       # =========================
 
-      - name: Setup Keystore
+      - name: Setup Release Keystore
         shell: bash
         run: |
           set -euxo pipefail
 
-          mkdir -p ~/.android
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
-          if [ -n "${{ secrets.DEBUG_KEYSTORE }}" ]; then
+          cat > local.properties <<EOF
+          KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}
+          ALIAS_NAME=${{ secrets.KEY_ALIAS }}
+          ALIAS_PASS=${{ secrets.KEY_PASSWORD }}
+          EOF
 
-            echo "${{ secrets.DEBUG_KEYSTORE }}" \
-              | base64 -d \
-              > ~/.android/debug.keystore
+          echo "release.keystore:"
+          ls -lah app/release.keystore
 
-            echo "Custom debug keystore installed."
-
-          else
-
-            echo "DEBUG_KEYSTORE secret not found."
-            echo "Using default debug signing configuration."
-
-          fi
+          echo "local.properties (masked):"
+          sed 's/=.*/=***/' local.properties
 
 
       # =========================

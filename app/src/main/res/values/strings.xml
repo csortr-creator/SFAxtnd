@@ -47,9 +47,9 @@
     <string name="default_text">Default</string>
 
     <!-- Navigation Titles -->
-    <string name="title_dashboard">Dashboard</string>
+    <string name="title_dashboard">Servers</string>
     <string name="title_configuration">Profiles</string>
-    <string name="title_log">Logs</string>
+    <string name="title_log">Subscriptions</string>
     <string name="title_settings">Settings</string>
     <string name="title_app_settings">App</string>
     <string name="title_new_profile">New Profile</string>

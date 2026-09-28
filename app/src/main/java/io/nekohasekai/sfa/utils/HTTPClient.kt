@@ -751,9 +751,21 @@ class HTTPClient : Closeable {
 
         SubscriptionRouting.apply(root, mode)
 
+        SubscriptionRouting.apply(root, detectModeFromConfig(root))
         return root.toString(2)
     }
 
+
+private fun detectModeFromConfig(root: JSONObject): SubscriptionRouting.Mode {
+    val outbounds = root.optJSONArray("outbounds") ?: return SubscriptionRouting.Mode.NORMAL
+    for (i in 0 until outbounds.length()) {
+        val tag = outbounds.optJSONObject(i)?.optString("tag") ?: continue
+        if (SubscriptionRouting.isWhitelistBypassTag(tag)) {
+            return SubscriptionRouting.Mode.WHITELIST_BYPASS
+        }
+    }
+    return SubscriptionRouting.Mode.NORMAL
+}
     override fun close() {
         client.close()
     }

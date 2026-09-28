@@ -40,7 +40,7 @@ object SettingsKey {
     // Power report
     const val POWER_REPORT_ENABLED = "power_report_enabled"
 
-    // dashboard
+    // Dashboard
     const val DASHBOARD_ITEM_ORDER = "dashboard_item_order"
     const val DASHBOARD_DISABLED_ITEMS = "dashboard_disabled_items"
 
@@ -60,7 +60,10 @@ object SettingsKey {
     const val TAILSCALE_SSH_DARK_CONFIG = "tailscale_ssh_dark_config"
     const val TAILSCALE_SSH_FONT_FOLLOW_THEME = "tailscale_ssh_font_follow_theme"
 
-    // cache
+    // Routing / DNS
+    const val ROUTING_CONFIG = "routing_config"
+
+    // Cache
     const val STARTED_BY_USER = "started_by_user"
     const val CACHED_UPDATE_INFO = "cached_update_info"
     const val CACHED_APK_PATH = "cached_apk_path"

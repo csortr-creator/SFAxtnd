@@ -6,10 +6,17 @@ on:
       - dev
       - master
       - main
+    tags:
+      - 'v*'
     paths-ignore:
       - '**.md'
 
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish GitHub Release with APKs'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -265,18 +272,29 @@ jobs:
 
           test "$APK_COUNT" -gt 0
 
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SFAxtnd-${{ env.APP_VERSION }}
+          path: dist/*.apk
+          if-no-files-found: error
+
       - name: Publish Release
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.publish_release == true) ||
+          startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ env.APP_VERSION }}"
-          name: "SFAxtnd v${{ env.APP_VERSION }}"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', env.APP_VERSION) }}
+          name: SFAxtnd ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', env.APP_VERSION) }}
           body: |
-            ### SFAxtnd v${{ env.APP_VERSION }}
+            ### SFAxtnd ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', env.APP_VERSION) }}
 
             - Commit: `${{ github.sha }}`
             - Build number: `${{ github.run_number }}`
             - Sing-box libbox compiled automatically
             - Android APK built automatically
           files: dist/*.apk
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

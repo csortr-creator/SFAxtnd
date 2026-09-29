@@ -1,4 +1,4 @@
-package io.nekohasekai.sfa.compose.screens.settings
+package io.nekohasekai.sfa.compose.screen.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize

@@ -12,7 +12,7 @@
 - Режимы маршрутизации NORMAL / Whitelist Bypass (`SubscriptionRouting`)
 - Экран **Настройки → Роутинг**: DNS, источники Geo, пользовательские правила (хранение в приложении)
 - Проверка обновлений с релизов этого репозитория
-- Сборка APK в GitHub Actions (libbox из sing-box **v1.14.2**)
+- Сборка APK в GitHub Actions (libbox из ветки sing-box **testing** (нужны API AutoRedirect, которых нет в stable 1.14.x))
 
 ## Установка
 
@@ -41,7 +41,7 @@ Workflow: `.github/workflows/build.yml`
   - push тега `v*`, или
   - `workflow_dispatch` с `publish_release = true`
 
-Ядро: `git clone --branch v1.14.2` → `go run ./cmd/internal/build_libbox -target android` → `app/libs/libbox.aar`.
+Ядро: `git clone --branch testing` → `go run ./cmd/internal/build_libbox -target android` → `app/libs/libbox.aar`.
 
 ## Роутинг (UI)
 

@@ -1,18 +1,45 @@
 package io.nekohasekai.sfa.compose.screen.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -20,6 +47,14 @@ import androidx.navigation.NavController
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
+import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.models.DnsConfig
+import io.nekohasekai.sfa.models.DnsServer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,17 +76,388 @@ fun RoutingSettingsScreen(
     }
 
     val scaffoldPadding = LocalScaffoldPadding.current
+    val scope = rememberCoroutineScope()
+
+    var strategy by remember { mutableStateOf(DnsConfig.Strategy.AUTO) }
+    var cacheEnabled by remember { mutableStateOf(true) }
+    var independentCache by remember { mutableStateOf(false) }
+    var reverseMapping by remember { mutableStateOf(false) }
+    var finalServer by remember { mutableStateOf("") }
+    var servers by remember { mutableStateOf<List<DnsServer>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+
+    var strategyMenuOpen by remember { mutableStateOf(false) }
+    var showAddServer by remember { mutableStateOf(false) }
+    var editIndex by remember { mutableStateOf<Int?>(null) }
+    var draftTag by remember { mutableStateOf("") }
+    var draftAddress by remember { mutableStateOf("") }
+    var draftDetour by remember { mutableStateOf("") }
+
+    fun persist(
+        nextStrategy: DnsConfig.Strategy = strategy,
+        nextCache: Boolean = cacheEnabled,
+        nextIndependent: Boolean = independentCache,
+        nextReverse: Boolean = reverseMapping,
+        nextFinal: String = finalServer,
+        nextServers: List<DnsServer> = servers,
+    ) {
+        strategy = nextStrategy
+        cacheEnabled = nextCache
+        independentCache = nextIndependent
+        reverseMapping = nextReverse
+        finalServer = nextFinal
+        servers = nextServers
+        scope.launch(Dispatchers.IO) {
+            Settings.routingConfigJson = encodeRoutingConfig(
+                nextStrategy,
+                nextCache,
+                nextIndependent,
+                nextReverse,
+                nextFinal,
+                nextServers,
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val raw = withContext(Dispatchers.IO) { Settings.routingConfigJson }
+        val parsed = decodeRoutingConfig(raw)
+        strategy = parsed.strategy
+        cacheEnabled = parsed.cacheEnabled
+        independentCache = parsed.independentCache
+        reverseMapping = parsed.reverseMapping
+        finalServer = parsed.finalServer
+        servers = parsed.servers
+        loaded = true
+    }
+
+    if (!loaded) {
+        return
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .verticalScroll(rememberScrollState())
             .padding(
                 top = scaffoldPadding.calculateTopPadding() + 8.dp,
                 bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
             ),
     ) {
-        // Пустой экран.
-        // DNS, GeoSite/GeoIP и routing rules будут добавляться постепенно.
+        Text(
+            text = "DNS",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {
+            Column {
+                ListItem(
+                    headlineContent = { Text("Стратегия") },
+                    supportingContent = {
+                        Text(
+                            strategyLabel(strategy),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.clickable { strategyMenuOpen = true },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+                DropdownMenu(
+                    expanded = strategyMenuOpen,
+                    onDismissRequest = { strategyMenuOpen = false },
+                ) {
+                    DnsConfig.Strategy.entries.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(strategyLabel(item)) },
+                            onClick = {
+                                strategyMenuOpen = false
+                                persist(nextStrategy = item)
+                            },
+                        )
+                    }
+                }
+
+                ListItem(
+                    headlineContent = { Text("Кэш DNS") },
+                    trailingContent = {
+                        Switch(
+                            checked = cacheEnabled,
+                            onCheckedChange = { persist(nextCache = it) },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+
+                ListItem(
+                    headlineContent = { Text("Независимый кэш") },
+                    trailingContent = {
+                        Switch(
+                            checked = independentCache,
+                            onCheckedChange = { persist(nextIndependent = it) },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+
+                ListItem(
+                    headlineContent = { Text("Reverse mapping") },
+                    trailingContent = {
+                        Switch(
+                            checked = reverseMapping,
+                            onCheckedChange = { persist(nextReverse = it) },
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+
+                OutlinedTextField(
+                    value = finalServer,
+                    onValueChange = { persist(nextFinal = it) },
+                    label = { Text("Final server tag") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "DNS-серверы",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            IconButton(
+                onClick = {
+                    editIndex = null
+                    draftTag = ""
+                    draftAddress = ""
+                    draftDetour = ""
+                    showAddServer = true
+                },
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Добавить")
+            }
+        }
+
+        if (servers.isEmpty()) {
+            Text(
+                text = "Список пуст. Серверы не подставляются в конфиг автоматически.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        } else {
+            servers.forEachIndexed { index, server ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clickable {
+                            editIndex = index
+                            draftTag = server.tag
+                            draftAddress = server.address
+                            draftDetour = server.detour.orEmpty()
+                            showAddServer = true
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                ) {
+                    ListItem(
+                        headlineContent = { Text(server.tag.ifBlank { "—" }) },
+                        supportingContent = {
+                            Column {
+                                Text(server.address, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (!server.detour.isNullOrBlank()) {
+                                    Text(
+                                        "detour: ${server.detour}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        trailingContent = {
+                            IconButton(
+                                onClick = {
+                                    val next = servers.toMutableList().also { it.removeAt(index) }
+                                    persist(nextServers = next)
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Удалить",
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
+
+    if (showAddServer) {
+        AlertDialog(
+            onDismissRequest = { showAddServer = false },
+            title = {
+                Text(if (editIndex == null) "Добавить DNS-сервер" else "Изменить DNS-сервер")
+            },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = draftTag,
+                        onValueChange = { draftTag = it },
+                        label = { Text("Tag") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = draftAddress,
+                        onValueChange = { draftAddress = it },
+                        label = { Text("Address") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = draftDetour,
+                        onValueChange = { draftDetour = it },
+                        label = { Text("Detour (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (draftTag.isBlank() || draftAddress.isBlank()) return@TextButton
+                        val server = DnsServer(
+                            tag = draftTag.trim(),
+                            address = draftAddress.trim(),
+                            detour = draftDetour.trim().ifBlank { null },
+                        )
+                        val next = servers.toMutableList()
+                        val index = editIndex
+                        if (index == null) {
+                            next.add(server)
+                        } else if (index in next.indices) {
+                            next[index] = server
+                        }
+                        persist(nextServers = next)
+                        showAddServer = false
+                    },
+                ) {
+                    Text("Сохранить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddServer = false }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
+}
+
+private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
+    DnsConfig.Strategy.AUTO -> "Auto"
+    DnsConfig.Strategy.PREFER_IPV4 -> "Prefer IPv4"
+    DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
+    DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
+    DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
+}
+
+private data class RoutingConfigState(
+    val strategy: DnsConfig.Strategy = DnsConfig.Strategy.AUTO,
+    val cacheEnabled: Boolean = true,
+    val independentCache: Boolean = false,
+    val reverseMapping: Boolean = false,
+    val finalServer: String = "",
+    val servers: List<DnsServer> = emptyList(),
+)
+
+private fun decodeRoutingConfig(raw: String): RoutingConfigState {
+    if (raw.isBlank()) return RoutingConfigState()
+    return try {
+        val root = JSONObject(raw)
+        val dns = root.optJSONObject("dns") ?: return RoutingConfigState()
+        val strategy = try {
+            DnsConfig.Strategy.valueOf(dns.optString("strategy", DnsConfig.Strategy.AUTO.name))
+        } catch (_: Exception) {
+            DnsConfig.Strategy.AUTO
+        }
+        val serversJson = dns.optJSONArray("servers") ?: JSONArray()
+        val servers = buildList {
+            for (i in 0 until serversJson.length()) {
+                val obj = serversJson.optJSONObject(i) ?: continue
+                val tag = obj.optString("tag")
+                val address = obj.optString("address")
+                if (tag.isBlank() || address.isBlank()) continue
+                val detour = obj.optString("detour").ifBlank { null }
+                add(DnsServer(tag = tag, address = address, detour = detour))
+            }
+        }
+        RoutingConfigState(
+            strategy = strategy,
+            cacheEnabled = dns.optBoolean("cacheEnabled", true),
+            independentCache = dns.optBoolean("independentCache", false),
+            reverseMapping = dns.optBoolean("reverseMapping", false),
+            finalServer = dns.optString("finalServer", ""),
+            servers = servers,
+        )
+    } catch (_: Exception) {
+        RoutingConfigState()
+    }
+}
+
+private fun encodeRoutingConfig(
+    strategy: DnsConfig.Strategy,
+    cacheEnabled: Boolean,
+    independentCache: Boolean,
+    reverseMapping: Boolean,
+    finalServer: String,
+    servers: List<DnsServer>,
+): String {
+    val dns = JSONObject()
+        .put("strategy", strategy.name)
+        .put("cacheEnabled", cacheEnabled)
+        .put("independentCache", independentCache)
+        .put("reverseMapping", reverseMapping)
+        .put("finalServer", finalServer)
+    val serversJson = JSONArray()
+    servers.forEach { server ->
+        val obj = JSONObject()
+            .put("tag", server.tag)
+            .put("address", server.address)
+        if (!server.detour.isNullOrBlank()) {
+            obj.put("detour", server.detour)
+        }
+        serversJson.put(obj)
+    }
+    dns.put("servers", serversJson)
+    return JSONObject().put("dns", dns).toString()
 }

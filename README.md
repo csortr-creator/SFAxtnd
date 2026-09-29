@@ -63,3 +63,7 @@ app/src/github/java/.../vendor/GitHubUpdateChecker.kt
 
 Форк SFA (Nekohasekai / SagerNet), **GNU GPL v3.0**.  
 Название **SFAxtnd** — отдельный продукт, не официальный sing-box / SFA.
+
+## Примечание
+
+Модуль Xposed / hide-VPN hooks удалён для уменьшения размера APK.

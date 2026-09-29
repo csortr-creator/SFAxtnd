@@ -22,9 +22,6 @@ import io.nekohasekai.sfa.compose.screen.tools.TaildropFiles
 import io.nekohasekai.sfa.constant.Bugs
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
-import io.nekohasekai.sfa.utils.HookModuleUpdateNotifier
-import io.nekohasekai.sfa.utils.HookStatusClient
-import io.nekohasekai.sfa.utils.PrivilegeSettingsClient
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -49,9 +46,6 @@ class Application : Application() {
         }.onFailure {
             Log.d("Application", "set locale: ${it.message}")
         }
-        HookStatusClient.register(this)
-        PrivilegeSettingsClient.register(this)
-
         val baseDir = filesDir
         baseDir.mkdirs()
         val workingDir = getExternalFilesDir(null)
@@ -68,7 +62,6 @@ class Application : Application() {
         GlobalScope.launch(Dispatchers.IO) {
             initialize(baseDir, workingDir, tempDir)
             UpdateProfileWork.reconfigureUpdater()
-            HookModuleUpdateNotifier.sync(this@Application)
             TaildropFiles.cleanCache()
         }
 

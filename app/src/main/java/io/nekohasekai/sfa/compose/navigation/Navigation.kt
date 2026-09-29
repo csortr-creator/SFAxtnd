@@ -20,7 +20,6 @@ import io.nekohasekai.sfa.compose.screen.dashboard.DashboardScreen
 import io.nekohasekai.sfa.compose.screen.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.compose.screen.dashboard.GroupsCard
 import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsViewModel
-import io.nekohasekai.sfa.compose.screen.log.HookLogScreen
 import io.nekohasekai.sfa.compose.screen.log.LogScreen
 import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
@@ -317,16 +316,6 @@ fun NavHost(
             popExitTransition = slideOutToRight,
         ) {
             TailscaleFontPickerScreen(navController = navController)
-        }
-
-        composable(
-            route = "settings/privilege/logs",
-            enterTransition = slideInFromRight,
-            exitTransition = slideOutToLeft,
-            popEnterTransition = slideInFromLeft,
-            popExitTransition = slideOutToRight,
-        ) {
-            HookLogScreen(onBack = { navController.navigateUp() })
         }
     }
 }

@@ -109,9 +109,7 @@ import io.nekohasekai.sfa.update.UpdateCheckException
 import io.nekohasekai.sfa.update.UpdateSource
 import io.nekohasekai.sfa.update.UpdateState
 import io.nekohasekai.sfa.update.UpdateTrack
-import io.nekohasekai.sfa.utils.HookStatusClient
 import io.nekohasekai.sfa.vendor.Vendor
-import io.nekohasekai.sfa.xposed.XposedActivation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -157,8 +155,7 @@ fun AppSettingsScreen(
 
     var silentInstallEnabled by remember { mutableStateOf(Settings.silentInstallEnabled) }
     var silentInstallMethod by remember { mutableStateOf(Settings.silentInstallMethod) }
-    val systemHookStatus by HookStatusClient.status.collectAsState()
-    val xposedActivated = systemHookStatus?.active == true || XposedActivation.isActivated(context)
+    val xposedActivated = false
     var isMethodAvailable by remember { mutableStateOf(true) }
     var autoUpdateEnabled by remember { mutableStateOf(Settings.autoUpdateEnabled) }
     var showInstallMethodMenu by remember { mutableStateOf(false) }
@@ -197,13 +194,11 @@ fun AppSettingsScreen(
     }
 
     LaunchedEffect(Unit) {
-        HookStatusClient.refresh()
         refreshCacheSize()
     }
 
     // Re-check states when returning from background (e.g., after granting permission)
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        HookStatusClient.refresh()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(
                 NotificationChannel(

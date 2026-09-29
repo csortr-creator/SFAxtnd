@@ -41,11 +41,6 @@ class RootServer : RootService() {
 
     private val bridgeSessions = mutableSetOf<BridgeSessionBinder>()
 
-    private var destroyed = false
-
-    // libsu exits the process right after onDestroy, so a session whose Start
-    // is still running when the client dies must be registered before onDestroy
-    // sweeps the set.
     private val binder = object : IRootService.Stub() {
         override fun destroy() {
             stopSelf()
@@ -217,6 +212,16 @@ class RootServer : RootService() {
         override fun startAutoRedirect(options: ByteArray?, handler: IAutoRedirectHandler?): IAutoRedirectSession {
             throw IllegalStateException("auto-redirect is not available with sing-box stable core")
         }
+
+        override fun lookupSFTPServer(): String {
+            val termuxPrefix = File(UserResolver.TERMUX_PREFIX)
+            for (name in arrayOf("libexec/sftp-server", "lib/openssh/sftp-server")) {
+                val candidate = File(termuxPrefix, name)
+                if (candidate.canExecute()) return candidate.absolutePath
+            }
+            throw IOException("sftp-server not found, install openssh in Termux")
+        }
+    }
 
     private fun buildTermuxEnvironment(
         sshEnv: Array<out String>?,
@@ -425,7 +430,6 @@ class RootServer : RootService() {
                 session.close()
             } catch (_: Exception) {
             }
-        }
         }
         stopTetheringMonitor()
         neighborSubscription?.close()

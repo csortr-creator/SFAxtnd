@@ -27,6 +27,7 @@ import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
 import io.nekohasekai.sfa.compose.screen.settings.AppSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.CoreSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.FDroidMirrorScreen
+import io.nekohasekai.sfa.compose.screen.settings.RoutingSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.ServiceSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.SettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleFontPickerScreen
@@ -262,6 +263,16 @@ fun NavHost(
             popExitTransition = slideOutToRight,
         ) {
             ServiceSettingsScreen(navController = navController, serviceStatus = serviceStatus)
+        }
+
+        composable(
+            route = "settings/routing",
+            enterTransition = slideInFromRight,
+            exitTransition = slideOutToLeft,
+            popEnterTransition = slideInFromLeft,
+            popExitTransition = slideOutToRight,
+        ) {
+            RoutingSettingsScreen(navController = navController)
         }
 
         composable(

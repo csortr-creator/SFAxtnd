@@ -95,7 +95,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private fun startCommandServer() {
         Libbox.promoteOOMDraft()
-        Libbox.discardPowerReportDraft()
         val commandServer = CommandServer(this, platformInterface)
         commandServer.start()
         this.commandServer = commandServer
@@ -293,7 +292,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 close()
 //                Seq.destroyRef(refnum)
             }
-            Libbox.discardPowerReportDraft()
             PowerReportManager.refresh()
             Settings.startedByUser = false
             withContext(Dispatchers.Main) {

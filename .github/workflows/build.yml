@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 --branch testing https://github.com/SagerNet/sing-box.git sing-box-core
+          git clone --depth 1 --branch v1.14.2 https://github.com/SagerNet/sing-box.git sing-box-core
           cd sing-box-core
           echo "Sing-box tag/branch:"
           git describe --tags --always || true

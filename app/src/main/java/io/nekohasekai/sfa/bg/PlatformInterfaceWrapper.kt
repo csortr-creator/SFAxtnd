@@ -313,6 +313,27 @@ interface PlatformInterfaceWrapper : PlatformInterface {
         return RootBridgeSessionWrapper(session)
     }
 
+    override fun lookupUser(username: String?): io.nekohasekai.libbox.PlatformUser {
+        val resolved = UserResolver.resolve(Application.packageManager, username!!)
+        val platformUser = io.nekohasekai.libbox.PlatformUser()
+        platformUser.username = resolved.packageName
+        platformUser.uid = resolved.uid
+        platformUser.gid = resolved.gid
+        platformUser.homeDir = resolved.homeDir
+        return platformUser
+    }
+
+    override fun registerMyInterface(name: String?) {
+    }
+
+    override fun closeNeighborMonitor(listener: NeighborUpdateListener?) {
+        val callback = neighborCallback ?: return
+        neighborCallback = null
+        runBlocking(Dispatchers.IO) {
+            RootClient.unregisterNeighborTableCallback(callback)
+        }
+    }
+
     private class RootBridgeSessionWrapper(
         private val session: IBridgeSession,
     ) : BridgeSession {

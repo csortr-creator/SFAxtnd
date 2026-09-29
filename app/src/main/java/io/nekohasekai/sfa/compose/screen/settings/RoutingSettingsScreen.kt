@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -28,6 +29,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +52,7 @@ import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.models.DnsConfig
 import io.nekohasekai.sfa.models.DnsServer
+import io.nekohasekai.sfa.models.GeoFileSources
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,6 +87,7 @@ fun RoutingSettingsScreen(
     var reverseMapping by remember { mutableStateOf(false) }
     var finalServer by remember { mutableStateOf("") }
     var servers by remember { mutableStateOf<List<DnsServer>>(emptyList()) }
+    var geoSourceId by remember { mutableStateOf("") }
     var loaded by remember { mutableStateOf(false) }
 
     var strategyMenuOpen by remember { mutableStateOf(false) }
@@ -100,6 +104,7 @@ fun RoutingSettingsScreen(
         nextReverse: Boolean = reverseMapping,
         nextFinal: String = finalServer,
         nextServers: List<DnsServer> = servers,
+        nextGeoSourceId: String = geoSourceId,
     ) {
         strategy = nextStrategy
         cacheEnabled = nextCache
@@ -107,6 +112,7 @@ fun RoutingSettingsScreen(
         reverseMapping = nextReverse
         finalServer = nextFinal
         servers = nextServers
+        geoSourceId = nextGeoSourceId
         scope.launch(Dispatchers.IO) {
             Settings.routingConfigJson = encodeRoutingConfig(
                 nextStrategy,
@@ -115,6 +121,7 @@ fun RoutingSettingsScreen(
                 nextReverse,
                 nextFinal,
                 nextServers,
+                nextGeoSourceId,
             )
         }
     }
@@ -128,6 +135,7 @@ fun RoutingSettingsScreen(
         reverseMapping = parsed.reverseMapping
         finalServer = parsed.finalServer
         servers = parsed.servers
+        geoSourceId = parsed.geoSourceId
         loaded = true
     }
 
@@ -259,7 +267,7 @@ fun RoutingSettingsScreen(
 
         if (servers.isEmpty()) {
             Text(
-                text = "Список пуст. Серверы не подставляются в конфиг автоматически.",
+                text = "Список пуст",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -309,6 +317,91 @@ fun RoutingSettingsScreen(
                                 )
                             }
                         },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Geo",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        )
+
+        Text(
+            text = "Источник rule-set. В конфиг sing-box пока не подставляется.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {
+            Column {
+                ListItem(
+                    headlineContent = { Text("Не выбран") },
+                    supportingContent = {
+                        Text(
+                            "Без смены текущих rule-set в ядре",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    leadingContent = {
+                        RadioButton(
+                            selected = geoSourceId.isBlank(),
+                            onClick = { persist(nextGeoSourceId = "") },
+                        )
+                    },
+                    modifier = Modifier.clickable { persist(nextGeoSourceId = "") },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+
+                GeoFileSources.ALL.forEach { source ->
+                    val selected = geoSourceId == source.id
+                    val caps = buildList {
+                        if (!source.geosite_url.isNullOrBlank()) add("geosite")
+                        if (!source.geoip_url.isNullOrBlank()) add("geoip")
+                    }.joinToString(" · ").ifBlank { "нет URL" }
+
+                    ListItem(
+                        headlineContent = { Text(source.name) },
+                        supportingContent = {
+                            Column {
+                                Text(
+                                    source.description,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    caps,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        leadingContent = {
+                            RadioButton(
+                                selected = selected,
+                                onClick = { persist(nextGeoSourceId = source.id) },
+                            )
+                        },
+                        trailingContent = {
+                            if (selected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        },
+                        modifier = Modifier.clickable { persist(nextGeoSourceId = source.id) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     )
                 }
@@ -398,36 +491,56 @@ private data class RoutingConfigState(
     val reverseMapping: Boolean = false,
     val finalServer: String = "",
     val servers: List<DnsServer> = emptyList(),
+    val geoSourceId: String = "",
 )
 
 private fun decodeRoutingConfig(raw: String): RoutingConfigState {
     if (raw.isBlank()) return RoutingConfigState()
     return try {
         val root = JSONObject(raw)
-        val dns = root.optJSONObject("dns") ?: return RoutingConfigState()
-        val strategy = try {
-            DnsConfig.Strategy.valueOf(dns.optString("strategy", DnsConfig.Strategy.AUTO.name))
-        } catch (_: Exception) {
-            DnsConfig.Strategy.AUTO
-        }
-        val serversJson = dns.optJSONArray("servers") ?: JSONArray()
-        val servers = buildList {
-            for (i in 0 until serversJson.length()) {
-                val obj = serversJson.optJSONObject(i) ?: continue
-                val tag = obj.optString("tag")
-                val address = obj.optString("address")
-                if (tag.isBlank() || address.isBlank()) continue
-                val detour = obj.optString("detour").ifBlank { null }
-                add(DnsServer(tag = tag, address = address, detour = detour))
+        val dns = root.optJSONObject("dns")
+        val geo = root.optJSONObject("geo")
+
+        var strategy = DnsConfig.Strategy.AUTO
+        var cacheEnabled = true
+        var independentCache = false
+        var reverseMapping = false
+        var finalServer = ""
+        var servers: List<DnsServer> = emptyList()
+
+        if (dns != null) {
+            strategy = try {
+                DnsConfig.Strategy.valueOf(dns.optString("strategy", DnsConfig.Strategy.AUTO.name))
+            } catch (_: Exception) {
+                DnsConfig.Strategy.AUTO
+            }
+            cacheEnabled = dns.optBoolean("cacheEnabled", true)
+            independentCache = dns.optBoolean("independentCache", false)
+            reverseMapping = dns.optBoolean("reverseMapping", false)
+            finalServer = dns.optString("finalServer", "")
+            val serversJson = dns.optJSONArray("servers") ?: JSONArray()
+            servers = buildList {
+                for (i in 0 until serversJson.length()) {
+                    val obj = serversJson.optJSONObject(i) ?: continue
+                    val tag = obj.optString("tag")
+                    val address = obj.optString("address")
+                    if (tag.isBlank() || address.isBlank()) continue
+                    val detour = obj.optString("detour").ifBlank { null }
+                    add(DnsServer(tag = tag, address = address, detour = detour))
+                }
             }
         }
+
+        val geoSourceId = geo?.optString("sourceId").orEmpty()
+
         RoutingConfigState(
             strategy = strategy,
-            cacheEnabled = dns.optBoolean("cacheEnabled", true),
-            independentCache = dns.optBoolean("independentCache", false),
-            reverseMapping = dns.optBoolean("reverseMapping", false),
-            finalServer = dns.optString("finalServer", ""),
+            cacheEnabled = cacheEnabled,
+            independentCache = independentCache,
+            reverseMapping = reverseMapping,
+            finalServer = finalServer,
             servers = servers,
+            geoSourceId = geoSourceId,
         )
     } catch (_: Exception) {
         RoutingConfigState()
@@ -441,6 +554,7 @@ private fun encodeRoutingConfig(
     reverseMapping: Boolean,
     finalServer: String,
     servers: List<DnsServer>,
+    geoSourceId: String,
 ): String {
     val dns = JSONObject()
         .put("strategy", strategy.name)
@@ -459,5 +573,8 @@ private fun encodeRoutingConfig(
         serversJson.put(obj)
     }
     dns.put("servers", serversJson)
-    return JSONObject().put("dns", dns).toString()
+
+    val root = JSONObject().put("dns", dns)
+    root.put("geo", JSONObject().put("sourceId", geoSourceId))
+    return root.toString()
 }

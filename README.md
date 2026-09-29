@@ -1,28 +1,65 @@
 # SFAxtnd
 
-Модифицированный клиент **sing-box для Android (SFA)** с расширенной поддержкой панелей подписок и гибкой обработкой узлов.
+Клиент [sing-box](https://github.com/SagerNet/sing-box) для Android на базе [SFA](https://github.com/SagerNet/sing-box-for-android).
 
----
+Репозиторий: https://github.com/csortr-creator/SFAxtnd  
+Ветка разработки: `dev`
 
-### Основные отличия и доработки
+## Возможности
 
-* **Умный HWID подписок:** Генерация уникального 16-значного идентификатора устройства (`HWID`) индивидуально для каждой ссылки с сохранением в постоянное хранилище. При повторном обновлении профиля передается тот же ключ.
-* **Поддержка форматов Happ и Sing-box:** Встроенный парсер на лету принимает и преобразует как сырые JSON-массивы нод, так и стандартные ссылки (`vless://`, `vmess://`, `trojan://`, `ss://`).
-* **Автоматические релизы:** CI/CD пайплайн в GitHub Actions компилирует раздельные `.apk` под каждую архитектуру (`arm64-v8a`, `armeabi-v7a`, `universal`) без необходимости распаковывать zip-архивы.
+- Подписки: URI (`vless`, `vmess`, `trojan`, `ss`), base64, JSON sing-box
+- Стабильный HWID на каждую ссылку подписки
+- Режимы маршрутизации NORMAL / Whitelist Bypass (`SubscriptionRouting`)
+- Экран **Настройки → Роутинг**: DNS, источники Geo, пользовательские правила (хранение в приложении)
+- Проверка обновлений с релизов этого репозитория
+- Сборка APK в GitHub Actions (libbox из sing-box **v1.14.2**)
 
----
+## Установка
 
-### Установка
+1. Открой [Releases](https://github.com/csortr-creator/SFAxtnd/releases)
+2. Скачай APK под свою архитектуру:
 
-Перейдите во вкладку [Releases](../../releases) репозитория и скачайте нужный файл:
-* **`SFAxtnd-...-arm64-v8a.apk`** — для подавляющего большинства современных смартфонов.
-* **`SFAxtnd-...-armeabi-v7a.apk`** — для старых 32-битных устройств.
-* **`SFAxtnd-...-universal.apk`** — универсальный пакет со всеми библиотеками.
+| Файл | Назначение |
+|------|------------|
+| `SFAxtnd-*-arm64-v8a.apk` | Современные телефоны (рекомендуется) |
+| `SFAxtnd-*-armeabi-v7a.apk` | Старые 32-bit устройства |
+| `SFAxtnd-*-universal.apk` | Все ABI в одном пакете |
 
----
+Установка из неизвестных источников должна быть разрешена в системе.
 
-### Лицензия и авторские права
+## Обновления в приложении
 
-Данный проект является форком [SFA (sing-box-for-android)](https://github.com/SagerNet/sing-box-for-android) от Nekohasekai.
+Источник: GitHub Releases `csortr-creator/SFAxtnd`.  
+Версия берётся из тега (`v1.0.xxx`) и APK в assets.
 
-Распространяется на условиях лицензии **GNU General Public License v3.0**. В соответствии с требованиями лицензии, форк переименован в **SFAxtnd** и не позиционируется как официальный клиент проекта sing-box.
+## Сборка (CI)
+
+Workflow: `.github/workflows/build.yml`
+
+- Push в `dev` / `main` / `master` → сборка APK, артефакты Actions
+- **GitHub Release** только при:
+  - push тега `v*`, или
+  - `workflow_dispatch` с `publish_release = true`
+
+Ядро: `git clone --branch v1.14.2` → `go run ./cmd/internal/build_libbox -target android` → `app/libs/libbox.aar`.
+
+## Роутинг (UI)
+
+Пока настройки DNS / Geo / rules сохраняются в `Settings.routingConfigJson` и **не подставляются автоматически** в рабочий конфиг sing-box. Интеграция с генерацией конфига — следующий этап.
+
+## Структура (важное)
+
+```
+app/src/main/java/io/nekohasekai/sfa/
+  utils/HTTPClient.kt
+  utils/SubscriptionRouting.kt
+  compose/screen/settings/RoutingSettingsScreen.kt
+  models/DnsConfig.kt, RoutingRule.kt, GeoFileSource.kt
+app/src/github/java/.../vendor/GitHubUpdateChecker.kt
+.github/workflows/build.yml
+```
+
+## Лицензия
+
+Форк SFA (Nekohasekai / SagerNet), **GNU GPL v3.0**.  
+Название **SFAxtnd** — отдельный продукт, не официальный sing-box / SFA.

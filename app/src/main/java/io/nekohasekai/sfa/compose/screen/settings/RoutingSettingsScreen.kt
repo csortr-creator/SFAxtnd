@@ -53,6 +53,7 @@ import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.models.DnsConfig
 import io.nekohasekai.sfa.models.DnsServer
 import io.nekohasekai.sfa.models.GeoFileSources
+import io.nekohasekai.sfa.models.RoutingRule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,14 +89,23 @@ fun RoutingSettingsScreen(
     var finalServer by remember { mutableStateOf("") }
     var servers by remember { mutableStateOf<List<DnsServer>>(emptyList()) }
     var geoSourceId by remember { mutableStateOf("") }
+    var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
 
     var strategyMenuOpen by remember { mutableStateOf(false) }
     var showAddServer by remember { mutableStateOf(false) }
-    var editIndex by remember { mutableStateOf<Int?>(null) }
+    var editServerIndex by remember { mutableStateOf<Int?>(null) }
     var draftTag by remember { mutableStateOf("") }
     var draftAddress by remember { mutableStateOf("") }
     var draftDetour by remember { mutableStateOf("") }
+
+    var showRuleDialog by remember { mutableStateOf(false) }
+    var editRuleIndex by remember { mutableStateOf<Int?>(null) }
+    var draftRuleType by remember { mutableStateOf(RoutingRule.Type.DOMAIN) }
+    var draftRuleValue by remember { mutableStateOf("") }
+    var draftRuleOutbound by remember { mutableStateOf(RoutingRule.OUTBOUND_DIRECT) }
+    var ruleTypeMenuOpen by remember { mutableStateOf(false) }
+    var ruleOutboundMenuOpen by remember { mutableStateOf(false) }
 
     fun persist(
         nextStrategy: DnsConfig.Strategy = strategy,
@@ -105,6 +115,7 @@ fun RoutingSettingsScreen(
         nextFinal: String = finalServer,
         nextServers: List<DnsServer> = servers,
         nextGeoSourceId: String = geoSourceId,
+        nextRules: List<RoutingRule> = rules,
     ) {
         strategy = nextStrategy
         cacheEnabled = nextCache
@@ -113,6 +124,7 @@ fun RoutingSettingsScreen(
         finalServer = nextFinal
         servers = nextServers
         geoSourceId = nextGeoSourceId
+        rules = nextRules
         scope.launch(Dispatchers.IO) {
             Settings.routingConfigJson = encodeRoutingConfig(
                 nextStrategy,
@@ -122,6 +134,7 @@ fun RoutingSettingsScreen(
                 nextFinal,
                 nextServers,
                 nextGeoSourceId,
+                nextRules,
             )
         }
     }
@@ -136,6 +149,7 @@ fun RoutingSettingsScreen(
         finalServer = parsed.finalServer
         servers = parsed.servers
         geoSourceId = parsed.geoSourceId
+        rules = parsed.rules
         loaded = true
     }
 
@@ -254,7 +268,7 @@ fun RoutingSettingsScreen(
             )
             IconButton(
                 onClick = {
-                    editIndex = null
+                    editServerIndex = null
                     draftTag = ""
                     draftAddress = ""
                     draftDetour = ""
@@ -279,7 +293,7 @@ fun RoutingSettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clickable {
-                            editIndex = index
+                            editServerIndex = index
                             draftTag = server.tag
                             draftAddress = server.address
                             draftDetour = server.detour.orEmpty()
@@ -330,13 +344,6 @@ fun RoutingSettingsScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
 
-        Text(
-            text = "Источник rule-set. В конфиг sing-box пока не подставляется.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-        )
-
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -350,7 +357,7 @@ fun RoutingSettingsScreen(
                     headlineContent = { Text("Не выбран") },
                     supportingContent = {
                         Text(
-                            "Без смены текущих rule-set в ядре",
+                            "Без смены rule-set в ядре",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
@@ -375,10 +382,7 @@ fun RoutingSettingsScreen(
                         headlineContent = { Text(source.name) },
                         supportingContent = {
                             Column {
-                                Text(
-                                    source.description,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                Text(source.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     caps,
                                     style = MaterialTheme.typography.bodySmall,
@@ -408,6 +412,83 @@ fun RoutingSettingsScreen(
             }
         }
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Правила",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            IconButton(
+                onClick = {
+                    editRuleIndex = null
+                    draftRuleType = RoutingRule.Type.DOMAIN
+                    draftRuleValue = ""
+                    draftRuleOutbound = RoutingRule.OUTBOUND_DIRECT
+                    showRuleDialog = true
+                },
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Добавить")
+            }
+        }
+
+        if (rules.isEmpty()) {
+            Text(
+                text = "Список пуст",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        } else {
+            rules.forEachIndexed { index, rule ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clickable {
+                            editRuleIndex = index
+                            draftRuleType = rule.type
+                            draftRuleValue = rule.value
+                            draftRuleOutbound = rule.outbound
+                            showRuleDialog = true
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                ) {
+                    ListItem(
+                        headlineContent = { Text(rule.value.ifBlank { "—" }) },
+                        supportingContent = {
+                            Text(
+                                "${ruleTypeLabel(rule.type)} → ${rule.outbound}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        trailingContent = {
+                            IconButton(
+                                onClick = {
+                                    val next = rules.toMutableList().also { it.removeAt(index) }
+                                    persist(nextRules = next)
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Удалить",
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
     }
 
@@ -415,7 +496,7 @@ fun RoutingSettingsScreen(
         AlertDialog(
             onDismissRequest = { showAddServer = false },
             title = {
-                Text(if (editIndex == null) "Добавить DNS-сервер" else "Изменить DNS-сервер")
+                Text(if (editServerIndex == null) "Добавить DNS-сервер" else "Изменить DNS-сервер")
             },
             text = {
                 Column {
@@ -454,7 +535,7 @@ fun RoutingSettingsScreen(
                             detour = draftDetour.trim().ifBlank { null },
                         )
                         val next = servers.toMutableList()
-                        val index = editIndex
+                        val index = editServerIndex
                         if (index == null) {
                             next.add(server)
                         } else if (index in next.indices) {
@@ -474,6 +555,103 @@ fun RoutingSettingsScreen(
             },
         )
     }
+
+    if (showRuleDialog) {
+        AlertDialog(
+            onDismissRequest = { showRuleDialog = false },
+            title = {
+                Text(if (editRuleIndex == null) "Добавить правило" else "Изменить правило")
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Тип: ${ruleTypeLabel(draftRuleType)}",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { ruleTypeMenuOpen = true }
+                            .padding(vertical = 8.dp),
+                    )
+                    DropdownMenu(
+                        expanded = ruleTypeMenuOpen,
+                        onDismissRequest = { ruleTypeMenuOpen = false },
+                    ) {
+                        RoutingRule.Type.entries.forEach { type ->
+                            DropdownMenuItem(
+                                text = { Text(ruleTypeLabel(type)) },
+                                onClick = {
+                                    draftRuleType = type
+                                    ruleTypeMenuOpen = false
+                                },
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = draftRuleValue,
+                        onValueChange = { draftRuleValue = it },
+                        label = { Text("Значение") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Outbound: $draftRuleOutbound",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { ruleOutboundMenuOpen = true }
+                            .padding(vertical = 8.dp),
+                    )
+                    DropdownMenu(
+                        expanded = ruleOutboundMenuOpen,
+                        onDismissRequest = { ruleOutboundMenuOpen = false },
+                    ) {
+                        listOf(
+                            RoutingRule.OUTBOUND_DIRECT,
+                            RoutingRule.OUTBOUND_PROXY,
+                            RoutingRule.OUTBOUND_BLOCK,
+                        ).forEach { outbound ->
+                            DropdownMenuItem(
+                                text = { Text(outbound) },
+                                onClick = {
+                                    draftRuleOutbound = outbound
+                                    ruleOutboundMenuOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (draftRuleValue.isBlank()) return@TextButton
+                        val rule = RoutingRule(
+                            type = draftRuleType,
+                            value = draftRuleValue.trim(),
+                            outbound = draftRuleOutbound,
+                        )
+                        val next = rules.toMutableList()
+                        val index = editRuleIndex
+                        if (index == null) {
+                            next.add(rule)
+                        } else if (index in next.indices) {
+                            next[index] = rule
+                        }
+                        persist(nextRules = next)
+                        showRuleDialog = false
+                    },
+                ) {
+                    Text("Сохранить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRuleDialog = false }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
 }
 
 private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
@@ -484,6 +662,17 @@ private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy
     DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
 }
 
+private fun ruleTypeLabel(type: RoutingRule.Type): String = when (type) {
+    RoutingRule.Type.DOMAIN -> "Domain"
+    RoutingRule.Type.DOMAIN_SUFFIX -> "Domain suffix"
+    RoutingRule.Type.DOMAIN_KEYWORD -> "Domain keyword"
+    RoutingRule.Type.GEOSITE -> "GeoSite"
+    RoutingRule.Type.IP_CIDR -> "IP CIDR"
+    RoutingRule.Type.GEOIP -> "GeoIP"
+    RoutingRule.Type.PACKAGE_NAME -> "Package"
+    RoutingRule.Type.PROTOCOL -> "Protocol"
+}
+
 private data class RoutingConfigState(
     val strategy: DnsConfig.Strategy = DnsConfig.Strategy.AUTO,
     val cacheEnabled: Boolean = true,
@@ -492,6 +681,7 @@ private data class RoutingConfigState(
     val finalServer: String = "",
     val servers: List<DnsServer> = emptyList(),
     val geoSourceId: String = "",
+    val rules: List<RoutingRule> = emptyList(),
 )
 
 private fun decodeRoutingConfig(raw: String): RoutingConfigState {
@@ -500,6 +690,7 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
         val root = JSONObject(raw)
         val dns = root.optJSONObject("dns")
         val geo = root.optJSONObject("geo")
+        val rulesJson = root.optJSONArray("rules")
 
         var strategy = DnsConfig.Strategy.AUTO
         var cacheEnabled = true
@@ -531,7 +722,23 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
             }
         }
 
-        val geoSourceId = geo?.optString("sourceId").orEmpty()
+        val rules = buildList {
+            if (rulesJson != null) {
+                for (i in 0 until rulesJson.length()) {
+                    val obj = rulesJson.optJSONObject(i) ?: continue
+                    val type = try {
+                        RoutingRule.Type.valueOf(obj.optString("type", RoutingRule.Type.DOMAIN.name))
+                    } catch (_: Exception) {
+                        RoutingRule.Type.DOMAIN
+                    }
+                    val value = obj.optString("value")
+                    if (value.isBlank()) continue
+                    val outbound = obj.optString("outbound", RoutingRule.OUTBOUND_DIRECT)
+                        .ifBlank { RoutingRule.OUTBOUND_DIRECT }
+                    add(RoutingRule(type = type, value = value, outbound = outbound))
+                }
+            }
+        }
 
         RoutingConfigState(
             strategy = strategy,
@@ -540,7 +747,8 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
             reverseMapping = reverseMapping,
             finalServer = finalServer,
             servers = servers,
-            geoSourceId = geoSourceId,
+            geoSourceId = geo?.optString("sourceId").orEmpty(),
+            rules = rules,
         )
     } catch (_: Exception) {
         RoutingConfigState()
@@ -555,6 +763,7 @@ private fun encodeRoutingConfig(
     finalServer: String,
     servers: List<DnsServer>,
     geoSourceId: String,
+    rules: List<RoutingRule>,
 ): String {
     val dns = JSONObject()
         .put("strategy", strategy.name)
@@ -574,7 +783,19 @@ private fun encodeRoutingConfig(
     }
     dns.put("servers", serversJson)
 
-    val root = JSONObject().put("dns", dns)
-    root.put("geo", JSONObject().put("sourceId", geoSourceId))
-    return root.toString()
+    val rulesJson = JSONArray()
+    rules.forEach { rule ->
+        rulesJson.put(
+            JSONObject()
+                .put("type", rule.type.name)
+                .put("value", rule.value)
+                .put("outbound", rule.outbound),
+        )
+    }
+
+    return JSONObject()
+        .put("dns", dns)
+        .put("geo", JSONObject().put("sourceId", geoSourceId))
+        .put("rules", rulesJson)
+        .toString()
 }

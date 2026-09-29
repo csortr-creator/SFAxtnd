@@ -14,7 +14,8 @@ import java.io.Closeable
 
 class GitHubUpdateChecker : Closeable {
     companion object {
-        private const val RELEASES_URL = "https://api.github.com/repos/SagerNet/sing-box/releases"
+        private const val RELEASES_URL =
+            "https://api.github.com/repos/csortr-creator/SFAxtnd/releases"
         private const val METADATA_FILENAME = "SFA-version-metadata.json"
     }
 
@@ -33,7 +34,7 @@ class GitHubUpdateChecker : Closeable {
             if (!isReleaseInTrack(release, track)) {
                 continue
             }
-            val metadata = runCatching { downloadMetadata(release) }.getOrNull() ?: continue
+            val metadata = resolveMetadata(release) ?: continue
             if (!isNewerThanCurrent(metadata.versionName)) {
                 continue
             }
@@ -45,13 +46,7 @@ class GitHubUpdateChecker : Closeable {
 
         val release = selected?.release ?: return null
         val metadata = selected.metadata
-
-        val isLegacy = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
-        val apkAsset = release.assets.find { asset ->
-            asset.name.endsWith(".apk") &&
-                !asset.name.contains("play") &&
-                asset.name.contains("legacy-android-5") == isLegacy
-        }
+        val apkAsset = pickApkAsset(release)
 
         return UpdateInfo(
             versionCode = metadata.versionCode,
@@ -67,7 +62,7 @@ class GitHubUpdateChecker : Closeable {
     private fun getReleases(githubToken: String): List<GitHubRelease> {
         val request = client.newRequest()
         request.setURL(RELEASES_URL)
-        request.setHeader("Accept", "application/vnd.github.v3+json")
+        request.setHeader("Accept", "application/vnd.github+json")
         val token = githubToken.trim()
         if (token.isNotEmpty()) {
             request.setHeader("Authorization", "Bearer $token")
@@ -90,7 +85,8 @@ class GitHubUpdateChecker : Closeable {
         }
     }
 
-    private fun isNewerThanCurrent(versionName: String): Boolean = Libbox.compareSemver(versionName, BuildConfig.VERSION_NAME)
+    private fun isNewerThanCurrent(versionName: String): Boolean =
+        Libbox.compareSemver(versionName, BuildConfig.VERSION_NAME)
 
     private fun isBetterVersion(version: VersionMetadata, other: VersionMetadata): Boolean {
         if (Libbox.compareSemver(version.versionName, other.versionName)) {
@@ -100,6 +96,14 @@ class GitHubUpdateChecker : Closeable {
             return false
         }
         return version.versionCode > other.versionCode
+    }
+
+    private fun resolveMetadata(release: GitHubRelease): VersionMetadata? {
+        val fromAsset = runCatching { downloadMetadata(release) }.getOrNull()
+        if (fromAsset != null) {
+            return fromAsset
+        }
+        return metadataFromTag(release.tagName)
     }
 
     private fun downloadMetadata(release: GitHubRelease): VersionMetadata? {
@@ -114,6 +118,42 @@ class GitHubUpdateChecker : Closeable {
         val content = response.content.unwrap
 
         return json.decodeFromString<VersionMetadata>(content)
+    }
+
+    private fun metadataFromTag(tagName: String): VersionMetadata? {
+        val versionName = tagName.trim().removePrefix("v").removePrefix("V")
+        if (versionName.isBlank()) {
+            return null
+        }
+        val patch = versionName.substringAfterLast('.', missingDelimiterValue = "")
+            .filter { it.isDigit() }
+            .toIntOrNull()
+            ?: 0
+        return VersionMetadata(
+            versionCode = patch,
+            versionName = versionName,
+        )
+    }
+
+    private fun pickApkAsset(release: GitHubRelease): GitHubAsset? {
+        val apks = release.assets.filter { asset ->
+            asset.name.endsWith(".apk", ignoreCase = true) &&
+                !asset.name.contains("play", ignoreCase = true)
+        }
+        if (apks.isEmpty()) {
+            return null
+        }
+
+        val preferredAbis = Build.SUPPORTED_ABIS.toList()
+        for (abi in preferredAbis) {
+            val match = apks.find { it.name.contains(abi, ignoreCase = true) }
+            if (match != null) {
+                return match
+            }
+        }
+
+        return apks.find { it.name.contains("universal", ignoreCase = true) }
+            ?: apks.firstOrNull()
     }
 
     override fun close() {

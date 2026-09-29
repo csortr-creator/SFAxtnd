@@ -217,6 +217,58 @@ class RootServer : RootService() {
         override fun startAutoRedirect(options: ByteArray?, handler: IAutoRedirectHandler?): IAutoRedirectSession {
             throw IllegalStateException("auto-redirect is not available with sing-box stable core")
         }
+
+    private fun buildTermuxEnvironment(
+        sshEnv: Array<out String>?,
+        shell: String,
+        home: String,
+        prefix: String,
+        term: String?,
+    ): Array<String> {
+        val env = parseEnvArray(sshEnv)
+        env["HOME"] = home
+        env["PREFIX"] = prefix
+        env["PATH"] = "$prefix/bin"
+        env["TMPDIR"] = "$prefix/tmp"
+        env["SHELL"] = shell
+        env["LANG"] = "en_US.UTF-8"
+        env["COLORTERM"] = "truecolor"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            env["LD_LIBRARY_PATH"] = "$prefix/lib"
+        } else {
+            env.remove("LD_LIBRARY_PATH")
+        }
+        val termuxExec = File("$prefix/lib/libtermux-exec.so")
+        if (termuxExec.exists()) {
+            env["LD_PRELOAD"] = termuxExec.absolutePath
+        }
+        if (!term.isNullOrEmpty()) {
+            env["TERM"] = term
+        }
+        addAndroidSystemEnvironment(env)
+        return env.map { (k, v) -> "$k=$v" }.toTypedArray()
+    }
+
+    private inner class BridgeSessionBinder(
+        private val session: BridgeSession,
+    ) : IBridgeSession.Stub() {
+
+        override fun getFileDescriptor(): ParcelFileDescriptor = ParcelFileDescriptor.fromFd(session.fileDescriptor())
+
+        override fun getName(): String = session.name()
+
+        override fun isInet6Active(): Boolean = session.inet6Active()
+
+        override fun setEgress(interfaceName: String?) {
+            session.setEgress(interfaceName ?: "")
+        }
+
+        override fun close() {
+            synchronized(bridgeSessions) {
+                bridgeSessions.remove(this)
+            }
+            session.close()
+        }
     }
 
     private class RootShellSession(
@@ -373,6 +425,7 @@ class RootServer : RootService() {
                 session.close()
             } catch (_: Exception) {
             }
+        }
         }
         stopTetheringMonitor()
         neighborSubscription?.close()

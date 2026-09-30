@@ -1,0 +1,295 @@
+name: Build SFAxtnd
+
+on:
+  push:
+    branches:
+      - dev
+      - master
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish GitHub Release with APKs'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Initialize submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git submodule update --init --recursive || true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Initialize submodules after Java
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git submodule update --init --recursive || true
+
+      - name: Clone sing-box
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --branch v1.14.2 https://github.com/SagerNet/sing-box.git sing-box-core
+          cd sing-box-core
+          echo "Sing-box tag/branch:"
+          git describe --tags --always || true
+          echo "Sing-box commit:"
+          git rev-parse HEAD
+          echo "Sing-box Go requirement:"
+          grep '^go ' go.mod
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sing-box-core/go.mod
+          cache: false
+
+      - name: Initialize submodules after Go
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config --global url."https://github.com/".insteadOf "git://github.com/"
+          git submodule update --init --recursive || true
+
+      - name: Verify Go version
+        shell: bash
+        run: |
+          set -euxo pipefail
+          go version
+          cd sing-box-core
+          echo "Required Go version:"
+          grep '^go ' go.mod
+
+      - name: Set up Android SDK and NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found"
+            find "$ANDROID_HOME" -maxdepth 5 -type f 2>/dev/null | head -n 100
+            exit 1
+          fi
+
+          echo "Found sdkmanager:"
+          echo "$SDKMANAGER"
+
+          SDKMANAGER_DIR="$(dirname "$SDKMANAGER")"
+          echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+          export PATH="$SDKMANAGER_DIR:$ANDROID_HOME/platform-tools:$PATH"
+
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-24" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;28.2.13676358"
+
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+          echo "Android SDK and NDK installed."
+
+      - name: Verify build environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          java --version
+          go version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          test -d "$ANDROID_HOME"
+          test -d "$ANDROID_NDK_HOME"
+          ls -lah "$ANDROID_NDK_HOME"
+
+      - name: Install SagerNet gomobile
+        shell: bash
+        run: |
+          set -euxo pipefail
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
+          go install -v github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+          gomobile version || true
+          gobind -version || true
+
+      - name: Build libbox
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+
+          cd sing-box-core
+
+          echo "Current commit:"
+          git rev-parse HEAD
+
+          echo "Building libbox using sing-box internal builder..."
+
+          go run ./cmd/internal/build_libbox -target android
+
+          echo "Build finished."
+
+          ls -lah
+
+          if [ ! -f "libbox.aar" ]; then
+            echo "ERROR: libbox.aar was not generated"
+            find . -maxdepth 3 -type f \( -name "*.aar" -o -name "*.so" \) -print
+            exit 1
+          fi
+
+          mkdir -p ../app/libs
+          cp libbox.aar ../app/libs/libbox.aar
+
+          cd ..
+
+          echo "Generated libraries:"
+          ls -lah app/libs/
+
+          test -f app/libs/libbox.aar
+
+      - name: Auto Bump Version
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          BASE_VERSION="1.0"
+          PATCH_VERSION="${{ github.run_number }}"
+          FULL_VERSION="${BASE_VERSION}.${PATCH_VERSION}"
+
+          echo "VERSION_CODE=$PATCH_VERSION" > version.properties
+          echo "VERSION_NAME=$FULL_VERSION" >> version.properties
+
+          echo "APP_VERSION=$FULL_VERSION" >> "$GITHUB_ENV"
+
+          echo "Building SFAxtnd version:"
+          echo "$FULL_VERSION"
+
+      - name: Setup Release Keystore
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "Decoding keystore from Base64 (3 parts)..."
+
+          echo -n "${{ secrets.KEYSTORE_BASE64_1 }}${{ secrets.KEYSTORE_BASE64_2 }}${{ secrets.KEYSTORE_BASE64_3 }}" \
+            | tr -d '\n\r ' \
+            | base64 --decode > app/release.keystore
+
+          echo "Verifying keystore file..."
+          ls -lah app/release.keystore
+          file app/release.keystore
+
+          echo "Checking keystore is valid..."
+
+          keytool -list \
+            -keystore app/release.keystore \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.KEY_ALIAS }}" || {
+              echo "ERROR: keystore is invalid or password is wrong"
+              exit 1
+            }
+
+          echo "Creating local.properties..."
+
+          cat > local.properties <<EOFPROP
+          KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}
+          ALIAS_NAME=${{ secrets.KEY_ALIAS }}
+          ALIAS_PASS=${{ secrets.KEY_PASSWORD }}
+          EOFPROP
+
+          echo "local.properties created (values masked):"
+          sed 's/=.*/=***/' local.properties
+
+      - name: Build with Gradle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew assembleOtherDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
+
+      - name: Prepare and Rename APKs
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          mkdir -p dist
+
+          find app/build/outputs/apk/ -type f -name "*.apk" | while read -r file; do
+            filename=$(basename "$file")
+
+            arch=$(echo "$filename" | grep -o -E '(arm64-v8a|armeabi-v7a|x86_64|x86|universal)' || true)
+
+            if [ -n "$arch" ]; then
+              cp "$file" "dist/SFAxtnd-${APP_VERSION}-${arch}.apk"
+            else
+              cp "$file" "dist/SFAxtnd-${APP_VERSION}-universal.apk"
+            fi
+          done
+
+          echo "Generated APKs:"
+          ls -lah dist/
+
+          APK_COUNT="$(find dist -name '*.apk' | wc -l)"
+
+          echo "APK count: $APK_COUNT"
+
+          test "$APK_COUNT" -gt 0
+
+      - name: Publish Release
+        if: >-
+          startsWith(github.ref, 'refs/tags/v') ||
+          (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ env.APP_VERSION }}"
+          name: "SFAxtnd v${{ env.APP_VERSION }}"
+          body: |
+            ### SFAxtnd v${{ env.APP_VERSION }}
+
+            - Commit: `${{ github.sha }}`
+            - Build number: `${{ github.run_number }}`
+            - Sing-box libbox compiled automatically
+            - Android APK built automatically
+          files: dist/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

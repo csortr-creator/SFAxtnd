@@ -251,7 +251,12 @@ fun EditRoutingRuleScreen(
         }
         ListItem(
             headlineContent = { Text("DNS-правило") },
-            supportingContent = { Text("Добавить такое же условие в DNS", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            supportingContent = {
+                Text(
+                    "Добавить такое же условие в DNS",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
             trailingContent = { Switch(checked = dnsRule, onCheckedChange = { dnsRule = it }) },
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         )
@@ -401,15 +406,21 @@ private fun Field(
     value: String,
     onChange: (String) -> Unit,
     label: String,
-    placeholder: String? = null,
+    placeholderText: String? = null,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
-        placeholder = placeholder?.let { { Text(it) } },
+        placeholder = if (placeholderText != null) {
+            { Text(placeholderText) }
+        } else {
+            null
+        },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
     )
 }
 

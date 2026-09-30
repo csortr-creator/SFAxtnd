@@ -185,6 +185,7 @@ object UserRoutingConfig {
 
         var needBlock = false
         val dnsRulesExtra = JSONArray()
+        val usedRuleSetTags = linkedSetOf<String>()
         for (i in 0 until rulesUser.length()) {
             val item = rulesUser.optJSONObject(i) ?: continue
             val rule = buildSingBoxRule(item) ?: continue
@@ -192,6 +193,13 @@ object UserRoutingConfig {
                 needBlock = true
             }
             merged.put(rule)
+            val rs = rule.optJSONArray("rule_set")
+            if (rs != null) {
+                for (j in 0 until rs.length()) {
+                    val tag = rs.optString(j)
+                    if (tag.isNotBlank()) usedRuleSetTags.add(tag)
+                }
+            }
             if (item.optBoolean("dnsRule", false)) {
                 buildDnsRuleFromRoute(item)?.let { dnsRulesExtra.put(it) }
             }
@@ -201,12 +209,40 @@ object UserRoutingConfig {
             merged.put(existing.get(i))
         }
         route.put("rules", merged)
+        ensureRuleSetEntries(route, usedRuleSetTags)
 
         if (needBlock) {
             ensureBlockOutbound(root)
         }
         if (dnsRulesExtra.length() > 0) {
             mergeDnsRules(root, dnsRulesExtra)
+        }
+    }
+
+    private fun ensureRuleSetEntries(route: JSONObject, tags: Set<String>) {
+        if (tags.isEmpty()) return
+        val ruleSet = route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
+        val existing = (0 until ruleSet.length()).mapNotNull {
+            ruleSet.optJSONObject(it)?.optString("tag")?.takeIf { tag -> tag.isNotBlank() }
+        }.toHashSet()
+        val geositeBase = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set"
+        val geoipBase = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set"
+        for (tag in tags) {
+            if (tag in existing) continue
+            val base = when {
+                tag.startsWith("geosite") -> geositeBase
+                tag.startsWith("geoip") -> geoipBase
+                else -> continue
+            }
+            ruleSet.put(
+                JSONObject()
+                    .put("type", "remote")
+                    .put("tag", tag)
+                    .put("format", "binary")
+                    .put("url", "$base/$tag.srs")
+                    .put("download_detour", "direct"),
+            )
+            existing.add(tag)
         }
     }
 
@@ -327,12 +363,38 @@ object UserRoutingConfig {
                 RoutingRule.Type.DOMAIN -> rule.put("domain", JSONArray().put(value))
                 RoutingRule.Type.DOMAIN_SUFFIX -> rule.put("domain_suffix", JSONArray().put(value))
                 RoutingRule.Type.DOMAIN_KEYWORD -> rule.put("domain_keyword", JSONArray().put(value))
-                RoutingRule.Type.GEOSITE -> rule.put("geosite", JSONArray().put(value))
-                RoutingRule.Type.IP_CIDR -> rule.put("ip_cidr", JSONArray().put(value))
-                RoutingRule.Type.GEOIP -> rule.put("geoip", JSONArray().put(value))
+                RoutingRule.Type.GEOSITE -> {
+                    val tag = geoToRuleSet(value) ?: ("geosite-" + value.removePrefix("geosite-"))
+                    addRuleSet(tag)
+                }
+                RoutingRule.Type.IP_CIDR -> {
+                    val asRuleSet = geoToRuleSet(value)
+                    if (asRuleSet != null) {
+                        addRuleSet(asRuleSet)
+                    } else if (value.contains('/')) {
+                        rule.put("ip_cidr", JSONArray().put(value))
+                    }
+                }
+                RoutingRule.Type.GEOIP -> {
+                    val tag = geoToRuleSet(value) ?: ("geoip-" + value.removePrefix("geoip-"))
+                    addRuleSet(tag)
+                }
                 RoutingRule.Type.PACKAGE_NAME -> rule.put("package_name", JSONArray().put(value))
                 RoutingRule.Type.PROTOCOL -> rule.put("protocol", JSONArray().put(value))
             }
+            hasMatch = true
+        }
+
+        if (ruleSetTags.isNotEmpty()) {
+            val arr = rule.optJSONArray("rule_set") ?: JSONArray()
+            val seen = (0 until arr.length()).map { arr.optString(it) }.toMutableSet()
+            ruleSetTags.forEach { tag ->
+                if (tag !in seen) {
+                    arr.put(tag)
+                    seen.add(tag)
+                }
+            }
+            rule.put("rule_set", arr)
             hasMatch = true
         }
 

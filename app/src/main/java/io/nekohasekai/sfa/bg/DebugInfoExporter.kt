@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.bg
 
 import android.content.Context
 import android.util.Log
-import io.nekohasekai.sfa.utils.HookErrorClient
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -123,14 +122,6 @@ object DebugInfoExporter {
         var count = 0
         if (streamCommandToZip(zip, "logs/logcat.txt", warnings, listOf("logcat", "-d", "-b", "all")) != null) count++
         if (streamCommandToZip(zip, "logs/dmesg.txt", warnings, listOf("dmesg")) != null) count++
-        val serviceLogsResult = HookErrorClient.query(context)
-        if (serviceLogsResult.logs.isNotEmpty()) {
-            val formatted = formatLogEntries(serviceLogsResult.logs)
-            addTextEntry(zip, "logs/service_logs.txt", formatted)
-            count++
-        } else if (serviceLogsResult.failure != null) {
-            warnings.add("service logs: ${serviceLogsResult.failure}${serviceLogsResult.detail?.let { " ($it)" } ?: ""}")
-        }
         val lspdDir = File("/data/adb/lspd/log")
         if (lspdDir.isDirectory) {
             val files = lspdDir.listFiles() ?: emptyArray()

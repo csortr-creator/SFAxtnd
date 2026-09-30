@@ -929,6 +929,7 @@ class MainActivity :
         val railScreens =
             buildList {
                 add(Screen.Dashboard)
+                add(Screen.Subscriptions)
                 if (showGroupsInNav) {
                     add(Screen.Groups)
                 }
@@ -943,6 +944,7 @@ class MainActivity :
         val allowedRoutes =
             buildSet {
                 add(Screen.Dashboard.route)
+                add(Screen.Subscriptions.route)
                 add(Screen.Log.route)
                 add(Screen.Tools.route)
                 add(Screen.Settings.route)

@@ -4,7 +4,6 @@ import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,13 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -90,6 +90,7 @@ fun EditRoutingRuleScreen(
 
     var outboundMenuOpen by remember { mutableStateOf(false) }
     var networkMenuOpen by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
     var showAppPicker by remember { mutableStateOf(false) }
     var appQuery by remember { mutableStateOf("") }
     var apps by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -101,14 +102,28 @@ fun EditRoutingRuleScreen(
             val rule = rules[ruleIndex]
             name = rule.name
             domain = rule.domain.ifBlank { if (rule.type == RoutingRule.Type.DOMAIN) rule.value else "" }
-            domainSuffix = rule.domainSuffix.ifBlank { if (rule.type == RoutingRule.Type.DOMAIN_SUFFIX) rule.value else "" }
-            domainKeyword = rule.domainKeyword.ifBlank { if (rule.type == RoutingRule.Type.DOMAIN_KEYWORD) rule.value else "" }
+            domainSuffix = rule.domainSuffix.ifBlank {
+                if (rule.type == RoutingRule.Type.DOMAIN_SUFFIX) rule.value else ""
+            }
+            domainKeyword = rule.domainKeyword.ifBlank {
+                if (rule.type == RoutingRule.Type.DOMAIN_KEYWORD) rule.value else ""
+            }
             ipCidr = rule.ipCidr.ifBlank { if (rule.type == RoutingRule.Type.IP_CIDR) rule.value else "" }
             port = rule.port
             sourceIp = rule.sourceIpCidr
             sourcePort = rule.sourcePort
-            packageName = rule.packageName.ifBlank { if (rule.type == RoutingRule.Type.PACKAGE_NAME) rule.value else "" }
-            ruleSet = rule.ruleSet
+            packageName = rule.packageName.ifBlank {
+                if (rule.type == RoutingRule.Type.PACKAGE_NAME) rule.value else ""
+            }
+            ruleSet = rule.ruleSet.ifBlank {
+                when (rule.type) {
+                    RoutingRule.Type.GEOSITE ->
+                        if (rule.value.isNotBlank()) "geosite-${rule.value.removePrefix("geosite-")}" else ""
+                    RoutingRule.Type.GEOIP ->
+                        if (rule.value.isNotBlank()) "geoip-${rule.value.removePrefix("geoip-")}" else ""
+                    else -> ""
+                }
+            }
             network = rule.network
             protocol = rule.protocol.ifBlank { if (rule.type == RoutingRule.Type.PROTOCOL) rule.value else "" }
             wifiSsid = rule.wifiSsid
@@ -116,6 +131,8 @@ fun EditRoutingRuleScreen(
             clashMode = rule.clashMode
             outbound = rule.outbound.ifBlank { RoutingRule.OUTBOUND_PROXY }
             dnsRule = rule.dnsRule
+            showAdvanced = listOf(sourceIp, sourcePort, protocol, wifiSsid, wifiBssid, clashMode, network)
+                .any { it.isNotBlank() }
         }
         loaded = true
     }
@@ -147,19 +164,13 @@ fun EditRoutingRuleScreen(
                     outbound = outbound,
                     dnsRule = dnsRule,
                 )
-                if (ruleIndex in rules.indices) {
-                    rules[ruleIndex] = rule
-                } else {
-                    rules.add(rule)
-                }
+                if (ruleIndex in rules.indices) rules[ruleIndex] = rule else rules.add(rule)
             }
             root.put("rules", encodeRules(rules))
             if (!root.has("dns")) root.put("dns", JSONObject())
             if (!root.has("geo")) root.put("geo", JSONObject().put("sourceId", ""))
             Settings.routingConfigJson = root.toString()
-            withContext(Dispatchers.Main) {
-                navController.navigateUp()
-            }
+            withContext(Dispatchers.Main) { navController.navigateUp() }
         }
     }
 
@@ -169,7 +180,7 @@ fun EditRoutingRuleScreen(
             navigationIcon = {
                 IconButton(onClick = { navController.navigateUp() }) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.content_description_back),
                     )
                 }
@@ -202,128 +213,132 @@ fun EditRoutingRuleScreen(
             .verticalScroll(rememberScrollState())
             .padding(
                 top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 16.dp,
+                bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
                 start = 16.dp,
                 end = 16.dp,
             ),
     ) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Название") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = domain, onValueChange = { domain = it }, label = { Text("Домен") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = domainSuffix, onValueChange = { domainSuffix = it }, label = { Text("Суффикс домена") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = domainKeyword, onValueChange = { domainKeyword = it }, label = { Text("Ключевое слово домена") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = ipCidr, onValueChange = { ipCidr = it }, label = { Text("Целевой IP / CIDR") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Целевой порт") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = sourceIp, onValueChange = { sourceIp = it }, label = { Text("Исходный IP / CIDR") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = sourcePort, onValueChange = { sourcePort = it }, label = { Text("Исходный порт") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-
-        ListItem(
-            headlineContent = { Text("Приложения") },
-            supportingContent = {
-                Text(
-                    packageName.ifBlank { "Не указано" },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    scope.launch(Dispatchers.IO) {
-                        val pm = context.packageManager
-                        val list = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                            .map { app ->
-                                val label = runCatching { pm.getApplicationLabel(app).toString() }.getOrDefault(app.packageName)
-                                app.packageName to label
-                            }
-                            .sortedBy { it.second.lowercase() }
-                        withContext(Dispatchers.Main) {
-                            apps = list
-                            showAppPicker = true
-                        }
-                    }
-                },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        )
-        if (packageName.isNotBlank()) {
-            TextButton(onClick = { packageName = "" }) { Text("Очистить приложения") }
-        }
-
-        OutlinedTextField(value = ruleSet, onValueChange = { ruleSet = it }, label = { Text("Rule-set tag") },
-            placeholder = { Text("geosite-category-ru / geoip-ru") },
-            supportingText = { Text("не geoip:ru в поле IP") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-
-        ExposedDropdownMenuBox(
-            expanded = networkMenuOpen,
-            onExpandedChange = { networkMenuOpen = it },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        ) {
-            OutlinedTextField(
-                value = network.ifBlank { "Любая" },
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Сеть") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = networkMenuOpen) },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
-            )
-            ExposedDropdownMenu(
-                expanded = networkMenuOpen,
-                onDismissRequest = { networkMenuOpen = false },
-            ) {
-                DropdownMenuItem(text = { Text("Любая") }, onClick = { network = ""; networkMenuOpen = false })
-                listOf("tcp", "udp", "tcp,udp").forEach { net ->
-                    DropdownMenuItem(text = { Text(net) }, onClick = { network = net; networkMenuOpen = false })
-                }
-            }
-        }
-
-        OutlinedTextField(value = protocol, onValueChange = { protocol = it }, label = { Text("Протокол") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = wifiSsid, onValueChange = { wifiSsid = it }, label = { Text("SSID Wi-Fi") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = wifiBssid, onValueChange = { wifiBssid = it }, label = { Text("BSSID Wi-Fi") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-        OutlinedTextField(value = clashMode, onValueChange = { clashMode = it }, label = { Text("Режим Clash") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-
-        ListItem(
-            headlineContent = { Text("Создать DNS-правило") },
-            trailingContent = {
-                Switch(checked = dnsRule, onCheckedChange = { dnsRule = it })
-            },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        )
-
+        SectionTitle("Основное")
+        Field(name, { name = it }, "Название")
         ExposedDropdownMenuBox(
             expanded = outboundMenuOpen,
             onExpandedChange = { outboundMenuOpen = it },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         ) {
             OutlinedTextField(
-                value = outbound,
+                value = when (outbound) {
+                    RoutingRule.OUTBOUND_DIRECT -> "Напрямую"
+                    RoutingRule.OUTBOUND_BLOCK -> "Блок"
+                    else -> "Прокси"
+                },
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Выход через") },
+                label = { Text("Выход") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = outboundMenuOpen) },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
             )
-            ExposedDropdownMenu(
-                expanded = outboundMenuOpen,
-                onDismissRequest = { outboundMenuOpen = false },
-            ) {
-                listOf(RoutingRule.OUTBOUND_PROXY, RoutingRule.OUTBOUND_DIRECT, RoutingRule.OUTBOUND_BLOCK).forEach { item ->
-                    DropdownMenuItem(text = { Text(item) }, onClick = { outbound = item; outboundMenuOpen = false })
-                }
+            ExposedDropdownMenu(expanded = outboundMenuOpen, onDismissRequest = { outboundMenuOpen = false }) {
+                DropdownMenuItem(text = { Text("Прокси") }, onClick = {
+                    outbound = RoutingRule.OUTBOUND_PROXY; outboundMenuOpen = false
+                })
+                DropdownMenuItem(text = { Text("Напрямую") }, onClick = {
+                    outbound = RoutingRule.OUTBOUND_DIRECT; outboundMenuOpen = false
+                })
+                DropdownMenuItem(text = { Text("Блок") }, onClick = {
+                    outbound = RoutingRule.OUTBOUND_BLOCK; outboundMenuOpen = false
+                })
             }
         }
+        ListItem(
+            headlineContent = { Text("DNS-правило") },
+            supportingContent = { Text("Добавить такое же условие в DNS", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            trailingContent = { Switch(checked = dnsRule, onCheckedChange = { dnsRule = it }) },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        SectionTitle("Условие")
+        Field(domain, { domain = it }, "Домен")
+        Field(domainSuffix, { domainSuffix = it }, "Суффикс домена", "например google.com")
+        Field(ipCidr, { ipCidr = it }, "IP / CIDR", "1.2.3.0/24 — не geoip:ru")
+        Field(ruleSet, { ruleSet = it }, "Rule-set", "geosite-category-ru или geoip-ru")
+        Field(port, { port = it }, "Порт")
+
+        ListItem(
+            headlineContent = { Text("Приложения") },
+            supportingContent = {
+                Text(
+                    packageName.ifBlank { "Не выбрано" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            modifier = Modifier.fillMaxWidth().clickable {
+                scope.launch(Dispatchers.IO) {
+                    val pm = context.packageManager
+                    val list = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                        .map { app ->
+                            val label = runCatching { pm.getApplicationLabel(app).toString() }
+                                .getOrDefault(app.packageName)
+                            app.packageName to label
+                        }
+                        .sortedBy { it.second.lowercase() }
+                    withContext(Dispatchers.Main) {
+                        apps = list
+                        showAppPicker = true
+                    }
+                }
+            },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        )
+        if (packageName.isNotBlank()) {
+            TextButton(onClick = { packageName = "" }) { Text("Сбросить приложения") }
+        }
+
+        ListItem(
+            headlineContent = { Text("Дополнительно") },
+            trailingContent = {
+                Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+            },
+            modifier = Modifier.clickable { showAdvanced = !showAdvanced },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        )
+
+        if (showAdvanced) {
+            Field(domainKeyword, { domainKeyword = it }, "Ключевое слово домена")
+            Field(sourceIp, { sourceIp = it }, "Исходный IP / CIDR")
+            Field(sourcePort, { sourcePort = it }, "Исходный порт")
+            ExposedDropdownMenuBox(
+                expanded = networkMenuOpen,
+                onExpandedChange = { networkMenuOpen = it },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            ) {
+                OutlinedTextField(
+                    value = network.ifBlank { "Любая" },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Сеть") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = networkMenuOpen) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                )
+                ExposedDropdownMenu(expanded = networkMenuOpen, onDismissRequest = { networkMenuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Любая") }, onClick = { network = ""; networkMenuOpen = false })
+                    listOf("tcp", "udp", "tcp,udp").forEach { net ->
+                        DropdownMenuItem(text = { Text(net) }, onClick = { network = net; networkMenuOpen = false })
+                    }
+                }
+            }
+            Field(protocol, { protocol = it }, "Протокол")
+            Field(wifiSsid, { wifiSsid = it }, "SSID Wi‑Fi")
+            Field(wifiBssid, { wifiBssid = it }, "BSSID Wi‑Fi")
+            Field(clashMode, { clashMode = it }, "Режим Clash")
+        }
+
+        Spacer(Modifier = Modifier.height(16.dp))
     }
 
     if (showAppPicker) {
         val selected = packageName.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
         val filtered = apps.filter {
-            appQuery.isBlank() ||
-                it.first.contains(appQuery, true) ||
-                it.second.contains(appQuery, true)
+            appQuery.isBlank() || it.first.contains(appQuery, true) || it.second.contains(appQuery, true)
         }
         AlertDialog(
             onDismissRequest = { showAppPicker = false },
@@ -342,7 +357,9 @@ fun EditRoutingRuleScreen(
                             val checked = pkg in selected
                             ListItem(
                                 headlineContent = { Text(label) },
-                                supportingContent = { Text(pkg, style = MaterialTheme.typography.bodySmall) },
+                                supportingContent = {
+                                    Text(pkg, style = MaterialTheme.typography.bodySmall)
+                                },
                                 leadingContent = {
                                     Checkbox(
                                         checked = checked,
@@ -361,14 +378,39 @@ fun EditRoutingRuleScreen(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showAppPicker = false }) { Text("Готово") }
-            },
+            confirmButton = { TextButton(onClick = { showAppPicker = false }) { Text("Готово") } },
             dismissButton = {
                 TextButton(onClick = { packageName = ""; showAppPicker = false }) { Text("Сбросить") }
             },
         )
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun Field(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    placeholder: String? = null,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        placeholder = placeholder?.let { { Text(it) } },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    )
 }
 
 private fun decodeRules(raw: String): List<RoutingRule> {

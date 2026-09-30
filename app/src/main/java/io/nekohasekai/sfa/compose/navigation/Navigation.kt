@@ -26,7 +26,6 @@ import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
 import io.nekohasekai.sfa.compose.screen.settings.AppSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.CoreSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.FDroidMirrorScreen
-import io.nekohasekai.sfa.compose.screen.settings.EditRoutingRuleScreen
 import io.nekohasekai.sfa.compose.screen.settings.RoutingSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.ServiceSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.SettingsScreen
@@ -114,6 +113,23 @@ fun NavHost(
                     serviceStatus = serviceStatus,
                     showStartFab = showStartFab,
                     showStatusBar = showStatusBar,
+                )
+            }
+        }
+
+        composable(Screen.Subscriptions.route) {
+            if (groupsViewModel != null) {
+                GroupsCard(
+                    serviceStatus = serviceStatus,
+                    viewModel = groupsViewModel,
+                    showTopBar = true,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                GroupsCard(
+                    serviceStatus = serviceStatus,
+                    showTopBar = true,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -273,17 +289,6 @@ fun NavHost(
             popExitTransition = slideOutToRight,
         ) {
             RoutingSettingsScreen(navController = navController)
-        }
-
-        composable(
-            route = "settings/routing/rule/{index}",
-            enterTransition = slideInFromRight,
-            exitTransition = slideOutToLeft,
-            popEnterTransition = slideInFromLeft,
-            popExitTransition = slideOutToRight,
-        ) { backStackEntry ->
-            val index = backStackEntry.arguments?.getString("index")?.toIntOrNull() ?: -1
-            EditRoutingRuleScreen(navController = navController, ruleIndex = index)
         }
 
         composable(

@@ -171,6 +171,13 @@ fun RoutingSettingsScreen(
             ),
     ) {
         Text(
+            text = "Настройки применяются при старте или reload VPN. Профиль на диске не меняется.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+
+        Text(
             text = "DNS",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
@@ -235,7 +242,7 @@ fun RoutingSettingsScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Reverse mapping") },
+                    headlineContent = { Text("Обратный mapping") },
                     trailingContent = {
                         Switch(
                             checked = reverseMapping,
@@ -248,7 +255,7 @@ fun RoutingSettingsScreen(
                 OutlinedTextField(
                     value = finalServer,
                     onValueChange = { persist(nextFinal = it) },
-                    label = { Text("Final server tag") },
+                    label = { Text("Final DNS (tag)") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -416,7 +423,7 @@ fun RoutingSettingsScreen(
         }
 
         Text(
-            text = "Свои URL (необязательно)",
+            text = "Свои URL rule-set",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -442,7 +449,7 @@ fun RoutingSettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp),
         )
         Text(
-            text = "Файлы: {tag}.srs, например geosite-category-ru.srs",
+            text = "Файлы вида geosite-category-ru.srs / geoip-ru.srs",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

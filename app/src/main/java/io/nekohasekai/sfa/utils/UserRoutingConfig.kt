@@ -18,8 +18,8 @@ object UserRoutingConfig {
             val root = JSONObject(jsonStr)
             val user = JSONObject(raw)
             applyDns(root, user.optJSONObject("dns"))
-            applyGeo(root, user.optJSONObject("geo"))
             applyRules(root, user.optJSONArray("rules"))
+            applyGeo(root, user.optJSONObject("geo"))
             root.toString(2)
         } catch (_: Exception) {
             jsonStr

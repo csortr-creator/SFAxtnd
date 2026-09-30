@@ -140,8 +140,8 @@ fun EditRoutingRuleScreen(
     fun save(delete: Boolean = false) {
         scope.launch(Dispatchers.IO) {
             val raw = Settings.routingConfigJson
-            val root = if (raw.isBlank()) JSONObject() else runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
             val rules = decodeRules(raw).toMutableList()
+            val root = if (raw.isBlank()) JSONObject() else runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
             if (delete) {
                 if (ruleIndex in rules.indices) rules.removeAt(ruleIndex)
             } else {
@@ -188,7 +188,11 @@ fun EditRoutingRuleScreen(
             actions = {
                 if (ruleIndex >= 0) {
                     IconButton(onClick = { save(delete = true) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error)
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Удалить",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
                 IconButton(onClick = {
@@ -223,7 +227,9 @@ fun EditRoutingRuleScreen(
         ExposedDropdownMenuBox(
             expanded = outboundMenuOpen,
             onExpandedChange = { outboundMenuOpen = it },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
         ) {
             OutlinedTextField(
                 value = when (outbound) {
@@ -234,19 +240,40 @@ fun EditRoutingRuleScreen(
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Выход") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = outboundMenuOpen) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(
+                        expanded = outboundMenuOpen,
+                    )
+                },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
             )
-            ExposedDropdownMenu(expanded = outboundMenuOpen, onDismissRequest = { outboundMenuOpen = false }) {
-                DropdownMenuItem(text = { Text("Прокси") }, onClick = {
-                    outbound = RoutingRule.OUTBOUND_PROXY; outboundMenuOpen = false
-                })
-                DropdownMenuItem(text = { Text("Напрямую") }, onClick = {
-                    outbound = RoutingRule.OUTBOUND_DIRECT; outboundMenuOpen = false
-                })
-                DropdownMenuItem(text = { Text("Блок") }, onClick = {
-                    outbound = RoutingRule.OUTBOUND_BLOCK; outboundMenuOpen = false
-                })
+            ExposedDropdownMenu(
+                expanded = outboundMenuOpen,
+                onDismissRequest = { outboundMenuOpen = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Прокси") },
+                    onClick = {
+                        outbound = RoutingRule.OUTBOUND_PROXY
+                        outboundMenuOpen = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Напрямую") },
+                    onClick = {
+                        outbound = RoutingRule.OUTBOUND_DIRECT
+                        outboundMenuOpen = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Блок") },
+                    onClick = {
+                        outbound = RoutingRule.OUTBOUND_BLOCK
+                        outboundMenuOpen = false
+                    },
+                )
             }
         }
         ListItem(
@@ -257,8 +284,15 @@ fun EditRoutingRuleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            trailingContent = { Switch(checked = dnsRule, onCheckedChange = { dnsRule = it }) },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+            trailingContent = {
+                Switch(
+                    checked = dnsRule,
+                    onCheckedChange = { dnsRule = it },
+                )
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
         )
 
         SectionTitle("Условие")
@@ -276,35 +310,47 @@ fun EditRoutingRuleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            modifier = Modifier.fillMaxWidth().clickable {
-                scope.launch(Dispatchers.IO) {
-                    val pm = context.packageManager
-                    val list = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                        .map { app ->
-                            val label = runCatching { pm.getApplicationLabel(app).toString() }
-                                .getOrDefault(app.packageName)
-                            app.packageName to label
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    scope.launch(Dispatchers.IO) {
+                        val pm = context.packageManager
+                        val list = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                            .map { app ->
+                                val label = runCatching {
+                                    pm.getApplicationLabel(app).toString()
+                                }.getOrDefault(app.packageName)
+                                app.packageName to label
+                            }
+                            .sortedBy { it.second.lowercase() }
+                        withContext(Dispatchers.Main) {
+                            apps = list
+                            showAppPicker = true
                         }
-                        .sortedBy { it.second.lowercase() }
-                    withContext(Dispatchers.Main) {
-                        apps = list
-                        showAppPicker = true
                     }
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
         )
         if (packageName.isNotBlank()) {
-            TextButton(onClick = { packageName = "" }) { Text("Сбросить приложения") }
+            TextButton(onClick = { packageName = "" }) {
+                Text("Сбросить приложения")
+            }
         }
 
         ListItem(
             headlineContent = { Text("Дополнительно") },
             trailingContent = {
-                Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                Icon(
+                    if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    null,
+                )
             },
             modifier = Modifier.clickable { showAdvanced = !showAdvanced },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
         )
 
         if (showAdvanced) {
@@ -314,37 +360,68 @@ fun EditRoutingRuleScreen(
             ExposedDropdownMenuBox(
                 expanded = networkMenuOpen,
                 onExpandedChange = { networkMenuOpen = it },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
             ) {
                 OutlinedTextField(
                     value = network.ifBlank { "Любая" },
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Сеть") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = networkMenuOpen) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(
+                            expanded = networkMenuOpen,
+                        )
+                    },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
                 )
-                ExposedDropdownMenu(expanded = networkMenuOpen, onDismissRequest = { networkMenuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Любая") }, onClick = { network = ""; networkMenuOpen = false })
+                ExposedDropdownMenu(
+                    expanded = networkMenuOpen,
+                    onDismissRequest = { networkMenuOpen = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Любая") },
+                        onClick = {
+                            network = ""
+                            networkMenuOpen = false
+                        },
+                    )
                     listOf("tcp", "udp", "tcp,udp").forEach { net ->
-                        DropdownMenuItem(text = { Text(net) }, onClick = { network = net; networkMenuOpen = false })
+                        DropdownMenuItem(
+                            text = { Text(net) },
+                            onClick = {
+                                network = net
+                                networkMenuOpen = false
+                            },
+                        )
                     }
                 }
             }
             Field(protocol, { protocol = it }, "Протокол")
-            Field(wifiSsid, { wifiSsid = it }, "SSID Wi‑Fi")
-            Field(wifiBssid, { wifiBssid = it }, "BSSID Wi‑Fi")
+            Field(wifiSsid, { wifiSsid = it }, "SSID Wi-Fi")
+            Field(wifiBssid, { wifiBssid = it }, "BSSID Wi-Fi")
             Field(clashMode, { clashMode = it }, "Режим Clash")
         }
 
-        Spacer(Modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (showAppPicker) {
-        val selected = packageName.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+        val selected = packageName
+            .split(',', '\n', ';')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toMutableSet()
+
         val filtered = apps.filter {
-            appQuery.isBlank() || it.first.contains(appQuery, true) || it.second.contains(appQuery, true)
+            appQuery.isBlank() ||
+                it.first.contains(appQuery, true) ||
+                it.second.contains(appQuery, true)
         }
+
         AlertDialog(
             onDismissRequest = { showAppPicker = false },
             title = { Text("Приложения") },
@@ -357,35 +434,58 @@ fun EditRoutingRuleScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 400.dp),
+                    ) {
                         items(filtered, key = { it.first }) { (pkg, label) ->
                             val checked = pkg in selected
                             ListItem(
                                 headlineContent = { Text(label) },
                                 supportingContent = {
-                                    Text(pkg, style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        pkg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
                                 },
                                 leadingContent = {
                                     Checkbox(
                                         checked = checked,
                                         onCheckedChange = {
-                                            if (it) selected.add(pkg) else selected.remove(pkg)
+                                            if (it) {
+                                                selected.add(pkg)
+                                            } else {
+                                                selected.remove(pkg)
+                                            }
                                             packageName = selected.sorted().joinToString(",")
                                         },
                                     )
                                 },
                                 modifier = Modifier.clickable {
-                                    if (checked) selected.remove(pkg) else selected.add(pkg)
+                                    if (checked) {
+                                        selected.remove(pkg)
+                                    } else {
+                                        selected.add(pkg)
+                                    }
                                     packageName = selected.sorted().joinToString(",")
                                 },
                             )
                         }
                     }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAppPicker = false }) {
+                    Text("Готово")
                 }
             },
-            confirmButton = { TextButton(onClick = { showAppPicker = false }) { Text("Готово") } },
             dismissButton = {
-                TextButton(onClick = { packageName = ""; showAppPicker = false }) { Text("Сбросить") }
+                TextButton(
+                    onClick = {
+                        packageName = ""
+                        showAppPicker = false
+                    },
+                ) {
+                    Text("Сбросить")
+                }
             },
         )
     }
@@ -442,10 +542,16 @@ private fun decodeRules(raw: String): List<RoutingRule> {
 
 private fun ruleFromJson(obj: JSONObject): RoutingRule {
     val type = try {
-        RoutingRule.Type.valueOf(obj.optString("type", RoutingRule.Type.DOMAIN.name))
+        RoutingRule.Type.valueOf(
+            obj.optString(
+                "type",
+                RoutingRule.Type.DOMAIN.name,
+            ),
+        )
     } catch (_: Exception) {
         RoutingRule.Type.DOMAIN
     }
+
     return RoutingRule(
         name = obj.optString("name"),
         domain = obj.optString("domain"),
@@ -462,7 +568,10 @@ private fun ruleFromJson(obj: JSONObject): RoutingRule {
         wifiSsid = obj.optString("wifiSsid"),
         wifiBssid = obj.optString("wifiBssid"),
         clashMode = obj.optString("clashMode"),
-        outbound = obj.optString("outbound", RoutingRule.OUTBOUND_PROXY).ifBlank { RoutingRule.OUTBOUND_PROXY },
+        outbound = obj.optString(
+            "outbound",
+            RoutingRule.OUTBOUND_PROXY,
+        ).ifBlank { RoutingRule.OUTBOUND_PROXY },
         dnsRule = obj.optBoolean("dnsRule", false),
         type = type,
         value = obj.optString("value"),
@@ -471,6 +580,7 @@ private fun ruleFromJson(obj: JSONObject): RoutingRule {
 
 private fun encodeRules(rules: List<RoutingRule>): JSONArray {
     val arr = JSONArray()
+
     rules.forEach { rule ->
         arr.put(
             JSONObject()
@@ -495,5 +605,6 @@ private fun encodeRules(rules: List<RoutingRule>): JSONArray {
                 .put("value", rule.value),
         )
     }
+
     return arr
 }

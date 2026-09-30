@@ -31,6 +31,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -82,6 +85,9 @@ fun RoutingSettingsScreen(
     val scaffoldPadding = LocalScaffoldPadding.current
     val scope = rememberCoroutineScope()
 
+
+    var selectedTab by remember { mutableStateOf(0) }
+
     var strategy by remember { mutableStateOf(DnsConfig.Strategy.AUTO) }
     var cacheEnabled by remember { mutableStateOf(true) }
     var independentCache by remember { mutableStateOf(false) }
@@ -89,8 +95,6 @@ fun RoutingSettingsScreen(
     var finalServer by remember { mutableStateOf("") }
     var servers by remember { mutableStateOf<List<DnsServer>>(emptyList()) }
     var geoSourceId by remember { mutableStateOf("") }
-    var geoGeositeUrl by remember { mutableStateOf("") }
-    var geoGeoipUrl by remember { mutableStateOf("") }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
 
@@ -101,7 +105,14 @@ fun RoutingSettingsScreen(
     var draftAddress by remember { mutableStateOf("") }
     var draftDetour by remember { mutableStateOf("") }
 
-        
+    var showRuleDialog by remember { mutableStateOf(false) }
+    var editRuleIndex by remember { mutableStateOf<Int?>(null) }
+    var draftRuleType by remember { mutableStateOf(RoutingRule.Type.DOMAIN) }
+    var draftRuleValue by remember { mutableStateOf("") }
+    var draftRuleOutbound by remember { mutableStateOf(RoutingRule.OUTBOUND_DIRECT) }
+    var ruleTypeMenuOpen by remember { mutableStateOf(false) }
+    var ruleOutboundMenuOpen by remember { mutableStateOf(false) }
+
     fun persist(
         nextStrategy: DnsConfig.Strategy = strategy,
         nextCache: Boolean = cacheEnabled,
@@ -110,8 +121,6 @@ fun RoutingSettingsScreen(
         nextFinal: String = finalServer,
         nextServers: List<DnsServer> = servers,
         nextGeoSourceId: String = geoSourceId,
-        nextGeoGeositeUrl: String = geoGeositeUrl,
-        nextGeoGeoipUrl: String = geoGeoipUrl,
         nextRules: List<RoutingRule> = rules,
     ) {
         strategy = nextStrategy
@@ -121,8 +130,6 @@ fun RoutingSettingsScreen(
         finalServer = nextFinal
         servers = nextServers
         geoSourceId = nextGeoSourceId
-        geoGeositeUrl = nextGeoGeositeUrl
-        geoGeoipUrl = nextGeoGeoipUrl
         rules = nextRules
         scope.launch(Dispatchers.IO) {
             Settings.routingConfigJson = encodeRoutingConfig(
@@ -133,8 +140,6 @@ fun RoutingSettingsScreen(
                 nextFinal,
                 nextServers,
                 nextGeoSourceId,
-                nextGeoGeositeUrl,
-                nextGeoGeoipUrl,
                 nextRules,
             )
         }
@@ -150,8 +155,6 @@ fun RoutingSettingsScreen(
         finalServer = parsed.finalServer
         servers = parsed.servers
         geoSourceId = parsed.geoSourceId
-        geoGeositeUrl = parsed.geoGeositeUrl
-        geoGeoipUrl = parsed.geoGeoipUrl
         rules = parsed.rules
         loaded = true
     }
@@ -160,29 +163,39 @@ fun RoutingSettingsScreen(
         return
     }
 
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
-            .verticalScroll(rememberScrollState())
             .padding(
-                top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
+                top = scaffoldPadding.calculateTopPadding(),
+                bottom = scaffoldPadding.calculateBottomPadding(),
             ),
     ) {
-        Text(
-            text = "Настройки применяются при старте или reload VPN. Профиль на диске не меняется.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
+        PrimaryTabRow(
+            selectedTabIndex = selectedTab,
+        ) {
+            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Правила") })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("DNS") })
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Geo") })
+        }
 
-        Text(
-            text = "DNS",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 8.dp)
+        ) {
+            if (selectedTab == 1) {
+                // DNS Tab
+                Text(
+                    text = "DNS Settings",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+
 
         Card(
             modifier = Modifier
@@ -242,7 +255,7 @@ fun RoutingSettingsScreen(
                 )
 
                 ListItem(
-                    headlineContent = { Text("Обратный mapping") },
+                    headlineContent = { Text("Reverse mapping") },
                     trailingContent = {
                         Switch(
                             checked = reverseMapping,
@@ -255,7 +268,7 @@ fun RoutingSettingsScreen(
                 OutlinedTextField(
                     value = finalServer,
                     onValueChange = { persist(nextFinal = it) },
-                    label = { Text("Final DNS (tag)") },
+                    label = { Text("Final server tag") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -347,12 +360,15 @@ fun RoutingSettingsScreen(
             }
         }
 
-        Text(
-            text = "Geo",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+            } // End DNS Tab
+
+            if (selectedTab == 2) {
+                Text(
+                    text = "Geo Assets",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
 
         Card(
             modifier = Modifier
@@ -367,7 +383,7 @@ fun RoutingSettingsScreen(
                     headlineContent = { Text("Не выбран") },
                     supportingContent = {
                         Text(
-                            "Оставить rule-set из профиля",
+                            "Без смены rule-set в ядре",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
@@ -422,54 +438,28 @@ fun RoutingSettingsScreen(
             }
         }
 
-        Text(
-            text = "Свои URL rule-set",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-        OutlinedTextField(
-            value = geoGeositeUrl,
-            onValueChange = { persist(nextGeoGeositeUrl = it) },
-            label = { Text("Базовый URL geosite rule-set") },
-            placeholder = { Text("https://.../rule-set") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        OutlinedTextField(
-            value = geoGeoipUrl,
-            onValueChange = { persist(nextGeoGeoipUrl = it) },
-            label = { Text("Базовый URL geoip rule-set") },
-            placeholder = { Text("https://.../rule-set") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        Text(
-            text = "Файлы вида geosite-category-ru.srs / geoip-ru.srs",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
+            } // End Geo Tab
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Правила",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            if (selectedTab == 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Routing Rules",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
             IconButton(
                 onClick = {
-                    navController.navigate("settings/routing/rule/-1")
+                    editRuleIndex = null
+                    draftRuleType = RoutingRule.Type.DOMAIN
+                    draftRuleValue = ""
+                    draftRuleOutbound = RoutingRule.OUTBOUND_DIRECT
+                    showRuleDialog = true
                 },
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Добавить")
@@ -490,17 +480,21 @@ fun RoutingSettingsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clickable {
-                            navController.navigate("settings/routing/rule/$index")
+                            editRuleIndex = index
+                            draftRuleType = rule.type
+                            draftRuleValue = rule.value
+                            draftRuleOutbound = rule.outbound
+                            showRuleDialog = true
                         },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     ),
                 ) {
                     ListItem(
-                        headlineContent = { Text(rule.displayTitle()) },
+                        headlineContent = { Text(rule.value.ifBlank { "—" }) },
                         supportingContent = {
                             Text(
-                                rule.displaySubtitle(),
+                                "${ruleTypeLabel(rule.type)} → ${rule.outbound}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
@@ -591,8 +585,120 @@ fun RoutingSettingsScreen(
         )
     }
 
-}
+    if (showRuleDialog) {
+        AlertDialog(
+            onDismissRequest = { showRuleDialog = false },
+            title = {
+                Text(if (editRuleIndex == null) "Добавить правило" else "Изменить правило")
+            },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Условие совпадения", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(8.dp))
 
+                            ListItem(
+                                headlineContent = { Text("Тип") },
+                                supportingContent = { Text(ruleTypeLabel(draftRuleType)) },
+                                modifier = Modifier.clickable { ruleTypeMenuOpen = true },
+                                colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                            )
+                            DropdownMenu(
+                                expanded = ruleTypeMenuOpen,
+                                onDismissRequest = { ruleTypeMenuOpen = false },
+                            ) {
+                                RoutingRule.Type.entries.forEach { type ->
+                                    DropdownMenuItem(
+                                        text = { Text(ruleTypeLabel(type)) },
+                                        onClick = {
+                                            draftRuleType = type
+                                            ruleTypeMenuOpen = false
+                                        },
+                                    )
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = draftRuleValue,
+                                onValueChange = { draftRuleValue = it },
+                                label = { Text("Значение") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Действие", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            ListItem(
+                                headlineContent = { Text("Outbound (Куда направить)") },
+                                supportingContent = { Text(draftRuleOutbound) },
+                                modifier = Modifier.clickable { ruleOutboundMenuOpen = true },
+                                colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+                            )
+                            DropdownMenu(
+                                expanded = ruleOutboundMenuOpen,
+                                onDismissRequest = { ruleOutboundMenuOpen = false },
+                            ) {
+                                listOf(
+                                    RoutingRule.OUTBOUND_DIRECT,
+                                    RoutingRule.OUTBOUND_PROXY,
+                                    RoutingRule.OUTBOUND_BLOCK,
+                                ).forEach { outbound ->
+                                    DropdownMenuItem(
+                                        text = { Text(outbound) },
+                                        onClick = {
+                                            draftRuleOutbound = outbound
+                                            ruleOutboundMenuOpen = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (draftRuleValue.isBlank()) return@TextButton
+                        val rule = RoutingRule(
+                            type = draftRuleType,
+                            value = draftRuleValue.trim(),
+                            outbound = draftRuleOutbound,
+                        )
+                        val next = rules.toMutableList()
+                        val index = editRuleIndex
+                        if (index == null) {
+                            next.add(rule)
+                        } else if (index in next.indices) {
+                            next[index] = rule
+                        }
+                        persist(nextRules = next)
+                        showRuleDialog = false
+                    },
+                ) {
+                    Text("Сохранить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRuleDialog = false }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
+}
 
 private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
     DnsConfig.Strategy.AUTO -> "Auto"
@@ -600,6 +706,17 @@ private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy
     DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
     DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
     DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
+}
+
+private fun ruleTypeLabel(type: RoutingRule.Type): String = when (type) {
+    RoutingRule.Type.DOMAIN -> "Domain"
+    RoutingRule.Type.DOMAIN_SUFFIX -> "Domain suffix"
+    RoutingRule.Type.DOMAIN_KEYWORD -> "Domain keyword"
+    RoutingRule.Type.GEOSITE -> "GeoSite"
+    RoutingRule.Type.IP_CIDR -> "IP CIDR"
+    RoutingRule.Type.GEOIP -> "GeoIP"
+    RoutingRule.Type.PACKAGE_NAME -> "Package"
+    RoutingRule.Type.PROTOCOL -> "Protocol"
 }
 
 private data class RoutingConfigState(
@@ -610,8 +727,6 @@ private data class RoutingConfigState(
     val finalServer: String = "",
     val servers: List<DnsServer> = emptyList(),
     val geoSourceId: String = "",
-    val geoGeositeUrl: String = "",
-    val geoGeoipUrl: String = "",
     val rules: List<RoutingRule> = emptyList(),
 )
 
@@ -663,36 +778,10 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
                         RoutingRule.Type.DOMAIN
                     }
                     val value = obj.optString("value")
-                    val outbound = obj.optString("outbound", RoutingRule.OUTBOUND_PROXY)
-                        .ifBlank { RoutingRule.OUTBOUND_PROXY }
-                    val rule = RoutingRule(
-                        name = obj.optString("name"),
-                        domain = obj.optString("domain"),
-                        domainSuffix = obj.optString("domainSuffix"),
-                        domainKeyword = obj.optString("domainKeyword"),
-                        ipCidr = obj.optString("ipCidr"),
-                        port = obj.optString("port"),
-                        sourceIpCidr = obj.optString("sourceIpCidr"),
-                        sourcePort = obj.optString("sourcePort"),
-                        packageName = obj.optString("packageName"),
-                        ruleSet = obj.optString("ruleSet"),
-                        network = obj.optString("network"),
-                        protocol = obj.optString("protocol"),
-                        wifiSsid = obj.optString("wifiSsid"),
-                        wifiBssid = obj.optString("wifiBssid"),
-                        clashMode = obj.optString("clashMode"),
-                        outbound = outbound,
-                        dnsRule = obj.optBoolean("dnsRule", false),
-                        type = type,
-                        value = value,
-                    )
-                    val hasMatch = listOf(
-                        rule.domain, rule.domainSuffix, rule.domainKeyword,
-                        rule.ipCidr, rule.port, rule.sourceIpCidr, rule.sourcePort,
-                        rule.packageName, rule.ruleSet, rule.protocol,
-                        rule.wifiSsid, rule.wifiBssid, rule.clashMode, rule.value,
-                    ).any { it.isNotBlank() }
-                    if (hasMatch) add(rule)
+                    if (value.isBlank()) continue
+                    val outbound = obj.optString("outbound", RoutingRule.OUTBOUND_DIRECT)
+                        .ifBlank { RoutingRule.OUTBOUND_DIRECT }
+                    add(RoutingRule(type = type, value = value, outbound = outbound))
                 }
             }
         }
@@ -705,8 +794,6 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
             finalServer = finalServer,
             servers = servers,
             geoSourceId = geo?.optString("sourceId").orEmpty(),
-            geoGeositeUrl = geo?.optString("geositeUrl").orEmpty(),
-            geoGeoipUrl = geo?.optString("geoipUrl").orEmpty(),
             rules = rules,
         )
     } catch (_: Exception) {
@@ -722,8 +809,6 @@ private fun encodeRoutingConfig(
     finalServer: String,
     servers: List<DnsServer>,
     geoSourceId: String,
-    geoGeositeUrl: String,
-    geoGeoipUrl: String,
     rules: List<RoutingRule>,
 ): String {
     val dns = JSONObject()
@@ -746,38 +831,17 @@ private fun encodeRoutingConfig(
 
     val rulesJson = JSONArray()
     rules.forEach { rule ->
-        val obj = JSONObject()
-            .put("name", rule.name)
-            .put("domain", rule.domain)
-            .put("domainSuffix", rule.domainSuffix)
-            .put("domainKeyword", rule.domainKeyword)
-            .put("ipCidr", rule.ipCidr)
-            .put("port", rule.port)
-            .put("sourceIpCidr", rule.sourceIpCidr)
-            .put("sourcePort", rule.sourcePort)
-            .put("packageName", rule.packageName)
-            .put("ruleSet", rule.ruleSet)
-            .put("network", rule.network)
-            .put("protocol", rule.protocol)
-            .put("wifiSsid", rule.wifiSsid)
-            .put("wifiBssid", rule.wifiBssid)
-            .put("clashMode", rule.clashMode)
-            .put("outbound", rule.outbound)
-            .put("dnsRule", rule.dnsRule)
-            .put("type", rule.type.name)
-            .put("value", rule.value)
-        rulesJson.put(obj)
+        rulesJson.put(
+            JSONObject()
+                .put("type", rule.type.name)
+                .put("value", rule.value)
+                .put("outbound", rule.outbound),
+        )
     }
 
     return JSONObject()
         .put("dns", dns)
-        .put(
-            "geo",
-            JSONObject()
-                .put("sourceId", geoSourceId)
-                .put("geositeUrl", geoGeositeUrl)
-                .put("geoipUrl", geoGeoipUrl),
-        )
+        .put("geo", JSONObject().put("sourceId", geoSourceId))
         .put("rules", rulesJson)
         .toString()
 }

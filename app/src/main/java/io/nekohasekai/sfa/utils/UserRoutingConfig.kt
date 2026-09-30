@@ -299,14 +299,47 @@ object UserRoutingConfig {
     private fun buildSingBoxRule(item: JSONObject): JSONObject? {
         val rule = JSONObject()
         var hasMatch = false
+        val ruleSetTags = linkedSetOf<String>()
+
+        fun addRuleSet(tag: String) {
+            val clean = tag.trim()
+            if (clean.isEmpty()) return
+            ruleSetTags.add(clean)
+            hasMatch = true
+        }
+
+        fun geoToRuleSet(raw: String): String? {
+            val v = raw.trim()
+            if (v.isEmpty()) return null
+            return when {
+                v.startsWith("geoip:", ignoreCase = true) ->
+                    "geoip-" + v.substringAfter(':').trim()
+                v.startsWith("geosite:", ignoreCase = true) ->
+                    "geosite-" + v.substringAfter(':').trim()
+                v.startsWith("geoip-", ignoreCase = true) ||
+                    v.startsWith("geosite-", ignoreCase = true) -> v
+                else -> null
+            }
+        }
 
         fun putStringList(key: String, raw: String) {
             val values = splitValues(raw)
             if (values.isEmpty()) return
             val arr = JSONArray()
-            values.forEach { arr.put(it) }
-            rule.put(key, arr)
-            hasMatch = true
+            values.forEach { value ->
+                val asRuleSet = geoToRuleSet(value)
+                if (asRuleSet != null) {
+                    addRuleSet(asRuleSet)
+                } else if (key == "ip_cidr" && !value.contains('/')) {
+                    // skip invalid non-CIDR values
+                } else {
+                    arr.put(value)
+                }
+            }
+            if (arr.length() > 0) {
+                rule.put(key, arr)
+                hasMatch = true
+            }
         }
 
         putStringList("domain", item.optString("domain"))
@@ -352,13 +385,10 @@ object UserRoutingConfig {
             hasMatch = true
         }
 
-        if (!hasMatch) {
+        val value = item.optString("value").trim()
+        if (value.isNotEmpty()) {
             val typeName = item.optString("type", RoutingRule.Type.DOMAIN.name)
             val type = runCatching { RoutingRule.Type.valueOf(typeName) }.getOrDefault(RoutingRule.Type.DOMAIN)
-            val value = item.optString("value").trim()
-            if (value.isEmpty()) {
-                return null
-            }
             when (type) {
                 RoutingRule.Type.DOMAIN -> rule.put("domain", JSONArray().put(value))
                 RoutingRule.Type.DOMAIN_SUFFIX -> rule.put("domain_suffix", JSONArray().put(value))

@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -245,23 +247,33 @@ fun EditRoutingRuleScreen(
             TextButton(onClick = { packageName = "" }) { Text("Очистить приложения") }
         }
 
-        OutlinedTextField(value = ruleSet, onValueChange = { ruleSet = it }, label = { Text("Набор правил (tag .srs)") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        OutlinedTextField(value = ruleSet, onValueChange = { ruleSet = it }, label = { Text("Rule-set tag") },
+            placeholder = { Text("geosite-category-ru / geoip-ru") },
+            supportingText = { Text("не geoip:ru в поле IP") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
 
-        ListItem(
-            headlineContent = { Text("Сеть") },
-            supportingContent = {
-                Text(
-                    network.ifBlank { "Не указано (любая)" },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-            modifier = Modifier.clickable { networkMenuOpen = true },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        )
-        DropdownMenu(expanded = networkMenuOpen, onDismissRequest = { networkMenuOpen = false }) {
-            DropdownMenuItem(text = { Text("Не указано") }, onClick = { network = ""; networkMenuOpen = false })
-            listOf("tcp", "udp", "tcp,udp").forEach { net ->
-                DropdownMenuItem(text = { Text(net) }, onClick = { network = net; networkMenuOpen = false })
+        ExposedDropdownMenuBox(
+            expanded = networkMenuOpen,
+            onExpandedChange = { networkMenuOpen = it },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) {
+            OutlinedTextField(
+                value = network.ifBlank { "Любая" },
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Сеть") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = networkMenuOpen) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
+                expanded = networkMenuOpen,
+                onDismissRequest = { networkMenuOpen = false },
+            ) {
+                DropdownMenuItem(text = { Text("Любая") }, onClick = { network = ""; networkMenuOpen = false })
+                listOf("tcp", "udp", "tcp,udp").forEach { net ->
+                    DropdownMenuItem(text = { Text(net) }, onClick = { network = net; networkMenuOpen = false })
+                }
             }
         }
 
@@ -278,17 +290,28 @@ fun EditRoutingRuleScreen(
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         )
 
-        ListItem(
-            headlineContent = { Text("Выход через") },
-            supportingContent = {
-                Text(outbound, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            },
-            modifier = Modifier.clickable { outboundMenuOpen = true },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        )
-        DropdownMenu(expanded = outboundMenuOpen, onDismissRequest = { outboundMenuOpen = false }) {
-            listOf(RoutingRule.OUTBOUND_PROXY, RoutingRule.OUTBOUND_DIRECT, RoutingRule.OUTBOUND_BLOCK).forEach { item ->
-                DropdownMenuItem(text = { Text(item) }, onClick = { outbound = item; outboundMenuOpen = false })
+        ExposedDropdownMenuBox(
+            expanded = outboundMenuOpen,
+            onExpandedChange = { outboundMenuOpen = it },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) {
+            OutlinedTextField(
+                value = outbound,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Выход через") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = outboundMenuOpen) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
+                expanded = outboundMenuOpen,
+                onDismissRequest = { outboundMenuOpen = false },
+            ) {
+                listOf(RoutingRule.OUTBOUND_PROXY, RoutingRule.OUTBOUND_DIRECT, RoutingRule.OUTBOUND_BLOCK).forEach { item ->
+                    DropdownMenuItem(text = { Text(item) }, onClick = { outbound = item; outboundMenuOpen = false })
+                }
             }
         }
 

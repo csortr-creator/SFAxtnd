@@ -264,6 +264,17 @@ fun DashboardScreen(
                     }
                 }
             }
+
+            val serviceStarted =
+                serviceStatus == Status.Started || serviceStatus == Status.Starting
+            if (serviceStarted) {
+                item {
+                    GroupsCard(
+                        serviceStatus = serviceStatus,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
         }
     }
 }

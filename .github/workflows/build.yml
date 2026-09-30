@@ -187,22 +187,31 @@ jobs:
 
           test -f app/libs/libbox.aar
 
-      - name: Auto Bump Version
+      - name: Read version
         shell: bash
         run: |
           set -euxo pipefail
 
-          BASE_VERSION="1.0"
-          PATCH_VERSION="${{ github.run_number }}"
-          FULL_VERSION="${BASE_VERSION}.${PATCH_VERSION}"
+          # Use version.properties from the repository (do not rewrite from run number)
+          if [ ! -f version.properties ]; then
+            echo "version.properties missing"
+            exit 1
+          fi
 
-          echo "VERSION_CODE=$PATCH_VERSION" > version.properties
-          echo "VERSION_NAME=$FULL_VERSION" >> version.properties
+          VERSION_NAME="$(grep -E '^VERSION_NAME=' version.properties | cut -d= -f2- | tr -d '\r')"
+          VERSION_CODE="$(grep -E '^VERSION_CODE=' version.properties | cut -d= -f2- | tr -d '\r')"
 
-          echo "APP_VERSION=$FULL_VERSION" >> "$GITHUB_ENV"
+          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
+            echo "VERSION_NAME/VERSION_CODE empty in version.properties"
+            exit 1
+          fi
+
+          echo "APP_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
           echo "Building SFAxtnd version:"
-          echo "$FULL_VERSION"
+          echo "VERSION_NAME=$VERSION_NAME"
+          echo "VERSION_CODE=$VERSION_CODE"
 
       - name: Setup Release Keystore
         shell: bash

@@ -7,11 +7,17 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.nekohasekai.sfa.R
 
 sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: ImageVector) {
+    object Subscriptions : Screen(
+        route = "subscriptions",
+        titleRes = R.string.title_subscriptions,
+        icon = Icons.Default.Subscriptions,
+    )
     object Dashboard : Screen(
         route = "dashboard",
         titleRes = R.string.title_dashboard,
@@ -52,6 +58,7 @@ sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: I
 val bottomNavigationScreens =
     listOf(
         Screen.Dashboard,
+        Screen.Subscriptions,
         Screen.Log,
         Screen.Settings,
     )

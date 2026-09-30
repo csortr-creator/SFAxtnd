@@ -49,6 +49,7 @@
     <!-- Navigation Titles -->
     <string name="title_dashboard">Серверы</string>
     <string name="title_configuration">Профили</string>
+    <string name="title_subscriptions">Группы</string>
     <string name="title_log">Логи</string>
     <string name="title_settings">Настройки</string>
     <string name="title_app_settings">Приложение</string>
@@ -674,4 +675,6 @@
     <string name="taildrop_dismiss">Закрыть</string>
     <string name="taildrop_open_app">Открыть sing-box</string>
     <string name="taildrop_notification_title">Отправка файлов</string>
+    <string name="taildrop" translatable="false">Taildrop</string>
+    <string name="endpoint_browser_navigation_failed">Ошибка навигации браузера: %1$s</string>
 </resources>

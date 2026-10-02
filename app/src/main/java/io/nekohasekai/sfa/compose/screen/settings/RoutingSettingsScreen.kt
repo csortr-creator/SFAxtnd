@@ -590,7 +590,7 @@ fun RoutingSettingsScreen(
                     text = "Файлы: geosite-….srs / geoip-….srs",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, bottom = 12.dp, top = 4.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
                 )
             }
         }

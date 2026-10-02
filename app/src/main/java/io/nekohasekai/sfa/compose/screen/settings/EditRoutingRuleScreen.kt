@@ -21,8 +21,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -266,13 +264,6 @@ fun EditRoutingRuleScreen(
             ),
     ) {
         SectionTitle("Основное")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ),
-        ) {
-            Column(Modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         Field(value = name, onChange = { name = it }, label = "Название")
 
         ExposedDropdownMenuBox(
@@ -353,16 +344,7 @@ fun EditRoutingRuleScreen(
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
 
-            }
-        }
         SectionTitle("Условие")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ),
-        ) {
-            androidx.compose.foundation.layout.Column(Modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         Field(value = domain, onChange = { domain = it }, label = "Домен")
         Field(
             value = domainSuffix,
@@ -419,8 +401,6 @@ fun EditRoutingRuleScreen(
             }
         }
 
-            }
-        }
         ListItem(
             headlineContent = { Text("Дополнительно") },
             trailingContent = {

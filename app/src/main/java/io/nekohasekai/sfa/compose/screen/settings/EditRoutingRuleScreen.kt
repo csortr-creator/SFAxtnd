@@ -87,6 +87,7 @@ fun EditRoutingRuleScreen(
     var clashMode by remember { mutableStateOf("") }
     var outbound by remember { mutableStateOf(RoutingRule.OUTBOUND_PROXY) }
     var dnsRule by remember { mutableStateOf(false) }
+    var enabled by remember { mutableStateOf(true) }
 
     var outboundMenuOpen by remember { mutableStateOf(false) }
     var networkMenuOpen by remember { mutableStateOf(false) }
@@ -145,6 +146,7 @@ fun EditRoutingRuleScreen(
             clashMode = rule.clashMode
             outbound = rule.outbound.ifBlank { RoutingRule.OUTBOUND_PROXY }
             dnsRule = rule.dnsRule
+            enabled = rule.enabled
             showAdvanced = listOf(
                 sourceIp, sourcePort, protocol, wifiSsid, wifiBssid, clashMode, network,
             ).any { it.isNotBlank() }
@@ -184,6 +186,7 @@ fun EditRoutingRuleScreen(
                     clashMode = clashMode.trim(),
                     outbound = outbound,
                     dnsRule = dnsRule,
+                    enabled = enabled,
                 )
                 if (ruleIndex in rules.indices) {
                     rules[ruleIndex] = rule
@@ -314,6 +317,19 @@ fun EditRoutingRuleScreen(
             }
         }
 
+        ListItem(
+            headlineContent = { Text("Включено") },
+            supportingContent = {
+                Text(
+                    "Выключенные правила не попадают в конфиг",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            trailingContent = {
+                Switch(checked = enabled, onCheckedChange = { enabled = it })
+            },
+            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        )
         ListItem(
             headlineContent = { Text("DNS-правило") },
             supportingContent = {
@@ -615,6 +631,7 @@ private fun ruleFromJson(obj: JSONObject): RoutingRule {
         outbound = obj.optString("outbound", RoutingRule.OUTBOUND_PROXY)
             .ifBlank { RoutingRule.OUTBOUND_PROXY },
         dnsRule = obj.optBoolean("dnsRule", false),
+        enabled = obj.optBoolean("enabled", true),
         type = type,
         value = obj.optString("value"),
     )
@@ -642,6 +659,7 @@ private fun encodeRules(rules: List<RoutingRule>): JSONArray {
                 .put("clashMode", rule.clashMode)
                 .put("outbound", rule.outbound)
                 .put("dnsRule", rule.dnsRule)
+                .put("enabled", rule.enabled)
                 .put("type", rule.type.name)
                 .put("value", rule.value),
         )

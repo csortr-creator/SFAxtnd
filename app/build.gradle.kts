@@ -357,12 +357,7 @@ dependencies {
     implementation("org.kodein.emoji:emoji-kt:2.5.0")
 
     // Terminal emulator
-    val libghosttyVersion = "0.1.0-alpha01"
-    implementation("io.github.sagernet:libghostty-android:$libghosttyVersion")
-    implementation("io.github.sagernet:libghostty-android-extras:$libghosttyVersion")
-    "playImplementation"("io.github.sagernet:libghostty-android-compose:$libghosttyVersion")
-    "otherImplementation"("io.github.sagernet:libghostty-android-compose:$libghosttyVersion")
-    "otherLegacyImplementation"("io.github.sagernet:libghostty-android-compose-legacy:$libghosttyVersion")
+
 }
 
 val playCredentialsJSON = rootProject.file("service-account-credentials.json")

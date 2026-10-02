@@ -582,7 +582,6 @@ private fun Field(
             null
         },
         singleLine = true,
-        shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),

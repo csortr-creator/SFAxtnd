@@ -75,14 +75,47 @@ object UserRoutingConfig {
 
         val serversUser = dnsUser.optJSONArray("servers")
         if (serversUser != null && serversUser.length() > 0) {
-            val servers = JSONArray()
+            // Merge by tag: keep profile servers (e.g. dns-direct) required by outbounds
+            val byTag = linkedMapOf<String, JSONObject>()
+            val existing = dns.optJSONArray("servers")
+            if (existing != null) {
+                for (i in 0 until existing.length()) {
+                    val item = existing.optJSONObject(i) ?: continue
+                    val tag = item.optString("tag").trim()
+                    if (tag.isNotEmpty()) {
+                        byTag[tag] = item
+                    }
+                }
+            }
             for (i in 0 until serversUser.length()) {
                 val item = serversUser.optJSONObject(i) ?: continue
                 val converted = convertDnsServer(item) ?: continue
-                servers.put(converted)
+                val tag = converted.optString("tag").trim()
+                if (tag.isNotEmpty()) {
+                    byTag[tag] = converted
+                }
             }
-            if (servers.length() > 0) {
+            if (byTag.isNotEmpty()) {
+                val servers = JSONArray()
+                byTag.values.forEach { servers.put(it) }
                 dns.put("servers", servers)
+            }
+        }
+
+        // final must point to an existing server tag
+        val finalAfter = dns.optString("final", "").trim()
+        if (finalAfter.isNotEmpty()) {
+            val servers = dns.optJSONArray("servers")
+            val tags = buildSet {
+                if (servers != null) {
+                    for (i in 0 until servers.length()) {
+                        val tag = servers.optJSONObject(i)?.optString("tag")?.trim()
+                        if (!tag.isNullOrEmpty()) add(tag)
+                    }
+                }
+            }
+            if (finalAfter !in tags) {
+                dns.remove("final")
             }
         }
     }

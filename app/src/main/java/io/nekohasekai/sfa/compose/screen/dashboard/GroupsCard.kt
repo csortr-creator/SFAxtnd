@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -187,6 +189,7 @@ fun GroupsCard(
     Box(modifier = modifier) {
         GroupsCardContent(
             uiState = uiState,
+            serviceStatus = serviceStatus,
             onToggleExpanded = onToggleExpanded,
             onItemSelected = onItemSelected,
             onUrlTest = onUrlTest,
@@ -206,6 +209,7 @@ fun GroupsCard(
 @Composable
 private fun GroupsCardContent(
     uiState: GroupsUiState,
+    serviceStatus: Status,
     onToggleExpanded: (String) -> Unit,
     onItemSelected: (String, String) -> Unit,
     onUrlTest: (String) -> Unit,
@@ -288,6 +292,33 @@ private fun GroupsCardContent(
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator()
+                    }
+                }
+            }
+
+            uiState.groups.isEmpty() -> {
+                item(key = "groups_empty") {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        ),
+                    ) {
+                        Text(
+                            text = if (
+                                serviceStatus == Status.Started ||
+                                serviceStatus == Status.Starting
+                            ) {
+                                "В профиле нет selector/urltest-групп"
+                            } else {
+                                "Запустите VPN, чтобы выбрать сервер в группе"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp),
+                        )
                     }
                 }
             }
@@ -819,33 +850,31 @@ private fun ProxyChip(
             }
         }
 
-        if (showContextMenu) {
-            DropdownMenu(
-                expanded = true,
-                onDismissRequest = {
-                    showContextMenu = false
+        DropdownMenu(
+            expanded = showContextMenu,
+            onDismissRequest = {
+                showContextMenu = false
+            },
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.url_test,
+                        ),
+                    )
                 },
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(
-                                R.string.url_test,
-                            ),
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Speed,
-                            contentDescription = null,
-                        )
-                    },
-                    onClick = {
-                        showContextMenu = false
-                        onUrlTest()
-                    },
-                )
-            }
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Speed,
+                        contentDescription = null,
+                    )
+                },
+                onClick = {
+                    showContextMenu = false
+                    onUrlTest()
+                },
+            )
         }
     }
 }

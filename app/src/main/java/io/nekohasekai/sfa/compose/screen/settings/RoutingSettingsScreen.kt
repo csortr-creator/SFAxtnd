@@ -267,16 +267,33 @@ fun RoutingSettingsScreen(
                                     ruleSet = "geosite-category-ru",
                                     outbound = RoutingRule.OUTBOUND_DIRECT,
                                     dnsRule = true,
+                                    enabled = true,
                                 ),
                                 RoutingRule(
                                     name = "ru-ip",
                                     ruleSet = "geoip-ru",
                                     outbound = RoutingRule.OUTBOUND_DIRECT,
+                                    enabled = true,
                                 ),
                             ),
                         )
                     },
                 ) { Text("RU → direct") }
+                TextButton(
+                    onClick = {
+                        persist(
+                            nextGeoSourceId = GeoFileSources.SAGERNET.id,
+                            nextRules = listOf(
+                                RoutingRule(
+                                    name = "ads",
+                                    ruleSet = "geosite-category-ads-all",
+                                    outbound = RoutingRule.OUTBOUND_BLOCK,
+                                    enabled = true,
+                                ),
+                            ),
+                        )
+                    },
+                ) { Text("Ads → block") }
                 TextButton(
                     onClick = { persist(nextRules = emptyList()) },
                 ) { Text("Очистить правила") }
@@ -617,17 +634,27 @@ fun RoutingSettingsScreen(
                             )
                         },
                         trailingContent = {
-                            IconButton(
-                                onClick = {
-                                    val next = rules.toMutableList().also { it.removeAt(index) }
-                                    persist(nextRules = next)
-                                },
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Удалить",
-                                    tint = MaterialTheme.colorScheme.error,
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = rule.enabled,
+                                    onCheckedChange = { on ->
+                                        val next = rules.toMutableList()
+                                        next[index] = rule.copy(enabled = on)
+                                        persist(nextRules = next)
+                                    },
                                 )
+                                IconButton(
+                                    onClick = {
+                                        val next = rules.toMutableList().also { it.removeAt(index) }
+                                        persist(nextRules = next)
+                                    },
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Удалить",
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),

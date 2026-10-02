@@ -2,6 +2,7 @@ package io.nekohasekai.sfa.compose.screen.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -200,10 +202,12 @@ fun RoutingSettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.Start,
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(
+                FilterChip(
+                    selected = false,
                     onClick = {
                         persist(
                             nextStrategy = DnsConfig.Strategy.IPV4_ONLY,
@@ -217,8 +221,10 @@ fun RoutingSettingsScreen(
                             ),
                         )
                     },
-                ) { Text("CF + Yandex") }
-                TextButton(
+                    label = { Text("CF + Yandex") },
+                )
+                FilterChip(
+                    selected = false,
                     onClick = {
                         persist(
                             nextStrategy = DnsConfig.Strategy.IPV4_ONLY,
@@ -231,8 +237,10 @@ fun RoutingSettingsScreen(
                             ),
                         )
                     },
-                ) { Text("Cloudflare") }
-                TextButton(
+                    label = { Text("Cloudflare") },
+                )
+                FilterChip(
+                    selected = false,
                     onClick = {
                         persist(
                             nextStrategy = DnsConfig.Strategy.AUTO,
@@ -243,25 +251,29 @@ fun RoutingSettingsScreen(
                             nextServers = emptyList(),
                         )
                     },
-                ) { Text("Очистить DNS") }
+                    label = { Text("Сброс DNS") },
+                )
             }
             Text(
                 text = "Маршруты",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp),
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.Start,
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(
+                FilterChip(
+                    selected = false,
                     onClick = {
+                        val keep = rules.filter { it.name != "ru-sites" && it.name != "ru-ip" }
                         persist(
                             nextGeoSourceId = GeoFileSources.SAGERNET.id,
-                            nextRules = listOf(
+                            nextRules = keep + listOf(
                                 RoutingRule(
                                     name = "ru-sites",
                                     ruleSet = "geosite-category-ru",
@@ -278,12 +290,15 @@ fun RoutingSettingsScreen(
                             ),
                         )
                     },
-                ) { Text("RU → direct") }
-                TextButton(
+                    label = { Text("RU → direct") },
+                )
+                FilterChip(
+                    selected = false,
                     onClick = {
+                        val keep = rules.filter { it.name != "ads" }
                         persist(
                             nextGeoSourceId = GeoFileSources.SAGERNET.id,
-                            nextRules = listOf(
+                            nextRules = keep + listOf(
                                 RoutingRule(
                                     name = "ads",
                                     ruleSet = "geosite-category-ads-all",
@@ -293,13 +308,16 @@ fun RoutingSettingsScreen(
                             ),
                         )
                     },
-                ) { Text("Ads → block") }
-                TextButton(
+                    label = { Text("Ads → block") },
+                )
+                FilterChip(
+                    selected = false,
                     onClick = { persist(nextRules = emptyList()) },
-                ) { Text("Очистить правила") }
+                    label = { Text("Сброс правил") },
+                )
             }
             Text(
-                text = "После пресета можно править поля ниже. Нужен reload VPN.",
+                text = "Пресеты дополняют список; выключайте правила переключателем. Нужен reload VPN.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
@@ -548,41 +566,34 @@ fun RoutingSettingsScreen(
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     )
                 }
+                OutlinedTextField(
+                    value = geoGeositeUrl,
+                    onValueChange = { persist(nextGeoGeositeUrl = it) },
+                    label = { Text("Базовый URL geosite") },
+                    placeholder = { Text("https://.../rule-set") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                OutlinedTextField(
+                    value = geoGeoipUrl,
+                    onValueChange = { persist(nextGeoGeoipUrl = it) },
+                    label = { Text("Базовый URL geoip") },
+                    placeholder = { Text("https://.../rule-set") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Text(
+                    text = "Файлы: geosite-….srs / geoip-….srs",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, bottom = 12.dp, top = 4.dp),
+                )
             }
         }
-
-        Text(
-            text = "Свои URL rule-set",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-        OutlinedTextField(
-            value = geoGeositeUrl,
-            onValueChange = { persist(nextGeoGeositeUrl = it) },
-            label = { Text("Базовый URL geosite rule-set") },
-            placeholder = { Text("https://.../rule-set") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        OutlinedTextField(
-            value = geoGeoipUrl,
-            onValueChange = { persist(nextGeoGeoipUrl = it) },
-            label = { Text("Базовый URL geoip rule-set") },
-            placeholder = { Text("https://.../rule-set") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        Text(
-            text = "Файлы вида geosite-category-ru.srs / geoip-ru.srs",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
 
         Row(
             modifier = Modifier

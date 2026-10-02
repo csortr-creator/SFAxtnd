@@ -188,6 +188,7 @@ object UserRoutingConfig {
         val usedRuleSetTags = linkedSetOf<String>()
         for (i in 0 until rulesUser.length()) {
             val item = rulesUser.optJSONObject(i) ?: continue
+            if (!item.optBoolean("enabled", true)) continue
             val rule = buildSingBoxRule(item) ?: continue
             if (rule.optString("outbound") == "block") {
                 needBlock = true

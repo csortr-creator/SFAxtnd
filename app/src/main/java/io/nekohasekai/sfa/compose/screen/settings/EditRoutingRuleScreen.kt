@@ -362,7 +362,7 @@ fun EditRoutingRuleScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ),
         ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            androidx.compose.foundation.layout.Column(Modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         Field(value = domain, onChange = { domain = it }, label = "Домен")
         Field(
             value = domainSuffix,

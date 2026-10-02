@@ -18,6 +18,7 @@ data class RoutingRule(
     val clashMode: String = "",
     val outbound: String = OUTBOUND_PROXY,
     val dnsRule: Boolean = false,
+    val enabled: Boolean = true,
     val type: Type = Type.DOMAIN,
     val value: String = "",
 ) {
@@ -49,6 +50,7 @@ data class RoutingRule(
 
     fun displaySubtitle(): String {
         val parts = buildList {
+            if (!enabled) add("выкл")
             if (domain.isNotBlank()) add("domain")
             if (domainSuffix.isNotBlank()) add("suffix")
             if (domainKeyword.isNotBlank()) add("keyword")

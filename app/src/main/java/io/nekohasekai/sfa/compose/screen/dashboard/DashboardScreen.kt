@@ -265,15 +265,13 @@ fun DashboardScreen(
                 }
             }
 
-            val serviceStarted =
-                serviceStatus == Status.Started || serviceStatus == Status.Starting
-            if (serviceStarted) {
-                item {
-                    GroupsCard(
-                        serviceStatus = serviceStatus,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+            // Groups are primary content: show always; live data only when VPN is up
+            item(key = "dashboard_groups") {
+                GroupsCard(
+                    serviceStatus = serviceStatus,
+                    commandClient = viewModel.commandClient,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

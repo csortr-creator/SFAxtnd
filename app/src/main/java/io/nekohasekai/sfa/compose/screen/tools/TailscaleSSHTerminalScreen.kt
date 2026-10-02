@@ -25,7 +25,8 @@ import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 @Composable
 fun TailscaleSSHTerminalScreen(
     navController: NavController,
-    peerName: String = "",
+    sharedViewModel: TailscaleSSHSharedViewModel,
+    tailscaleViewModel: TailscaleStatusViewModel,
 ) {
     val scaffoldPadding = LocalScaffoldPadding.current
     OverrideTopBar {

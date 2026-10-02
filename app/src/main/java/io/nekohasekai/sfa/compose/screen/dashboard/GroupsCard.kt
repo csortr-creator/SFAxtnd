@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
@@ -139,7 +140,9 @@ fun GroupsCard(
         }
     val onItemSelected =
         remember(actualViewModel) {
-            { groupTag: String, itemTag: String -> actualViewModel.selectGroupItem(groupTag, itemTag) }
+            { groupTag: String, itemTag: String ->
+                actualViewModel.selectGroupItem(groupTag, itemTag)
+            }
         }
     val onUrlTest =
         remember(actualViewModel) {
@@ -154,8 +157,11 @@ fun GroupsCard(
         actualViewModel.updateServiceStatus(serviceStatus)
     }
 
-    val closeConnectionsMessage = stringResource(R.string.close_connections_confirm)
-    val closeConnectionsAction = stringResource(R.string.close)
+    val closeConnectionsMessage =
+        stringResource(R.string.close_connections_confirm)
+    val closeConnectionsAction =
+        stringResource(R.string.close)
+
     LaunchedEffect(uiState.showCloseConnectionsSnackbar) {
         if (uiState.showCloseConnectionsSnackbar) {
             val result =
@@ -165,6 +171,7 @@ fun GroupsCard(
                     duration = SnackbarDuration.Indefinite,
                     withDismissAction = true,
                 )
+
             when (result) {
                 SnackbarResult.ActionPerformed -> {
                     actualViewModel.closeConnections()
@@ -187,6 +194,7 @@ fun GroupsCard(
             listHeaderContent = listHeaderContent,
             asSheet = asSheet,
         )
+
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -206,7 +214,11 @@ private fun GroupsCardContent(
     asSheet: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val lazyListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val lazyListState =
+        rememberSaveable(saver = LazyListState.Saver) {
+            LazyListState()
+        }
+
     val scrollModifier =
         if (asSheet) {
             rememberSheetDismissFromContentOnlyIfGestureStartedAtTopModifier {
@@ -214,16 +226,39 @@ private fun GroupsCardContent(
                     lazyListState.firstVisibleItemScrollOffset == 0
             }
         } else {
-            Modifier.nestedScroll(rememberBounceBlockingNestedScrollConnection(lazyListState))
+            Modifier.nestedScroll(
+                rememberBounceBlockingNestedScrollConnection(lazyListState),
+            )
         }
-    val scaffoldPadding = if (asSheet) PaddingValues(0.dp) else LocalScaffoldPadding.current
-    val overscrollEffect = if (asSheet) null else rememberOverscrollEffectCompat()
+
+    val scaffoldPadding =
+        if (asSheet) {
+            PaddingValues(0.dp)
+        } else {
+            LocalScaffoldPadding.current
+        }
+
+    val overscrollEffect =
+        if (asSheet) {
+            null
+        } else {
+            rememberOverscrollEffectCompat()
+        }
+
     val palette = rememberUrlTestPalette()
 
     LazyColumnCompat(
         modifier =
         modifier
-            .fillMaxSize()
+            .then(
+                if (asSheet) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 600.dp)
+                },
+            )
             .then(scrollModifier)
             .padding(scaffoldPadding),
         state = lazyListState,
@@ -259,51 +294,80 @@ private fun GroupsCardContent(
 
             else -> {
                 uiState.groups.forEach { group ->
-                    val isExpanded = uiState.expandedGroups.contains(group.tag)
-                    val headerContent: @Composable (Modifier) -> Unit = { headerModifier ->
-                        GroupHeader(
-                            group = group,
-                            isExpanded = isExpanded,
-                            isTesting = uiState.testingGroups.contains(group.tag),
-                            onToggleExpanded = { onToggleExpanded(group.tag) },
-                            onUrlTest = { onUrlTest(group.tag) },
-                            modifier = headerModifier,
-                        )
-                    }
+                    val isExpanded =
+                        uiState.expandedGroups.contains(group.tag)
+
+                    val headerContent: @Composable (Modifier) -> Unit =
+                        { headerModifier ->
+                            GroupHeader(
+                                group = group,
+                                isExpanded = isExpanded,
+                                isTesting =
+                                uiState.testingGroups.contains(group.tag),
+                                onToggleExpanded = {
+                                    onToggleExpanded(group.tag)
+                                },
+                                onUrlTest = {
+                                    onUrlTest(group.tag)
+                                },
+                                modifier = headerModifier,
+                            )
+                        }
+
                     if (isExpanded) {
-                        stickyHeader(key = "header:${group.tag}", contentType = "GroupHeader") {
+                        stickyHeader(
+                            key = "header:${group.tag}",
+                            contentType = "GroupHeader",
+                        ) {
                             headerContent(Modifier.animateItem())
                         }
                     } else {
-                        item(key = "header:${group.tag}", contentType = "GroupHeader") {
+                        item(
+                            key = "header:${group.tag}",
+                            contentType = "GroupHeader",
+                        ) {
                             headerContent(Modifier.animateItem())
                         }
                     }
+
                     if (isExpanded) {
                         val rowItems = group.items.chunked(2)
+
                         rowItems.forEachIndexed { rowIndex, row ->
                             item(
-                                key = "row:${group.tag}:${row.first().tag}",
+                                key =
+                                "row:${group.tag}:${row.first().tag}",
                                 contentType = "GroupItemRow",
                             ) {
                                 GroupItemRow(
                                     row = row,
                                     selectedTag = group.selected,
                                     isSelectable = group.selectable,
-                                    isLast = rowIndex == rowItems.lastIndex,
+                                    isLast =
+                                    rowIndex == rowItems.lastIndex,
                                     palette = palette,
-                                    onItemSelected = { itemTag -> onItemSelected(group.tag, itemTag) },
+                                    onItemSelected = { itemTag ->
+                                        onItemSelected(
+                                            group.tag,
+                                            itemTag,
+                                        )
+                                    },
                                     onItemUrlTest = onItemUrlTest,
                                     modifier = Modifier.animateItem(),
                                 )
                             }
                         }
                     } else {
-                        item(key = "dots:${group.tag}", contentType = "GroupDots") {
+                        item(
+                            key = "dots:${group.tag}",
+                            contentType = "GroupDots",
+                        ) {
                             GroupDotsGrid(
                                 group = group,
                                 palette = palette,
-                                onClick = { onToggleExpanded(group.tag) },
+                                onClick = {
+                                    onToggleExpanded(group.tag)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -314,8 +378,17 @@ private fun GroupsCardContent(
     }
 }
 
-private val GroupCardTopShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-private val GroupCardBottomShape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
+private val GroupCardTopShape =
+    RoundedCornerShape(
+        topStart = 16.dp,
+        topEnd = 16.dp,
+    )
+
+private val GroupCardBottomShape =
+    RoundedCornerShape(
+        bottomStart = 16.dp,
+        bottomEnd = 16.dp,
+    )
 
 @Immutable
 private data class UrlTestPalette(
@@ -324,18 +397,24 @@ private data class UrlTestPalette(
     val bad: Color,
     val neutral: Color,
 ) {
-    fun forDelay(delay: Int): Color = when {
-        delay <= 0 -> neutral
-        delay < 800 -> good
-        delay < 1500 -> medium
-        else -> bad
-    }
+    fun forDelay(delay: Int): Color =
+        when {
+            delay <= 0 -> neutral
+            delay < 800 -> good
+            delay < 1500 -> medium
+            else -> bad
+        }
 }
 
 @Composable
 private fun rememberUrlTestPalette(): UrlTestPalette {
     val darkTheme = isSystemInDarkTheme()
-    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = if (darkTheme) 0.09f else 0.07f)
+
+    val neutral =
+        MaterialTheme.colorScheme.onSurface.copy(
+            alpha = if (darkTheme) 0.09f else 0.07f,
+        )
+
     return remember(darkTheme, neutral) {
         if (darkTheme) {
             UrlTestPalette(
@@ -374,7 +453,13 @@ private fun GroupHeader(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
+            modifier =
+            Modifier.padding(
+                start = 16.dp,
+                end = 8.dp,
+                top = 6.dp,
+                bottom = 2.dp,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -390,26 +475,40 @@ private fun GroupHeader(
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier =
+                    Modifier.weight(
+                        1f,
+                        fill = false,
+                    ),
                 )
+
                 Text(
                     text = group.displayType,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
             Surface(
                 shape = RoundedCornerShape(999.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                color =
+                MaterialTheme.colorScheme.onSurface.copy(
+                    alpha = 0.08f,
+                ),
             ) {
                 Text(
                     text = "${group.items.size}",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    modifier =
+                    Modifier.padding(
+                        horizontal = 8.dp,
+                        vertical = 2.dp,
+                    ),
                 )
             }
+
             IconButton(
                 onClick = onUrlTest,
                 enabled = !isTesting,
@@ -423,17 +522,21 @@ private fun GroupHeader(
                 } else {
                     Icon(
                         imageVector = Icons.Default.Speed,
-                        contentDescription = stringResource(R.string.url_test),
+                        contentDescription =
+                        stringResource(R.string.url_test),
                         modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint =
+                        MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+
             val rotationAngle by animateFloatAsState(
                 targetValue = if (isExpanded) 180f else 0f,
                 animationSpec = tween(200),
                 label = "ExpandIcon",
             )
+
             Icon(
                 imageVector = Icons.Default.ExpandMore,
                 contentDescription =
@@ -445,7 +548,9 @@ private fun GroupHeader(
                 modifier =
                 Modifier
                     .size(24.dp)
-                    .graphicsLayer { rotationZ = rotationAngle },
+                    .graphicsLayer {
+                        rotationZ = rotationAngle
+                    },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -472,13 +577,35 @@ private fun GroupDotsGrid(
             Modifier
                 .clickable(onClick = onClick)
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 16.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 6.dp,
+                    bottom = 16.dp,
+                ),
         ) {
             val dotSize = 11.dp
             val dotSpacing = 4.dp
-            val columns = maxOf(1, ((maxWidth + dotSpacing) / (dotSize + dotSpacing)).toInt())
-            val rows = (group.items.size + columns - 1) / columns
-            val gridHeight = dotSize * rows + dotSpacing * maxOf(0, rows - 1)
+
+            val columns =
+                maxOf(
+                    1,
+                    (
+                        (maxWidth + dotSpacing) /
+                            (dotSize + dotSpacing)
+                    ).toInt(),
+                )
+
+            val rows =
+                (group.items.size + columns - 1) / columns
+
+            val gridHeight =
+                dotSize * rows +
+                    dotSpacing * maxOf(
+                        0,
+                        rows - 1,
+                    )
+
             Canvas(
                 modifier =
                 Modifier
@@ -487,22 +614,40 @@ private fun GroupDotsGrid(
             ) {
                 val dotSizePx = dotSize.toPx()
                 val dotSpacingPx = dotSpacing.toPx()
-                val cornerRadius = CornerRadius(4.dp.toPx())
+                val cornerRadius =
+                    CornerRadius(4.dp.toPx())
                 val selectedDotRadius = 2.dp.toPx()
+
                 group.items.forEachIndexed { index, item ->
-                    val x = (index % columns) * (dotSizePx + dotSpacingPx)
-                    val y = (index / columns) * (dotSizePx + dotSpacingPx)
+                    val x =
+                        (index % columns) *
+                            (dotSizePx + dotSpacingPx)
+
+                    val y =
+                        (index / columns) *
+                            (dotSizePx + dotSpacingPx)
+
                     drawRoundRect(
-                        color = palette.forDelay(item.urlTestDelay),
+                        color = palette.forDelay(
+                            item.urlTestDelay,
+                        ),
                         topLeft = Offset(x, y),
-                        size = Size(dotSizePx, dotSizePx),
+                        size = Size(
+                            dotSizePx,
+                            dotSizePx,
+                        ),
                         cornerRadius = cornerRadius,
                     )
+
                     if (item.tag == group.selected) {
                         drawCircle(
                             color = Color.White,
                             radius = selectedDotRadius,
-                            center = Offset(x + dotSizePx / 2, y + dotSizePx / 2),
+                            center =
+                            Offset(
+                                x + dotSizePx / 2,
+                                y + dotSizePx / 2,
+                            ),
                         )
                     }
                 }
@@ -525,9 +670,16 @@ private fun GroupItemRow(
     Surface(
         modifier =
         modifier
-            .padding(bottom = if (isLast) 12.dp else 0.dp)
+            .padding(
+                bottom = if (isLast) 12.dp else 0.dp,
+            )
             .fillMaxWidth(),
-        shape = if (isLast) GroupCardBottomShape else RectangleShape,
+        shape =
+        if (isLast) {
+            GroupCardBottomShape
+        } else {
+            RectangleShape
+        },
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(
@@ -546,13 +698,20 @@ private fun GroupItemRow(
                     isSelected = item.tag == selectedTag,
                     isSelectable = isSelectable,
                     palette = palette,
-                    onClick = { onItemSelected(item.tag) },
-                    onUrlTest = { onItemUrlTest(item.tag) },
+                    onClick = {
+                        onItemSelected(item.tag)
+                    },
+                    onUrlTest = {
+                        onItemUrlTest(item.tag)
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
+
             repeat(2 - row.size) {
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -569,8 +728,12 @@ private fun ProxyChip(
     onUrlTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showContextMenu by remember { mutableStateOf(false) }
+    var showContextMenu by remember {
+        mutableStateOf(false)
+    }
+
     val chipShape = RoundedCornerShape(12.dp)
+
     Box(modifier = modifier) {
         Surface(
             modifier =
@@ -578,8 +741,14 @@ private fun ProxyChip(
                 .fillMaxWidth()
                 .clip(chipShape)
                 .combinedClickable(
-                    onClick = { if (isSelectable) onClick() },
-                    onLongClick = { showContextMenu = true },
+                    onClick = {
+                        if (isSelectable) {
+                            onClick()
+                        }
+                    },
+                    onLongClick = {
+                        showContextMenu = true
+                    },
                 ),
             shape = chipShape,
             color =
@@ -590,8 +759,13 @@ private fun ProxyChip(
             },
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier =
+                Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 10.dp,
+                ),
+                verticalArrangement =
+                Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = item.tag,
@@ -606,39 +780,60 @@ private fun ProxyChip(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement =
+                    Arrangement.SpaceBetween,
+                    verticalAlignment =
+                    Alignment.CenterVertically,
                 ) {
                     Text(
                         text = item.displayType,
-                        style = MaterialTheme.typography.labelSmall,
+                        style =
+                        MaterialTheme.typography.labelSmall,
                         color =
                         if (isSelected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            MaterialTheme.colorScheme
+                                .onPrimaryContainer
+                                .copy(alpha = 0.7f)
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            MaterialTheme.colorScheme
+                                .onSurfaceVariant
                         },
                     )
+
                     if (item.urlTestDelay > 0) {
                         Text(
                             text = "${item.urlTestDelay}ms",
-                            style = MaterialTheme.typography.labelSmall,
+                            style =
+                            MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = palette.forDelay(item.urlTestDelay),
+                            color =
+                            palette.forDelay(
+                                item.urlTestDelay,
+                            ),
                         )
                     }
                 }
             }
         }
+
         if (showContextMenu) {
             DropdownMenu(
                 expanded = true,
-                onDismissRequest = { showContextMenu = false },
+                onDismissRequest = {
+                    showContextMenu = false
+                },
             ) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.url_test)) },
+                    text = {
+                        Text(
+                            stringResource(
+                                R.string.url_test,
+                            ),
+                        )
+                    },
                     leadingIcon = {
                         Icon(
                             Icons.Default.Speed,
@@ -656,18 +851,40 @@ private fun ProxyChip(
 }
 
 @Composable
-private fun rememberBounceBlockingNestedScrollConnection(lazyListState: LazyListState): NestedScrollConnection = remember(lazyListState) {
-    object : NestedScrollConnection {
-        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-            // Only block upward scroll (y < 0) at bottom to prevent sheet expansion
-            // Allow downward scroll (y > 0) at top to let sheet collapse
-            return if (available.y < 0) available else Offset.Zero
-        }
+private fun rememberBounceBlockingNestedScrollConnection(
+    lazyListState: LazyListState,
+): NestedScrollConnection =
+    remember(lazyListState) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                // Only block upward scroll (y < 0) at bottom
+                // to prevent sheet expansion.
+                // Allow downward scroll (y > 0) at top
+                // to let sheet collapse.
+                return if (available.y < 0) {
+                    available
+                } else {
+                    Offset.Zero
+                }
+            }
 
-        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-            // Only block upward fling (y < 0) to prevent sheet expansion
-            // Allow downward fling (y > 0) to let sheet collapse
-            return if (available.y < 0) available else Velocity.Zero
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                // Only block upward fling (y < 0)
+                // to prevent sheet expansion.
+                // Allow downward fling (y > 0)
+                // to let sheet collapse.
+                return if (available.y < 0) {
+                    available
+                } else {
+                    Velocity.Zero
+                }
+            }
         }
     }
-}

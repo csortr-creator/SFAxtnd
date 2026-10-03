@@ -89,7 +89,7 @@ object UserRoutingConfig {
             }
             for (i in 0 until serversUser.length()) {
                 val item = serversUser.optJSONObject(i) ?: continue
-                val converted = convertDnsServer(item) ?: continue
+                val converted = convertDnsServer(item, root) ?: continue
                 val tag = converted.optString("tag").trim()
                 if (tag.isNotEmpty()) {
                     byTag[tag] = converted
@@ -120,7 +120,55 @@ object UserRoutingConfig {
         }
     }
 
-    private fun convertDnsServer(item: JSONObject): JSONObject? {
+
+    private fun resolveDnsDetour(root: JSONObject, detour: String): String? {
+        val raw = detour.trim()
+        if (raw.isEmpty()) {
+            return null
+        }
+        when (raw.lowercase()) {
+            "direct" -> return if (outboundTagExists(root, "direct")) "direct" else null
+            "proxy" -> return findProxyOutboundTag(root)
+            else -> return if (outboundTagExists(root, raw)) raw else null
+        }
+    }
+
+    private fun outboundTagExists(root: JSONObject, tag: String): Boolean {
+        val outbounds = root.optJSONArray("outbounds") ?: return false
+        for (i in 0 until outbounds.length()) {
+            if (outbounds.optJSONObject(i)?.optString("tag") == tag) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun findProxyOutboundTag(root: JSONObject): String? {
+        val outbounds = root.optJSONArray("outbounds") ?: return null
+        for (i in 0 until outbounds.length()) {
+            val item = outbounds.optJSONObject(i) ?: continue
+            val type = item.optString("type")
+            val tag = item.optString("tag").trim()
+            if (tag.isNotEmpty() && type in setOf("selector", "urltest")) {
+                return tag
+            }
+        }
+        val routeFinal = root.optJSONObject("route")?.optString("final")?.trim().orEmpty()
+        if (routeFinal.isNotEmpty() && routeFinal != "direct" && routeFinal != "block" && outboundTagExists(root, routeFinal)) {
+            return routeFinal
+        }
+        for (i in 0 until outbounds.length()) {
+            val item = outbounds.optJSONObject(i) ?: continue
+            val type = item.optString("type")
+            val tag = item.optString("tag").trim()
+            if (tag.isEmpty()) continue
+            if (type in setOf("direct", "block", "dns")) continue
+            return tag
+        }
+        return null
+    }
+
+    private fun convertDnsServer(item: JSONObject, root: JSONObject): JSONObject? {
         val tag = item.optString("tag").trim()
         val address = item.optString("address").trim()
         if (tag.isEmpty() || address.isEmpty()) {
@@ -129,9 +177,9 @@ object UserRoutingConfig {
         val server = JSONObject()
         server.put("tag", tag)
 
-        val detour = item.optString("detour").trim()
-        if (detour.isNotEmpty() && detour != "direct") {
-            server.put("detour", detour)
+        val resolvedDetour = resolveDnsDetour(root, item.optString("detour").trim())
+        if (!resolvedDetour.isNullOrEmpty()) {
+            server.put("detour", resolvedDetour)
         }
 
         when {

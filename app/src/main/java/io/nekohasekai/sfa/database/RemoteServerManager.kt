@@ -1,8 +1,14 @@
 package io.nekohasekai.sfa.database
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
 @Suppress("RedundantSuspendModifier")
 object RemoteServerManager {
     private val callbacks = mutableListOf<() -> Unit>()
+    private val callbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun registerCallback(callback: () -> Unit) {
         callbacks.add(callback)
@@ -14,7 +20,9 @@ object RemoteServerManager {
 
     private fun notifyCallbacks() {
         for (callback in callbacks.toList()) {
-            callback()
+            callbackScope.launch {
+                callback()
+            }
         }
     }
 

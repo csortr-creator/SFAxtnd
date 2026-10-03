@@ -3,13 +3,17 @@ package io.nekohasekai.sfa.database
 import androidx.room.Room
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.constant.Path
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @Suppress("RedundantSuspendModifier")
 object ProfileManager {
     private val callbacks = mutableListOf<() -> Unit>()
+    private val callbackScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun registerCallback(callback: () -> Unit) {
         callbacks.add(callback)
@@ -17,6 +21,14 @@ object ProfileManager {
 
     fun unregisterCallback(callback: () -> Unit) {
         callbacks.remove(callback)
+    }
+
+    private fun notifyCallbacks() {
+        for (callback in callbacks.toList()) {
+            callbackScope.launch {
+                callback()
+            }
+        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -46,9 +58,7 @@ object ProfileManager {
         if (andSelect) {
             Settings.selectedProfile = profile.id
         }
-        for (callback in callbacks.toList()) {
-            callback()
-        }
+        notifyCallbacks()
         return profile
     }
 
@@ -56,9 +66,7 @@ object ProfileManager {
         try {
             return instance.profileDao().update(profile)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -66,9 +74,7 @@ object ProfileManager {
         try {
             return instance.profileDao().update(profiles)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -76,9 +82,7 @@ object ProfileManager {
         try {
             return instance.profileDao().delete(profile)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -86,9 +90,7 @@ object ProfileManager {
         try {
             return instance.profileDao().delete(profiles)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 

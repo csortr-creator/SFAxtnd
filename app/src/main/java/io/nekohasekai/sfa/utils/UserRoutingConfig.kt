@@ -127,7 +127,8 @@ object UserRoutingConfig {
             return null
         }
         when (raw.lowercase()) {
-            "direct" -> return if (outboundTagExists(root, "direct")) "direct" else null
+            // sing-box rejects detour to an empty direct outbound
+            "direct" -> return null
             "proxy" -> return findProxyOutboundTag(root)
             else -> return if (outboundTagExists(root, raw)) raw else null
         }

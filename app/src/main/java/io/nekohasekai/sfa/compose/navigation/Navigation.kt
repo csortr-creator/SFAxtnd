@@ -118,6 +118,11 @@ fun NavHost(
             }
         }
 
+
+        composable(Screen.Routing.route) {
+            RoutingSettingsScreen(navController = navController)
+        }
+
         composable(Screen.Subscriptions.route) {
             if (groupsViewModel != null) {
                 GroupsCard(

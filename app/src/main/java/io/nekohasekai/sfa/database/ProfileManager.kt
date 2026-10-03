@@ -4,7 +4,9 @@ import androidx.room.Room
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.constant.Path
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 @Suppress("RedundantSuspendModifier")
@@ -17,6 +19,14 @@ object ProfileManager {
 
     fun unregisterCallback(callback: () -> Unit) {
         callbacks.remove(callback)
+    }
+
+    private suspend fun notifyCallbacks() = coroutineScope {
+        callbacks.toList().forEach { callback ->
+            launch(Dispatchers.Default) {
+                callback()
+            }
+        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -46,9 +56,7 @@ object ProfileManager {
         if (andSelect) {
             Settings.selectedProfile = profile.id
         }
-        for (callback in callbacks.toList()) {
-            callback()
-        }
+        notifyCallbacks()
         return profile
     }
 
@@ -56,9 +64,7 @@ object ProfileManager {
         try {
             return instance.profileDao().update(profile)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -66,9 +72,7 @@ object ProfileManager {
         try {
             return instance.profileDao().update(profiles)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -76,9 +80,7 @@ object ProfileManager {
         try {
             return instance.profileDao().delete(profile)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 
@@ -86,9 +88,7 @@ object ProfileManager {
         try {
             return instance.profileDao().delete(profiles)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            notifyCallbacks()
         }
     }
 

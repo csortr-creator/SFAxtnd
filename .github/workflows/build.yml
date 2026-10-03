@@ -152,6 +152,12 @@ jobs:
           gomobile version || true
           gobind -version || true
 
+      - name: Patch source code
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./patch.sh
+
       - name: Build libbox
         shell: bash
         run: |

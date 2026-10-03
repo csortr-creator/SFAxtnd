@@ -813,8 +813,11 @@ class MainActivity :
         val isToolsSubScreen = currentRoute?.startsWith("tools/") == true
         val isConnectionsDetail = currentRoute?.startsWith("connections/detail") == true
         val isProfileRoute = currentRoute?.startsWith("profile/") == true
+        val isRoutingScreen =
+            currentRoute == Screen.Routing.route || currentRoute?.startsWith("settings/routing") == true
         val currentRootRoute =
             when {
+                isRoutingScreen -> Screen.Routing.route
                 isSettingsSubScreen -> Screen.Settings.route
                 isToolsSubScreen -> Screen.Tools.route
                 currentRoute?.startsWith(Screen.Connections.route) == true -> Screen.Connections.route
@@ -936,6 +939,7 @@ class MainActivity :
                 if (showConnectionsInNav) {
                     add(Screen.Connections)
                 }
+                add(Screen.Routing)
                 add(Screen.Log)
                 add(Screen.Tools)
                 add(Screen.Settings)
@@ -945,6 +949,7 @@ class MainActivity :
             buildSet {
                 add(Screen.Dashboard.route)
                 add(Screen.Subscriptions.route)
+                add(Screen.Routing.route)
                 add(Screen.Log.route)
                 add(Screen.Tools.route)
                 add(Screen.Settings.route)

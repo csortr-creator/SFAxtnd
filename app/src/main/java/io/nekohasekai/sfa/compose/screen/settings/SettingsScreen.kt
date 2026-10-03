@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
@@ -165,13 +166,13 @@ fun SettingsScreen(navController: NavController) {
                 ListItem(
                     headlineContent = {
                         Text(
-                            "Маршрутизация",
+                            stringResource(R.string.title_log),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     },
                     leadingContent = {
                         Icon(
-                            imageVector = Icons.Outlined.AccountTree,
+                            imageVector = Icons.AutoMirrored.Outlined.TextSnippet,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                         )
@@ -179,7 +180,7 @@ fun SettingsScreen(navController: NavController) {
                     modifier =
                     Modifier
                         .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
-                        .clickable { navController.navigate("settings/routing") },
+                        .clickable { navController.navigate(Screen.Log.route) },
                     colors =
                     ListItemDefaults.colors(
                         containerColor = Color.Transparent,

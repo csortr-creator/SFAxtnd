@@ -113,19 +113,17 @@ object Settings {
         SettingsKey.PER_APP_PROXY_PACKAGE_QUERY_MODE,
     ) { PACKAGE_QUERY_MODE_SHIZUKU }
 
-    fun getEffectivePerAppProxyMode(): Int =
-        if (perAppProxyManagedMode) {
-            PER_APP_PROXY_EXCLUDE
-        } else {
-            perAppProxyMode
-        }
+    fun getEffectivePerAppProxyMode(): Int = if (perAppProxyManagedMode) {
+        PER_APP_PROXY_EXCLUDE
+    } else {
+        perAppProxyMode
+    }
 
-    fun getEffectivePerAppProxyList(): Set<String> =
-        if (perAppProxyManagedMode) {
-            perAppProxyManagedList
-        } else {
-            perAppProxyList
-        }
+    fun getEffectivePerAppProxyList(): Set<String> = if (perAppProxyManagedMode) {
+        perAppProxyManagedList
+    } else {
+        perAppProxyList
+    }
 
     var allowBypass by dataStore.boolean(SettingsKey.ALLOW_BYPASS) { false }
     var systemProxyEnabled by dataStore.boolean(SettingsKey.SYSTEM_PROXY_ENABLED) { true }
@@ -266,14 +264,52 @@ object Settings {
         }
 
         val profile = ProfileManager.get(selectedProfile) ?: return false
-        val content = JSONObject(File(profile.typed.path).readText())
-        val inbounds = content.getJSONArray("inbounds")
+        val file = File(profile.typed.path)
+        if (!file.exists()) return false
 
-        for (index in 0 until inbounds.length()) {
-            val inbound = inbounds.getJSONObject(index)
-
-            if (inbound.getString("type") == "tun") {
-                return true
+        try {
+            android.util.JsonReader(java.io.FileReader(file)).use { reader ->
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    val name = reader.nextName()
+                    if (name == "inbounds") {
+                        reader.beginArray()
+                        while (reader.hasNext()) {
+                            reader.beginObject()
+                            var isTun = false
+                            while (reader.hasNext()) {
+                                if (reader.nextName() == "type") {
+                                    if (reader.nextString() == "tun") {
+                                        isTun = true
+                                    }
+                                } else {
+                                    reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            if (isTun) {
+                                return true
+                            }
+                        }
+                        reader.endArray()
+                    } else {
+                        reader.skipValue()
+                    }
+                }
+                reader.endObject()
+            }
+        } catch (e: Exception) {
+            // fallback if malformed or file error
+            try {
+                val content = org.json.JSONObject(file.readText())
+                val inbounds = content.optJSONArray("inbounds") ?: return false
+                for (index in 0 until inbounds.length()) {
+                    val inbound = inbounds.getJSONObject(index)
+                    if (inbound.getString("type") == "tun") {
+                        return true
+                    }
+                }
+            } catch (_: Exception) {
             }
         }
 

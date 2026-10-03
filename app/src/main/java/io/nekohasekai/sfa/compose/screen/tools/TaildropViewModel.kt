@@ -14,6 +14,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.util.Log
+import kotlinx.coroutines.GlobalScope
 import java.io.File
 import java.io.IOException
 
@@ -87,12 +89,19 @@ object TaildropFiles {
         destination
     }
 
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     fun cleanCache() {
         val directory = File(Application.application.cacheDir, CACHE_DIRECTORY)
         val expiry = System.currentTimeMillis() - CACHE_LIFETIME
-        directory.listFiles()?.forEach { file ->
-            if (file.lastModified() < expiry) {
-                file.delete()
+        GlobalScope.launch(Dispatchers.IO) {
+            directory.listFiles()?.forEach { file ->
+                if (file.lastModified() < expiry) {
+                    try {
+                        file.delete()
+                    } catch (e: Exception) {
+                        Log.e("TaildropFiles", "Failed to delete cache file: ${file.name}", e)
+                    }
+                }
             }
         }
     }

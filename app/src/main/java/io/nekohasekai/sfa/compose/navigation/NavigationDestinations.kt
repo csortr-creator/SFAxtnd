@@ -3,6 +3,7 @@ package io.nekohasekai.sfa.compose.navigation
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
@@ -48,6 +49,12 @@ sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: I
         icon = Icons.Default.Terminal,
     )
 
+    object Routing : Screen(
+        route = "routing",
+        titleRes = R.string.title_routing,
+        icon = Icons.Default.AccountTree,
+    )
+
     object Settings : Screen(
         route = "settings",
         titleRes = R.string.title_settings,
@@ -55,10 +62,11 @@ sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: I
     )
 }
 
+
 val bottomNavigationScreens =
     listOf(
         Screen.Dashboard,
         Screen.Subscriptions,
-        Screen.Log,
+        Screen.Routing,
         Screen.Settings,
     )

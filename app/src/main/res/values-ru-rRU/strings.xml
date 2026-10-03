@@ -51,6 +51,7 @@
     <string name="title_configuration">Профили</string>
     <string name="title_subscriptions">Группы</string>
     <string name="title_log">Логи</string>
+    <string name="title_routing">Маршруты</string>
     <string name="title_settings">Настройки</string>
     <string name="title_app_settings">Приложение</string>
     <string name="title_new_profile">Новый профиль</string>

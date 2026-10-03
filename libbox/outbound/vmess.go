@@ -51,7 +51,7 @@ func NewVMess(ctx context.Context, router adapter.Router, logger log.ContextLogg
 			logger:   logger,
 			tag:      tag,
 		},
-		dialer:     dialer.NewOutbound(router, options.OutboundDialerOptions),
+		dialer:     dialer.New(dialer.Options{Router: router, Options: options.OutboundDialerOptions}),
 		client:     client,
 		serverAddr: options.ServerOptions.Build(),
 	}

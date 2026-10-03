@@ -36,7 +36,7 @@ func NewDirect(router adapter.Router, logger log.ContextLogger, tag string, opti
 			logger:   logger,
 			tag:      tag,
 		},
-		dialer:     dialer.NewOutbound(router, options.OutboundDialerOptions),
+		dialer:     dialer.New(dialer.Options{Router: router, Options: options.OutboundDialerOptions}),
 		proxyProto: options.ProxyProtocol,
 	}
 	if options.ProxyProtocol > 2 {

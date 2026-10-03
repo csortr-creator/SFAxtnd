@@ -124,10 +124,10 @@ fun CrashReportListScreen(navController: NavController) {
                                     onClick = {
                                         menuExpanded = false
                                         crashTriggerExpanded = false
-                                        Thread {
-                                            Thread.sleep(200)
+                                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            kotlinx.coroutines.delay(200)
                                             throw RuntimeException("debug native crash")
-                                        }.start()
+                                        }
                                     },
                                 )
                             }

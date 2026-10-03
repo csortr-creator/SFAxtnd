@@ -4,12 +4,21 @@ import android.net.Network
 import android.os.Build
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.sfa.Application
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.net.NetworkInterface
 
 object DefaultNetworkMonitor {
 
     var defaultNetwork: Network? = null
     private var listener: InterfaceUpdateListener? = null
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var checkJob: Job? = null
 
     suspend fun start() {
         DefaultNetworkListener.start(this) {
@@ -41,26 +50,29 @@ object DefaultNetworkMonitor {
     }
 
     private fun checkDefaultInterfaceUpdate(newNetwork: Network?) {
-        val listener = listener ?: return
-        if (newNetwork != null) {
-            for (times in 0 until 10) {
-                val linkProperties = Application.connectivity.getLinkProperties(newNetwork)
-                if (linkProperties == null) {
-                    Thread.sleep(100)
-                    continue
+        checkJob?.cancel()
+        val currentListener = listener ?: return
+        checkJob = scope.launch {
+            if (newNetwork != null) {
+                for (times in 0 until 10) {
+                    val linkProperties = Application.connectivity.getLinkProperties(newNetwork)
+                    if (linkProperties == null) {
+                        delay(100)
+                        continue
+                    }
+                    var interfaceIndex: Int
+                    try {
+                        interfaceIndex = NetworkInterface.getByName(linkProperties.interfaceName).index
+                    } catch (e: Exception) {
+                        delay(100)
+                        continue
+                    }
+                    currentListener.updateDefaultInterface(linkProperties.interfaceName, interfaceIndex, false, false)
+                    return@launch
                 }
-                var interfaceIndex: Int
-                try {
-                    interfaceIndex = NetworkInterface.getByName(linkProperties.interfaceName).index
-                } catch (e: Exception) {
-                    Thread.sleep(100)
-                    continue
-                }
-                listener.updateDefaultInterface(linkProperties.interfaceName, interfaceIndex, false, false)
-                return
+            } else {
+                currentListener.updateDefaultInterface("", -1, false, false)
             }
-        } else {
-            listener.updateDefaultInterface("", -1, false, false)
         }
     }
 }

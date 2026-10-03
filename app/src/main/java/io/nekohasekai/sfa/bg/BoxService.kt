@@ -429,11 +429,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     override fun triggerNativeCrash() {
-        Thread {
-            Thread.sleep(200)
+        GlobalScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(200)
             throw RuntimeException("debug native crash")
-        }.start()
+        }
     }
 
     override fun writeDebugMessage(message: String?) {

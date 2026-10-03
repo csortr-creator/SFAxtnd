@@ -69,7 +69,7 @@ fun RoutingSettingsScreen(
 ) {
     OverrideTopBar {
         TopAppBar(
-            title = { Text("Роутинг") },
+            title = { Text("Маршрутизация") },
             navigationIcon = {
                 IconButton(onClick = { navController.navigateUp() }) {
                     Icon(
@@ -173,7 +173,7 @@ fun RoutingSettingsScreen(
             ),
     ) {
         Text(
-            text = "Настройки применяются при старте или reload VPN. Профиль на диске не меняется.",
+            text = "Правила и DNS накладываются на профиль при старте VPN. Файл профиля не меняется.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -495,7 +495,7 @@ fun RoutingSettingsScreen(
         }
 
         Text(
-            text = "Geo",
+            text = "Геоданные",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -603,7 +603,7 @@ fun RoutingSettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Правила",
+                text = "Список правил",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -704,7 +704,7 @@ fun RoutingSettingsScreen(
                     OutlinedTextField(
                         value = draftDetour,
                         onValueChange = { draftDetour = it },
-                        label = { Text("Detour (optional)") },
+                        label = { Text("Куда слать (direct / proxy / tag)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

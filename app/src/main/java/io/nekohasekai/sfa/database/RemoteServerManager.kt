@@ -1,5 +1,9 @@
 package io.nekohasekai.sfa.database
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+
 @Suppress("RedundantSuspendModifier")
 object RemoteServerManager {
     private val callbacks = mutableListOf<() -> Unit>()
@@ -12,9 +16,11 @@ object RemoteServerManager {
         callbacks.remove(callback)
     }
 
-    private fun notifyCallbacks() {
-        for (callback in callbacks.toList()) {
-            callback()
+    private suspend fun notifyCallbacks() = coroutineScope {
+        callbacks.toList().forEach { callback ->
+            launch(Dispatchers.Default) {
+                callback()
+            }
         }
     }
 

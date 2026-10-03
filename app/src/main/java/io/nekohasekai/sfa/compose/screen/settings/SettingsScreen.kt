@@ -165,7 +165,7 @@ fun SettingsScreen(navController: NavController) {
                 ListItem(
                     headlineContent = {
                         Text(
-                            "Роутинг",
+                            "Маршрутизация",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     },

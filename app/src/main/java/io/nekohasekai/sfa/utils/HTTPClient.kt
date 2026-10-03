@@ -591,13 +591,20 @@ class HTTPClient : Closeable {
         return outbound
     }
 
-    private fun parseQueryParams(query: String?): Map<String, String> {
+    internal fun parseQueryParams(query: String?): Map<String, String> {
         if (query.isNullOrEmpty()) return emptyMap()
         val result = mutableMapOf<String, String>()
         for (pair in query.split("&")) {
             val idx = pair.indexOf("=")
             if (idx > 0) {
-                result[pair.substring(0, idx)] = pair.substring(idx + 1)
+                try {
+                    val key = URLDecoder.decode(pair.substring(0, idx), "UTF-8")
+                    val value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
+                    result[key] = value
+                } catch (e: Exception) {
+                    // Fallback to un-decoded if decode fails
+                    result[pair.substring(0, idx)] = pair.substring(idx + 1)
+                }
             }
         }
         return result

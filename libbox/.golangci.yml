@@ -1,0 +1,17 @@
+linters:
+  disable-all: true
+  enable:
+    - gofumpt
+    - govet
+#    - gci
+    - staticcheck
+    - paralleltest
+
+linters-settings:
+#  gci:
+#    sections:
+#      - standard
+#      - prefix(github.com/sagernet/)
+#      - default
+  staticcheck:
+    go: '1.19'

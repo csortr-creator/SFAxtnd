@@ -69,13 +69,15 @@ fun RoutingSettingsScreen(
 ) {
     OverrideTopBar {
         TopAppBar(
-            title = { Text("Маршрутизация") },
+            title = { Text("Маршруты") },
             navigationIcon = {
-                IconButton(onClick = { navController.navigateUp() }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.content_description_back),
-                    )
+                if (navController.previousBackStackEntry != null) {
+                    IconButton(onClick = { navController.navigateUp() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.content_description_back),
+                        )
+                    }
                 }
             },
         )

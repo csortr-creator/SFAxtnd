@@ -248,9 +248,9 @@ object TaildropSendManager {
 
     private fun writeFile(session: TaildropSendSession, input: InputStream) {
         val chunkSize = Libbox.TaildropChunkSize.toInt()
+        val chunk = ByteArray(chunkSize)
         var reachedEnd = false
         while (!reachedEnd) {
-            val chunk = ByteArray(chunkSize)
             var filled = 0
             while (filled < chunkSize) {
                 val read = input.read(chunk, filled, chunkSize - filled)
@@ -261,7 +261,7 @@ object TaildropSendManager {
                 filled += read
             }
             if (filled > 0) {
-                session.writeChunk(if (filled == chunkSize) chunk else chunk.copyOf(filled))
+                session.writeChunk(chunk.copyOf(filled))
             }
         }
         session.finishFile()

@@ -85,7 +85,7 @@ object SubscriptionRouting {
                 put("type", "remote")
                 put("format", "binary")
                 put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                put("download_detour", NORMAL_SELECTOR_TAG)
+                put("download_detour", "direct")
             })
         }
         if ("geoip-ru" !in existingTags) {
@@ -94,7 +94,7 @@ object SubscriptionRouting {
                 put("type", "remote")
                 put("format", "binary")
                 put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
-                put("download_detour", NORMAL_SELECTOR_TAG)
+                put("download_detour", "direct")
             })
         }
         route.put("rule_set", existing)
@@ -159,10 +159,7 @@ object SubscriptionRouting {
     }
 
     private fun appendCommonDirectRules(rules: JSONArray) {
-        rules.put(JSONObject().apply {
-            put("ip_cidr", JSONArray().apply { put("::/0") })
-            put("outbound", "block")
-        })
+
         rules.put(JSONObject().apply {
             put("ip_is_private", true)
             put("outbound", "direct")

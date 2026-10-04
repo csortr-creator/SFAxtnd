@@ -18,7 +18,7 @@ object UserRoutingConfig {
             val root = JSONObject(jsonStr)
             val user = JSONObject(raw)
             applyDns(root, user.optJSONObject("dns"))
-            applyRules(root, user.optJSONArray("rules"))
+            applyRules(root, user.optJSONArray("rules"), user)
             applyGeo(root, user.optJSONObject("geo"))
             finalizeRemoteRuleSets(root)
             root.toString(2)
@@ -263,7 +263,7 @@ object UserRoutingConfig {
         }
     }
 
-    private fun applyRules(root: JSONObject, rulesUser: JSONArray?) {
+    private fun applyRules(root: JSONObject, rulesUser: JSONArray?, user: JSONObject) {
         if (rulesUser == null || rulesUser.length() == 0) {
             return
         }
@@ -299,7 +299,7 @@ object UserRoutingConfig {
             merged.put(existing.get(i))
         }
         route.put("rules", merged)
-        ensureRuleSetEntries(route, usedRuleSetTags)
+        ensureRuleSetEntries(route, usedRuleSetTags, user.optJSONObject("geo"))
 
         if (needBlock) {
             ensureBlockOutbound(root)
@@ -309,19 +309,29 @@ object UserRoutingConfig {
         }
     }
 
-    private fun ensureRuleSetEntries(route: JSONObject, tags: Set<String>) {
+    private fun ensureRuleSetEntries(route: JSONObject, tags: Set<String>, geoUser: JSONObject?) {
         if (tags.isEmpty()) return
         val ruleSet = route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
         val existing = (0 until ruleSet.length()).mapNotNull {
             ruleSet.optJSONObject(it)?.optString("tag")?.takeIf { tag -> tag.isNotBlank() }
         }.toHashSet()
-        val geositeBase = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set"
-        val geoipBase = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set"
+
+        val sourceId = geoUser?.optString("sourceId", "")?.trim().orEmpty()
+        val customGeosite = geoUser?.optString("geositeUrl", "")?.trim().orEmpty()
+        val customGeoip = geoUser?.optString("geoipUrl", "")?.trim().orEmpty()
+        val source = if (sourceId.isNotEmpty()) io.nekohasekai.sfa.models.GeoFileSources.find(sourceId) else null
+        val geositeBase = customGeosite.ifBlank { source?.geosite_url?.trim().orEmpty() }.trimEnd('/')
+        val geoipBase = customGeoip.ifBlank { source?.geoip_url?.trim().orEmpty() }.trimEnd('/')
+        val defaultGeosite = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set"
+        val defaultGeoip = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set"
+        val finalGeositeBase = geositeBase.ifBlank { defaultGeosite }
+        val finalGeoipBase = geoipBase.ifBlank { defaultGeoip }
+
         for (tag in tags) {
             if (tag in existing) continue
             val base = when {
-                tag.startsWith("geosite") -> geositeBase
-                tag.startsWith("geoip") -> geoipBase
+                tag.startsWith("geosite") -> finalGeositeBase
+                tag.startsWith("geoip") -> finalGeoipBase
                 else -> continue
             }
             ruleSet.put(

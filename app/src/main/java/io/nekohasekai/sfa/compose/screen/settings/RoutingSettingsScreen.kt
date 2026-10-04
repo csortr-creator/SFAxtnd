@@ -37,7 +37,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TonalButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -401,7 +401,7 @@ fun RoutingSettingsScreen(
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp, bottom = 12.dp),
+                        .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 12.dp),
                 )
             }
         }
@@ -732,7 +732,7 @@ private fun SectionHeaderWithAction(title: String, onActionClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, top = 12.dp, bottom = 4.dp),
+            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -765,7 +765,7 @@ private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit)
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-            TonalButton(onClick = onClick) {
+            FilledTonalButton(onClick = onClick) {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = null,

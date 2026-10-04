@@ -11,6 +11,12 @@ object UserRoutingConfig {
 
     fun applyToConfig(jsonStr: String): String {
         val raw = runCatching { Settings.routingConfigJson }.getOrNull().orEmpty()
+        return applyToConfig(jsonStr, raw)
+    }
+
+    /** Testable entry: applies user routing JSON without reading Settings. */
+    fun applyToConfig(jsonStr: String, userConfigJson: String): String {
+        val raw = userConfigJson.trim()
         if (raw.isBlank()) {
             return jsonStr
         }

@@ -20,6 +20,7 @@ object UserRoutingConfig {
             applyDns(root, user.optJSONObject("dns"))
             applyRules(root, user.optJSONArray("rules"))
             applyGeo(root, user.optJSONObject("geo"))
+            finalizeRemoteRuleSets(root)
             root.toString(2)
         } catch (_: Exception) {
             jsonStr
@@ -247,10 +248,16 @@ object UserRoutingConfig {
             val tag = item.optString("tag")
             when {
                 tag.startsWith("geosite") && geositeBase.isNotEmpty() -> {
+                    item.put("type", "remote")
+                    item.put("format", "binary")
                     item.put("url", "$geositeBase/$tag.srs")
+                    item.put("download_detour", "direct")
                 }
                 tag.startsWith("geoip") && geoipBase.isNotEmpty() -> {
+                    item.put("type", "remote")
+                    item.put("format", "binary")
                     item.put("url", "$geoipBase/$tag.srs")
+                    item.put("download_detour", "direct")
                 }
             }
         }
@@ -533,6 +540,40 @@ object UserRoutingConfig {
             RoutingRule.OUTBOUND_PROXY, "proxy" -> SubscriptionRouting.NORMAL_SELECTOR_TAG
             else -> raw.ifBlank { "direct" }
         }
+    }
+
+
+    private fun finalizeRemoteRuleSets(root: JSONObject) {
+        ensureDirectOutbound(root)
+        val route = root.optJSONObject("route") ?: return
+        val ruleSet = route.optJSONArray("rule_set") ?: return
+        for (i in 0 until ruleSet.length()) {
+            val item = ruleSet.optJSONObject(i) ?: continue
+            val type = item.optString("type")
+            val url = item.optString("url").trim()
+            if (type == "remote" || url.startsWith("http://") || url.startsWith("https://")) {
+                item.put("type", "remote")
+                if (!item.has("format") || item.optString("format").isBlank()) {
+                    item.put("format", "binary")
+                }
+                // Must use direct: at VPN start TUN may already own default route
+                item.put("download_detour", "direct")
+            }
+        }
+    }
+
+    private fun ensureDirectOutbound(root: JSONObject) {
+        val outbounds = root.optJSONArray("outbounds") ?: JSONArray().also { root.put("outbounds", it) }
+        for (i in 0 until outbounds.length()) {
+            if (outbounds.optJSONObject(i)?.optString("tag") == "direct") {
+                return
+            }
+        }
+        outbounds.put(
+            JSONObject()
+                .put("type", "direct")
+                .put("tag", "direct"),
+        )
     }
 
     private fun ensureBlockOutbound(root: JSONObject) {

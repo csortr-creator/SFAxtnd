@@ -106,7 +106,7 @@ object VpnDetectionTest {
         return matches
     }
 
-    internal fun isVpnInterface(name: String?): Boolean {
+    private fun isVpnInterface(name: String?): Boolean {
         if (name.isNullOrEmpty()) return false
         val lower = name.lowercase()
         return lower.startsWith("tun") || lower.startsWith("ppp") || lower.startsWith("tap")

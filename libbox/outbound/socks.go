@@ -25,7 +25,7 @@ type Socks struct {
 }
 
 func NewSocks(router adapter.Router, logger log.ContextLogger, tag string, options option.SocksOutboundOptions) (*Socks, error) {
-	detour := dialer.New(dialer.Options{Router: router, Options: options.OutboundDialerOptions})
+	detour := dialer.NewOutbound(router, options.OutboundDialerOptions)
 	var version socks.Version
 	var err error
 	if options.Version != "" {

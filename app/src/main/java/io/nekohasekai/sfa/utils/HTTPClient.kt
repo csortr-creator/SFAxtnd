@@ -591,20 +591,13 @@ class HTTPClient : Closeable {
         return outbound
     }
 
-    internal fun parseQueryParams(query: String?): Map<String, String> {
+    private fun parseQueryParams(query: String?): Map<String, String> {
         if (query.isNullOrEmpty()) return emptyMap()
         val result = mutableMapOf<String, String>()
         for (pair in query.split("&")) {
             val idx = pair.indexOf("=")
             if (idx > 0) {
-                try {
-                    val key = URLDecoder.decode(pair.substring(0, idx), "UTF-8")
-                    val value = URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
-                    result[key] = value
-                } catch (e: Exception) {
-                    // Fallback to un-decoded if decode fails
-                    result[pair.substring(0, idx)] = pair.substring(idx + 1)
-                }
+                result[pair.substring(0, idx)] = pair.substring(idx + 1)
             }
         }
         return result
@@ -757,10 +750,22 @@ class HTTPClient : Closeable {
         root.put("outbounds", outboundsArr)
 
         SubscriptionRouting.apply(root, mode)
+
+        SubscriptionRouting.apply(root, detectModeFromConfig(root))
         return root.toString(2)
     }
 
 
+private fun detectModeFromConfig(root: JSONObject): SubscriptionRouting.Mode {
+    val outbounds = root.optJSONArray("outbounds") ?: return SubscriptionRouting.Mode.NORMAL
+    for (i in 0 until outbounds.length()) {
+        val tag = outbounds.optJSONObject(i)?.optString("tag") ?: continue
+        if (SubscriptionRouting.isWhitelistBypassTag(tag)) {
+            return SubscriptionRouting.Mode.WHITELIST_BYPASS
+        }
+    }
+    return SubscriptionRouting.Mode.NORMAL
+}
     override fun close() {
         client.close()
     }

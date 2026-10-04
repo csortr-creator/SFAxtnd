@@ -117,7 +117,7 @@ func NewHysteria(ctx context.Context, router adapter.Router, logger log.ContextL
 			tag:      tag,
 		},
 		ctx:        ctx,
-		dialer:     dialer.New(dialer.Options{Router: router, Options: options.OutboundDialerOptions}),
+		dialer:     dialer.NewOutbound(router, options.OutboundDialerOptions),
 		serverAddr: options.ServerOptions.Build(),
 		tlsConfig:  tlsConfig,
 		quicConfig: quicConfig,

@@ -40,7 +40,7 @@ func NewTrojan(ctx context.Context, router adapter.Router, logger log.ContextLog
 			logger:   logger,
 			tag:      tag,
 		},
-		dialer:     dialer.New(dialer.Options{Router: router, Options: options.OutboundDialerOptions}),
+		dialer:     dialer.NewOutbound(router, options.OutboundDialerOptions),
 		serverAddr: options.ServerOptions.Build(),
 		key:        trojan.Key(options.Password),
 	}

@@ -73,6 +73,13 @@ git clone --depth 1 --branch v1.14.2 https://github.com/SagerNet/sing-box.git
 # → assemble *Release
 ```
 
+Версия приложения задаётся в `version.properties`:
+
+```text
+VERSION_CODE=100
+VERSION_NAME=1.0.0
+```
+
 ## Структура (основное)
 
 ```text
@@ -89,6 +96,14 @@ app/src/github/.../GitHubUpdateChecker.kt
 .github/workflows/build.yml
 version.properties
 ```
+
+## Релиз 1.0.0
+
+Перед публикацией:
+
+1. История `dev` при необходимости схлопывается в аккуратные коммиты (или один baseline)
+2. `VERSION_NAME=1.0.0`, тег `v1.0.0`
+3. Release через workflow (tag / manual dispatch)
 
 ## Лицензия
 

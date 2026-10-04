@@ -8,6 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 
 @Suppress("RedundantSuspendModifier")
 object ProfileManager {
@@ -21,9 +23,11 @@ object ProfileManager {
         callbacks.remove(callback)
     }
 
-    private suspend fun notifyCallbacks() = coroutineScope {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private fun notifyCallbacks() {
         callbacks.toList().forEach { callback ->
-            launch(Dispatchers.Default) {
+            scope.launch {
                 callback()
             }
         }

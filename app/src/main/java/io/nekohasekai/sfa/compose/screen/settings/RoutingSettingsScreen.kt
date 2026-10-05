@@ -102,7 +102,6 @@ fun RoutingSettingsScreen(
     var blockIpv6 by remember { mutableStateOf(Settings.routingBlockIpv6) }
     var tunStack by remember { mutableStateOf(Settings.tunStack) }
     var tunStackMenuOpen by remember { mutableStateOf(false) }
-    var tunStack by remember { mutableStateOf(Settings.tunStack) }
     var updateInterval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
     var intervalMenuOpen by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }

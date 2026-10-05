@@ -69,6 +69,7 @@ import io.nekohasekai.sfa.compose.component.qr.QRScanSheet
 import io.nekohasekai.sfa.compose.navigation.NewProfileArgs
 import io.nekohasekai.sfa.compose.screen.configuration.ProfileImportHandler
 import io.nekohasekai.sfa.compose.screen.qrscan.QRScanResult
+import io.nekohasekai.sfa.compose.util.ProfileIcons
 import io.nekohasekai.sfa.compose.util.QRCodeGenerator
 import io.nekohasekai.sfa.compose.util.RelativeTimeFormatter
 import io.nekohasekai.sfa.database.Profile
@@ -280,16 +281,81 @@ fun ProfilesCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                ProfileSelectorButton(
-                    selectedProfile = selectedProfile,
-                    onClick = onShowProfilePickerSheet,
-                )
+                // Flat list — no bottom-sheet picker
+                profiles.forEach { profile ->
+                    val isSelected = profile.id == selectedProfileId
+                    Surface(
+                        onClick = { onProfileSelected(profile.id) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = ProfileIcons.getIconById(profile.icon)
+                                    ?: ProfileIcons.getDefaultIconForType(
+                                        profile.typed.type == TypedProfile.Type.Remote,
+                                    ),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = profile.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    text = buildString {
+                                        append(
+                                            when (profile.typed.type) {
+                                                TypedProfile.Type.Remote -> "Удалённый"
+                                                else -> "Локальный"
+                                            },
+                                        )
+                                        runCatching {
+                                            append(" · ")
+                                            append(RelativeTimeFormatter.format(context, profile.typed.lastUpdated))
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            IconButton(onClick = { onProfileEdit(profile) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.edit),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
 
+                if (selectedProfile != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-
-                ProfileInfoRow(profile = selectedProfile)
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 ProfileActionRow(
                     profile = selectedProfile,
@@ -358,6 +424,7 @@ fun ProfilesCard(
                         }
                     },
                 )
+                } // selectedProfile actions
             }
         }
     }

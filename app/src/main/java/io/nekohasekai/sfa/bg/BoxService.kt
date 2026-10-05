@@ -34,8 +34,8 @@ import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.utils.UserRoutingConfig
 import io.nekohasekai.sfa.ktx.hasPermission
+import io.nekohasekai.sfa.utils.UserRoutingConfig
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -126,7 +126,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
             }
-            val runtimeContent = UserRoutingConfig.applyToConfig(content)
+            val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content), Settings.ruleSetUpdateInterval)
 
             lastProfileName = profile.name
             withContext(Dispatchers.Main) {
@@ -216,7 +216,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             stopAndAlert(Alert.EmptyConfiguration)
             return
         }
-        val runtimeContent = UserRoutingConfig.applyToConfig(content)
+        val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content), Settings.ruleSetUpdateInterval)
         lastProfileName = profile.name
         try {
             commandServer.startOrReloadService(

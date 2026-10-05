@@ -148,7 +148,13 @@ fun EditRoutingRuleScreen(
             dnsRule = rule.dnsRule
             enabled = rule.enabled
             showAdvanced = listOf(
-                sourceIp, sourcePort, protocol, wifiSsid, wifiBssid, clashMode, network,
+                sourceIp,
+                sourcePort,
+                protocol,
+                wifiSsid,
+                wifiBssid,
+                clashMode,
+                network,
             ).any { it.isNotBlank() }
         }
         loaded = true

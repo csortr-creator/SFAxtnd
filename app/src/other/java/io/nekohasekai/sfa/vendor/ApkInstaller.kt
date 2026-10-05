@@ -30,12 +30,10 @@ object ApkInstaller {
         }
     }
 
-    fun getConfiguredMethod(): InstallMethod {
-        return if (Settings.silentInstallEnabled) {
-            InstallMethod.valueOf(Settings.silentInstallMethod)
-        } else {
-            InstallMethod.PACKAGE_INSTALLER
-        }
+    fun getConfiguredMethod(): InstallMethod = if (Settings.silentInstallEnabled) {
+        InstallMethod.valueOf(Settings.silentInstallMethod)
+    } else {
+        InstallMethod.PACKAGE_INSTALLER
     }
 
     suspend fun install(context: Context, apkFile: File, method: InstallMethod = getConfiguredMethod()) {

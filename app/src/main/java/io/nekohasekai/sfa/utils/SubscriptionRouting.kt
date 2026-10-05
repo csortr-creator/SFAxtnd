@@ -11,12 +11,12 @@ object SubscriptionRouting {
 
     enum class Mode {
         NORMAL,
-        WHITELIST_BYPASS
+        WHITELIST_BYPASS,
     }
 
     private enum class ServerRoutingType {
         NORMAL,
-        WHITELIST_BYPASS
+        WHITELIST_BYPASS,
     }
 
     fun detectMode(content: String): Mode {
@@ -30,9 +30,7 @@ object SubscriptionRouting {
         }
     }
 
-    fun isWhitelistBypassTag(tag: String): Boolean {
-        return detectServerType(tag) == ServerRoutingType.WHITELIST_BYPASS
-    }
+    fun isWhitelistBypassTag(tag: String): Boolean = detectServerType(tag) == ServerRoutingType.WHITELIST_BYPASS
 
     private fun detectServerType(tag: String): ServerRoutingType {
         val normalized = tag.lowercase(Locale.ROOT).trim()
@@ -86,22 +84,26 @@ object SubscriptionRouting {
         }
 
         if ("geosite-category-ru" !in existingTags) {
-            existing.put(JSONObject().apply {
-                put("tag", "geosite-category-ru")
-                put("type", "remote")
-                put("format", "binary")
-                put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                put("download_detour", "direct")
-            })
+            existing.put(
+                JSONObject().apply {
+                    put("tag", "geosite-category-ru")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
+                    put("download_detour", "direct")
+                },
+            )
         }
         if ("geoip-ru" !in existingTags) {
-            existing.put(JSONObject().apply {
-                put("tag", "geoip-ru")
-                put("type", "remote")
-                put("format", "binary")
-                put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
-                put("download_detour", "direct")
-            })
+            existing.put(
+                JSONObject().apply {
+                    put("tag", "geoip-ru")
+                    put("type", "remote")
+                    put("format", "binary")
+                    put("url", "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs")
+                    put("download_detour", "direct")
+                },
+            )
         }
         route.put("rule_set", existing)
     }
@@ -132,7 +134,7 @@ object SubscriptionRouting {
         val availableTags = getOutboundTags(root)
         route.put(
             "final",
-            if (WHITELIST_SELECTOR_TAG in availableTags) WHITELIST_SELECTOR_TAG else NORMAL_SELECTOR_TAG
+            if (WHITELIST_SELECTOR_TAG in availableTags) WHITELIST_SELECTOR_TAG else NORMAL_SELECTOR_TAG,
         )
         root.put("route", route)
     }
@@ -165,78 +167,115 @@ object SubscriptionRouting {
     }
 
     private fun appendCommonDirectRules(rules: JSONArray) {
-        rules.put(JSONObject().apply {
-            put("ip_cidr", JSONArray().apply { put("::/0") })
-            put("outbound", "block")
-        })
-        rules.put(JSONObject().apply {
-            put("ip_is_private", true)
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("package_name", JSONArray().apply {
-                put("ru.vk.store")
-                put("com.vk.store")
-                put("com.android.vending")
-                put("com.google.android.gms")
-                put("com.google.android.gsf")
-            })
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("domain_keyword", JSONArray().apply {
-                put("tiktok")
-                put("mobilelegend")
-                put("moonton")
-            })
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("domain_suffix", JSONArray().apply {
-                put("connectivitycheck.gstatic.com")
-                put("connectivitycheck.android.com")
-                put("clients3.google.com")
-                put("msftconnecttest.com")
-            })
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("protocol", JSONArray().apply { put("bittorrent") })
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("rule_set", JSONArray().apply {
-                put("geosite-category-ru")
-                put("geoip-ru")
-            })
-            put("outbound", "direct")
-        })
-        rules.put(JSONObject().apply {
-            put("domain_suffix", JSONArray().apply {
-                put(".ru"); put(".su"); put(".xn--p1ai"); put(".by"); put(".kz")
-                put("xn--90aifd0aza.site")
-                put("sberbank.com")
-                put("alfa-bank.com")
-                put("alfabank.com")
-                put("vtb.com")
-                put("yandex.net")
-                put("yastatic.net")
-                put("yastat.net")
-                put("vk.me")
-                put("vk.cc")
-                put("userapi.com")
-                put("mradx.net")
-                put("ozon.app")
-                put("ozonusercontent.com")
-                put("ozon.travel")
-                put("avito.st")
-                put("cdek.shopping")
-                put("okko.tv")
-                put("okko.sport")
-                put("whoosh.bike")
-            })
-            put("outbound", "direct")
-        })
+        if (io.nekohasekai.sfa.database.Settings.routingBlockIpv6) {
+            rules.put(
+                JSONObject().apply {
+                    put("ip_cidr", JSONArray().apply { put("::/0") })
+                    put("outbound", "block")
+                },
+            )
+        }
+        rules.put(
+            JSONObject().apply {
+                put("ip_is_private", true)
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put(
+                    "package_name",
+                    JSONArray().apply {
+                        put("ru.vk.store")
+                        put("com.vk.store")
+                        put("com.android.vending")
+                        put("com.google.android.gms")
+                        put("com.google.android.gsf")
+                    },
+                )
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put(
+                    "domain_keyword",
+                    JSONArray().apply {
+                        put("tiktok")
+                        put("mobilelegend")
+                        put("moonton")
+                    },
+                )
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put(
+                    "domain_suffix",
+                    JSONArray().apply {
+                        put("connectivitycheck.gstatic.com")
+                        put("connectivitycheck.android.com")
+                        put("clients3.google.com")
+                        put("msftconnecttest.com")
+                    },
+                )
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put("protocol", JSONArray().apply { put("bittorrent") })
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put(
+                    "rule_set",
+                    JSONArray().apply {
+                        put("geosite-category-ru")
+                        put("geoip-ru")
+                    },
+                )
+                put("outbound", "direct")
+            },
+        )
+        rules.put(
+            JSONObject().apply {
+                put(
+                    "domain_suffix",
+                    JSONArray().apply {
+                        put(".ru")
+                        put(".su")
+                        put(".xn--p1ai")
+                        put(".by")
+                        put(".kz")
+                        put("xn--90aifd0aza.site")
+                        put("sberbank.com")
+                        put("alfa-bank.com")
+                        put("alfabank.com")
+                        put("vtb.com")
+                        put("yandex.net")
+                        put("yastatic.net")
+                        put("yastat.net")
+                        put("vk.me")
+                        put("vk.cc")
+                        put("userapi.com")
+                        put("mradx.net")
+                        put("ozon.app")
+                        put("ozonusercontent.com")
+                        put("ozon.travel")
+                        put("avito.st")
+                        put("cdek.shopping")
+                        put("okko.tv")
+                        put("okko.sport")
+                        put("whoosh.bike")
+                    },
+                )
+                put("outbound", "direct")
+            },
+        )
     }
 
     private fun appendNormalDirectRules(rules: JSONArray) {

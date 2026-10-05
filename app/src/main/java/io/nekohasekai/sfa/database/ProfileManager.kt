@@ -3,13 +3,13 @@ package io.nekohasekai.sfa.database
 import androidx.room.Room
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.constant.Path
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 
 @Suppress("RedundantSuspendModifier")
 object ProfileManager {

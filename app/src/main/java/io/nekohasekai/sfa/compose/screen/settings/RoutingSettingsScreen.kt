@@ -26,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,7 +38,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,6 +99,9 @@ fun RoutingSettingsScreen(
     var geoSourceId by remember { mutableStateOf("") }
     var geoGeositeUrl by remember { mutableStateOf("") }
     var geoGeoipUrl by remember { mutableStateOf("") }
+    var blockIpv6 by remember { mutableStateOf(Settings.routingBlockIpv6) }
+    var updateInterval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
+    var intervalMenuOpen by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
 
@@ -109,7 +112,6 @@ fun RoutingSettingsScreen(
     var draftAddress by remember { mutableStateOf("") }
     var draftDetour by remember { mutableStateOf("") }
 
-        
     fun persist(
         nextStrategy: DnsConfig.Strategy = strategy,
         nextCache: Boolean = cacheEnabled,
@@ -120,6 +122,8 @@ fun RoutingSettingsScreen(
         nextGeoSourceId: String = geoSourceId,
         nextGeoGeositeUrl: String = geoGeositeUrl,
         nextGeoGeoipUrl: String = geoGeoipUrl,
+        nextBlockIpv6: Boolean = blockIpv6,
+        nextUpdateInterval: Long = updateInterval,
         nextRules: List<RoutingRule> = rules,
     ) {
         strategy = nextStrategy
@@ -131,6 +135,10 @@ fun RoutingSettingsScreen(
         geoSourceId = nextGeoSourceId
         geoGeositeUrl = nextGeoGeositeUrl
         geoGeoipUrl = nextGeoGeoipUrl
+        blockIpv6 = nextBlockIpv6
+        Settings.routingBlockIpv6 = nextBlockIpv6
+        updateInterval = nextUpdateInterval
+        Settings.ruleSetUpdateInterval = nextUpdateInterval
         rules = nextRules
         scope.launch(Dispatchers.IO) {
             Settings.routingConfigJson = encodeRoutingConfig(
@@ -183,6 +191,48 @@ fun RoutingSettingsScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+
+        SectionHeader("Общие настройки маршрутизации")
+        ListItem(
+            headlineContent = { Text("Блокировать IPv6 (::/0)") },
+            supportingContent = { Text("Запретить весь IPv6 трафик (может решить проблемы с DNS/доступом)", style = MaterialTheme.typography.bodySmall) },
+            trailingContent = { Switch(checked = blockIpv6, onCheckedChange = { persist(nextBlockIpv6 = it) }) },
+            modifier = Modifier.clickable { persist(nextBlockIpv6 = !blockIpv6) },
+        )
+        ListItem(
+            headlineContent = { Text("Интервал обновления Rule-set") },
+            supportingContent = { Text(intervalLabel(updateInterval), style = MaterialTheme.typography.bodySmall) },
+            trailingContent = {
+                Box {
+                    IconButton(onClick = { intervalMenuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = null)
+                    }
+                    DropdownMenu(expanded = intervalMenuOpen, onDismissRequest = { intervalMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Каждый запуск") }, onClick = {
+                            persist(nextUpdateInterval = 0L)
+                            intervalMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("Раз в час") }, onClick = {
+                            persist(nextUpdateInterval = 60 * 60 * 1000L)
+                            intervalMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("Раз в день") }, onClick = {
+                            persist(nextUpdateInterval = 24 * 60 * 60 * 1000L)
+                            intervalMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("Раз в неделю") }, onClick = {
+                            persist(nextUpdateInterval = 7 * 24 * 60 * 60 * 1000L)
+                            intervalMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("Никогда (только при отсутствии)") }, onClick = {
+                            persist(nextUpdateInterval = -1L)
+                            intervalMenuOpen = false
+                        })
+                    }
+                }
+            },
+            modifier = Modifier.clickable { intervalMenuOpen = true },
         )
 
         SectionHeader("Пресеты")
@@ -414,7 +464,7 @@ fun RoutingSettingsScreen(
                 draftAddress = ""
                 draftDetour = ""
                 showAddServer = true
-            }
+            },
         )
 
         if (servers.isEmpty()) {
@@ -427,7 +477,7 @@ fun RoutingSettingsScreen(
                     draftAddress = ""
                     draftDetour = ""
                     showAddServer = true
-                }
+                },
             )
         } else {
             Card(
@@ -581,7 +631,7 @@ fun RoutingSettingsScreen(
             title = "Правила маршрутизации",
             onActionClick = {
                 navController.navigate("settings/routing/rule/-1")
-            }
+            },
         )
 
         if (rules.isEmpty()) {
@@ -590,7 +640,7 @@ fun RoutingSettingsScreen(
                 buttonText = "Добавить правило",
                 onClick = {
                     navController.navigate("settings/routing/rule/-1")
-                }
+                },
             )
         } else {
             Card(
@@ -608,7 +658,7 @@ fun RoutingSettingsScreen(
                                 Text(
                                     rule.displayTitle(),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             },
                             supportingContent = {
@@ -616,7 +666,7 @@ fun RoutingSettingsScreen(
                                     rule.displaySubtitle(),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             },
                             trailingContent = {
@@ -714,7 +764,6 @@ fun RoutingSettingsScreen(
             },
         )
     }
-
 }
 
 @Composable
@@ -757,7 +806,7 @@ private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(16.dp),
         ) {
             Text(
                 text = text,
@@ -769,12 +818,21 @@ private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit)
                 Icon(
                     Icons.Default.Add,
                     contentDescription = null,
-                    modifier = Modifier.padding(end = 8.dp)
+                    modifier = Modifier.padding(end = 8.dp),
                 )
                 Text(buttonText)
             }
         }
     }
+}
+
+private fun intervalLabel(intervalMs: Long): String = when (intervalMs) {
+    0L -> "Каждый запуск"
+    60 * 60 * 1000L -> "Раз в час"
+    24 * 60 * 60 * 1000L -> "Раз в день"
+    7 * 24 * 60 * 60 * 1000L -> "Раз в неделю"
+    -1L -> "Никогда (только при отсутствии)"
+    else -> "Пользовательский (${intervalMs / 1000} сек)"
 }
 
 private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
@@ -868,7 +926,7 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
                         dnsRule = obj.optBoolean("dnsRule", false),
                         type = type,
                         value = value,
-                        enabled = obj.optBoolean("enabled", true)
+                        enabled = obj.optBoolean("enabled", true),
                     )
                     val hasMatch = listOf(
                         rule.domain, rule.domainSuffix, rule.domainKeyword,

@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.compose.screen.tools
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import java.io.File
 import kotlin.system.measureTimeMillis

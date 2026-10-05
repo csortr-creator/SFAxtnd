@@ -10,30 +10,28 @@ import org.junit.Test
 
 class UserRoutingConfigTest {
 
-    private fun baseProfile(): String {
-        return JSONObject()
-            .put(
-                "outbounds",
-                JSONArray()
-                    .put(JSONObject().put("type", "selector").put("tag", "proxy").put("outbounds", JSONArray().put("node1")))
-                    .put(JSONObject().put("type", "vless").put("tag", "node1").put("server", "1.2.3.4"))
-                    .put(JSONObject().put("type", "direct").put("tag", "direct")),
-            )
-            .put(
-                "dns",
-                JSONObject().put(
-                    "servers",
-                    JSONArray().put(
-                        JSONObject()
-                            .put("tag", "dns-direct")
-                            .put("type", "udp")
-                            .put("server", "8.8.8.8"),
-                    ),
+    private fun baseProfile(): String = JSONObject()
+        .put(
+            "outbounds",
+            JSONArray()
+                .put(JSONObject().put("type", "selector").put("tag", "proxy").put("outbounds", JSONArray().put("node1")))
+                .put(JSONObject().put("type", "vless").put("tag", "node1").put("server", "1.2.3.4"))
+                .put(JSONObject().put("type", "direct").put("tag", "direct")),
+        )
+        .put(
+            "dns",
+            JSONObject().put(
+                "servers",
+                JSONArray().put(
+                    JSONObject()
+                        .put("tag", "dns-direct")
+                        .put("type", "udp")
+                        .put("server", "8.8.8.8"),
                 ),
-            )
-            .put("route", JSONObject().put("rules", JSONArray()))
-            .toString()
-    }
+            ),
+        )
+        .put("route", JSONObject().put("rules", JSONArray()))
+        .toString()
 
     @Test
     fun emptyUserConfig_stillAppliesFinalize() {

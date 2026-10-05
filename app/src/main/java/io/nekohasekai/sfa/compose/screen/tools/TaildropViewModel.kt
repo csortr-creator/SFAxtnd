@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.screen.tools
 
+import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.TaildropDownloadHandler
@@ -12,10 +13,9 @@ import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.StreamSubscription
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.util.Log
-import kotlinx.coroutines.GlobalScope
 import java.io.File
 import java.io.IOException
 

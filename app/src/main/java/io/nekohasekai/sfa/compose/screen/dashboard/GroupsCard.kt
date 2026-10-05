@@ -320,7 +320,7 @@ private fun GroupsCardContent(
                             ) {
                                 "В профиле нет selector/urltest-групп"
                             } else {
-                                "Запустите VPN, чтобы выбрать сервер в группе"
+                                "Нет групп в выбранном профиле. Добавьте selector/urltest или обновите подписку."
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

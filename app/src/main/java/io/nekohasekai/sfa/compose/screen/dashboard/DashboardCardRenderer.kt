@@ -20,7 +20,6 @@ fun DashboardCardRenderer(
     selectedProfileId: Long = -1L,
     isLoading: Boolean = false,
     showAddProfileSheet: Boolean = false,
-    showProfilePickerSheet: Boolean = false,
     updatingProfileId: Long? = null,
     updatedProfileId: Long? = null,
     onProfileSelected: (Long) -> Unit = {},
@@ -32,8 +31,6 @@ fun DashboardCardRenderer(
     onProfileMove: (Int, Int) -> Unit = { _, _ -> },
     onShowAddProfileSheet: () -> Unit = {},
     onHideAddProfileSheet: () -> Unit = {},
-    onShowProfilePickerSheet: () -> Unit = {},
-    onHideProfilePickerSheet: () -> Unit = {},
     onOpenNewProfile: (NewProfileArgs) -> Unit = {},
     commandClient: CommandClient? = null,
     modifier: Modifier = Modifier,
@@ -109,7 +106,6 @@ fun DashboardCardRenderer(
                 selectedProfileId = selectedProfileId,
                 isLoading = isLoading,
                 showAddProfileSheet = showAddProfileSheet,
-                showProfilePickerSheet = showProfilePickerSheet,
                 updatingProfileId = updatingProfileId,
                 updatedProfileId = updatedProfileId,
                 onProfileSelected = onProfileSelected,
@@ -121,8 +117,6 @@ fun DashboardCardRenderer(
                 onProfileMove = onProfileMove,
                 onShowAddProfileSheet = onShowAddProfileSheet,
                 onHideAddProfileSheet = onHideAddProfileSheet,
-                onShowProfilePickerSheet = onShowProfilePickerSheet,
-                onHideProfilePickerSheet = onHideProfilePickerSheet,
                 onOpenNewProfile = onOpenNewProfile,
             )
         }

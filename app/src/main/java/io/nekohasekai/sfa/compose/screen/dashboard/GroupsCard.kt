@@ -72,6 +72,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
@@ -265,6 +267,12 @@ private fun GroupsCardContent(
         }
 
     val palette = rememberUrlTestPalette()
+    val screenWidth = LocalConfiguration.current.screenWidthDp
+    val columns = when {
+        LocalDensity.current.fontScale > 1.3f || screenWidth < 360 -> 1
+        screenWidth >= 840 -> 3
+        else -> 2
+    }
 
     LazyColumnCompat(
         modifier =
@@ -384,7 +392,7 @@ private fun GroupsCardContent(
                         if (uiState.sortByPing) {
                             itemsToSort.sortWith(compareBy<io.nekohasekai.sfa.compose.model.GroupItem> { it.urlTestDelay == 0 }.thenBy { it.urlTestDelay })
                         }
-                        val rowItems = itemsToSort.chunked(2)
+                        val rowItems = itemsToSort.chunked(columns)
 
                         rowItems.forEachIndexed { rowIndex, row ->
                             item(
@@ -394,6 +402,7 @@ private fun GroupsCardContent(
                             ) {
                                 GroupItemRow(
                                     row = row,
+                                    columns = columns,
                                     selectedTag = group.selected,
                                     isSelectable = group.selectable,
                                     isLast =
@@ -712,6 +721,7 @@ private fun GroupDotsGrid(
 @Composable
 private fun GroupItemRow(
     row: List<GroupItem>,
+    columns: Int,
     selectedTag: String,
     isSelectable: Boolean,
     isLast: Boolean,
@@ -761,7 +771,7 @@ private fun GroupItemRow(
                 )
             }
 
-            repeat(2 - row.size) {
+            repeat(columns - row.size) {
                 Spacer(
                     modifier = Modifier.weight(1f),
                 )
@@ -821,8 +831,10 @@ private fun ProxyChip(
                 verticalArrangement =
                 Arrangement.spacedBy(2.dp),
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = item.tag,
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color =
@@ -831,9 +843,12 @@ private fun ProxyChip(
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                    if (isSelected) Icon(Icons.Outlined.CheckCircle, "Выбран",
+                        modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -844,6 +859,9 @@ private fun ProxyChip(
                 ) {
                     Text(
                         text = item.displayType,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style =
                         MaterialTheme.typography.labelSmall,
                         color =

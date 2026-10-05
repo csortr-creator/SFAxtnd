@@ -12,8 +12,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.Color
 import io.nekohasekai.sfa.compose.component.PreferenceSection
 import io.nekohasekai.sfa.utils.RoutingPresets
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row

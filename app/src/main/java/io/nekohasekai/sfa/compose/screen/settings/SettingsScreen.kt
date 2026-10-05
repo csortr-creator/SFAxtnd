@@ -54,6 +54,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
@@ -63,7 +64,7 @@ import io.nekohasekai.sfa.update.UpdateState
 @Composable
 fun SettingsScreen(navController: NavController) {
     var showMenu by remember { mutableStateOf(false) }
-    var showDeprecationDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     OverrideTopBar {
@@ -84,7 +85,7 @@ fun SettingsScreen(navController: NavController) {
                         text = { Text("Информация о приложении") },
                         onClick = {
                             showMenu = false
-                            showDeprecationDialog = true
+                            showAboutDialog = true
                         }
                     )
                 }
@@ -92,21 +93,21 @@ fun SettingsScreen(navController: NavController) {
         )
     }
 
-    if (showDeprecationDialog) {
+    if (showAboutDialog) {
         AlertDialog(
-            onDismissRequest = { showDeprecationDialog = false },
-            title = { Text("Устаревание (Deprecated)") },
-            text = { Text("Использование `independent_cache` DNS option устарело в sing-box 1.14.0, и эта возможность будет удалена в sing-box 1.16.0. Ознакомьтесь с руководством по миграции.") },
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("SFAxtnd") },
+            text = { Text("Версия ${BuildConfig.VERSION_NAME}\nКлиент sing-box для Android") },
             confirmButton = {
-                TextButton(onClick = { showDeprecationDialog = false }) {
+                TextButton(onClick = { showAboutDialog = false }) {
                     Text("OK")
                 }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    uriHandler.openUri("https://sing-box.sagernet.org/migration/")
+                    uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd")
                 }) {
-                    Text("Документация")
+                    Text("GitHub")
                 }
             }
         )
@@ -137,7 +138,7 @@ fun SettingsScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             colors =
             CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
         ) {
             Column {
@@ -258,7 +259,7 @@ fun SettingsScreen(navController: NavController) {
                 .padding(horizontal = 16.dp),
             colors =
             CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
         ) {
             Column {

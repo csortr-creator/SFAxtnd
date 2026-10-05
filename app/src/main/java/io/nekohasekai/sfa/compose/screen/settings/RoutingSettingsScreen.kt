@@ -150,7 +150,6 @@ fun RoutingSettingsScreen(
             Settings.routingConfigJson = encodeRoutingConfig(
                 nextStrategy,
                 nextCache,
-                nextIndependent,
                 nextReverse,
                 nextFinal,
                 nextServers,
@@ -462,16 +461,6 @@ fun RoutingSettingsScreen(
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 )
 
-                ListItem(
-                    headlineContent = { Text("Независимый кэш") },
-                    trailingContent = {
-                        Switch(
-                            checked = independentCache,
-                            onCheckedChange = { persist(nextIndependent = it) },
-                        )
-                    },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                )
 
                 ListItem(
                     headlineContent = { Text("Обратный mapping") },
@@ -999,7 +988,6 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
 private fun encodeRoutingConfig(
     strategy: DnsConfig.Strategy,
     cacheEnabled: Boolean,
-    independentCache: Boolean,
     reverseMapping: Boolean,
     finalServer: String,
     servers: List<DnsServer>,
@@ -1011,7 +999,6 @@ private fun encodeRoutingConfig(
     val dns = JSONObject()
         .put("strategy", strategy.name)
         .put("cacheEnabled", cacheEnabled)
-        .put("independentCache", independentCache)
         .put("reverseMapping", reverseMapping)
         .put("finalServer", finalServer)
     val serversJson = JSONArray()

@@ -57,10 +57,7 @@ data class DashboardUiState(
     val groupsCount: Int = 0,
     val connectionsCount: Int = 0,
     val serviceStartTime: Long? = null,
-    val deprecatedNotes: List<DeprecatedNote> = emptyList(),
-    val showDeprecatedDialog: Boolean = false,
     val showAddProfileSheet: Boolean = false,
-    val showProfilePickerSheet: Boolean = false,
     val updatingProfileId: Long? = null,
     val updatedProfileId: Long? = null,
     // Status
@@ -112,7 +109,6 @@ data class DashboardUiState(
         ),
     val showCardSettingsDialog: Boolean = false,
 ) {
-    data class DeprecatedNote(val message: String, val migrationLink: String?)
 }
 
 // DashboardViewModel now only uses UiEvent for all events
@@ -208,39 +204,6 @@ class DashboardViewModel :
         }
     }
 
-    private fun checkDeprecatedNotes() {
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                // Check if deprecated warnings are disabled
-                if (Settings.disableDeprecatedWarnings) {
-                    return@launch
-                }
-
-                val notes = Libbox.newStandaloneCommandClient().deprecatedNotes
-                if (notes.hasNext()) {
-                    val notesList = mutableListOf<DashboardUiState.DeprecatedNote>()
-                    while (notes.hasNext()) {
-                        val note = notes.next()
-                        notesList.add(
-                            DashboardUiState.DeprecatedNote(
-                                message = note.message(),
-                                migrationLink = note.migrationLink,
-                            ),
-                        )
-                    }
-                    withContext(Dispatchers.Main) {
-                        // Keep notes for Settings; never force full-screen dialog.
-                        updateState {
-                            copy(
-                                deprecatedNotes = notesList,
-                                showDeprecatedDialog = false,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     fun toggleService() {
         when (currentState.serviceStatus) {
@@ -261,17 +224,6 @@ class DashboardViewModel :
         }
     }
 
-    fun dismissDeprecatedNote() {
-        val notes = currentState.deprecatedNotes
-        if (notes.isNotEmpty()) {
-            updateState {
-                copy(
-                    deprecatedNotes = notes.drop(1),
-                    showDeprecatedDialog = notes.size > 1,
-                )
-            }
-        }
-    }
 
     fun selectProfile(profileId: Long) {
         if (currentState.isLoading) return
@@ -315,7 +267,6 @@ class DashboardViewModel :
     }
 
     fun editProfile(profile: Profile) {
-        updateState { copy(showProfilePickerSheet = false) }
         sendGlobalEvent(UiEvent.EditProfile(profile.id))
     }
 
@@ -437,13 +388,6 @@ class DashboardViewModel :
         updateState { copy(showAddProfileSheet = false) }
     }
 
-    fun showProfilePickerSheet() {
-        updateState { copy(showProfilePickerSheet = true) }
-    }
-
-    fun hideProfilePickerSheet() {
-        updateState { copy(showProfilePickerSheet = false) }
-    }
 
     fun updateServiceStatus(status: Status) {
         viewModelScope.launch {
@@ -467,7 +411,6 @@ class DashboardViewModel :
         val isRemote = RemoteControlManager.remoteServer.value != null
         when (status) {
             Status.Started -> {
-                checkDeprecatedNotes()
                 if (isRemote) {
                     return
                 }

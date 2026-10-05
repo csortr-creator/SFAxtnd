@@ -1,3 +1,186 @@
+diff --git a/common/tls/certificate_pin_test.go b/common/tls/certificate_pin_test.go
+new file mode 100644
+index 0000000..3dcdcca
+--- /dev/null
++++ b/common/tls/certificate_pin_test.go
+@@ -0,0 +1,67 @@
++//go:build with_utls
++
++package tls
++
++import (
++	"context"
++	"crypto/sha256"
++	"io"
++	"log"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/stretchr/testify/require"
++)
++
++func TestCertificateFingerprintHandshake(t *testing.T) {
++	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
++	server.Config.ErrorLog = log.New(io.Discard, "", 0)
++	server.StartTLS()
++	defer server.Close()
++	leaf := server.TLS.Certificates[0].Certificate[0]
++	digest := sha256.Sum256(leaf)
++	wrong := sha256.Sum256([]byte("another certificate"))
++	for _, useUTLS := range []bool{false, true} {
++		for _, test := range []struct {
++			name     string
++			pin      []byte
++			insecure bool
++			wantOK   bool
++		}{
++			{"matching", digest[:], true, true},
++			{"mismatch", wrong[:], true, false},
++			{"strict-ca-still-required", digest[:], false, false},
++		} {
++			t.Run(test.name+map[bool]string{false: "-go", true: "-utls"}[useUTLS], func(t *testing.T) {
++				options := option.OutboundTLSOptions{Enabled: true, ServerName: "example.org", Insecure: test.insecure, CertificateSHA256: [][]byte{test.pin}}
++				if useUTLS {
++					options.UTLS = &option.OutboundUTLSOptions{Enabled: true, Fingerprint: "chrome"}
++				}
++				config, err := NewClient(context.Background(), logger.NOP(), "example.org", options)
++				require.NoError(t, err)
++				conn, err := net.DialTimeout("tcp", server.Listener.Addr().String(), time.Second)
++				require.NoError(t, err)
++				defer conn.Close()
++				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
++				client, err := config.Client(conn)
++				require.NoError(t, err)
++				err = client.HandshakeContext(context.Background())
++				if test.wantOK {
++					require.NoError(t, err)
++				} else {
++					require.Error(t, err)
++				}
++			})
++		}
++	}
++	// Pinning the public key or an intermediate must not match the leaf fingerprint.
++	spki := sha256.Sum256(server.Certificate().RawSubjectPublicKeyInfo)
++	require.Error(t, VerifyCertificateSHA256([][]byte{spki[:]}, [][]byte{leaf}))
++	require.Error(t, VerifyCertificateSHA256([][]byte{digest[:]}, nil))
++	require.Error(t, VerifyCertificateSHA256([][]byte{digest[:]}, [][]byte{[]byte("different leaf"), leaf}))
++}
+diff --git a/common/tls/client.go b/common/tls/client.go
+index 7b30368..cb06f57 100644
+--- a/common/tls/client.go
++++ b/common/tls/client.go
+@@ -2,6 +2,8 @@ package tls
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
++	"crypto/subtle"
+ 	"crypto/tls"
+ 	"errors"
+ 	"net"
+@@ -91,6 +93,14 @@ func NewClientWithOptions(options ClientOptions) (Config, error) {
+ 	if options.Options.KernelRx {
+ 		options.Logger.Warn("enabling kTLS RX will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_rx")
+ 	}
++	if len(options.Options.CertificateSHA256) > 0 {
++		if options.Options.Engine != "" && options.Options.Engine != C.TLSEngineGo {
++			return nil, E.New("certificate_sha256 requires the Go TLS engine")
++		}
++		if options.Options.Reality != nil && options.Options.Reality.Enabled {
++			return nil, E.New("certificate_sha256 is unsupported in reality")
++		}
++	}
+ 	switch options.Options.Engine {
+ 	case "", C.TLSEngineGo:
+ 	case C.TLSEngineApple:
+@@ -174,3 +184,17 @@ func (d *defaultDialer) dialContext(ctx context.Context, destination M.Socksaddr
+ func (d *defaultDialer) Upstream() any {
+ 	return d.dialer
+ }
++
++// VerifyCertificateSHA256 pins the exact leaf certificate, not its public key.
++func VerifyCertificateSHA256(pins [][]byte, rawCerts [][]byte) error {
++	if len(rawCerts) == 0 {
++		return E.New("missing peer certificate")
++	}
++	digest := sha256.Sum256(rawCerts[0])
++	for _, pin := range pins {
++		if len(pin) == sha256.Size && subtle.ConstantTimeCompare(pin, digest[:]) == 1 {
++			return nil
++		}
++	}
++	return E.New("server certificate SHA-256 fingerprint mismatch")
++}
+diff --git a/common/tls/std_client.go b/common/tls/std_client.go
+index 80fa6cb..2d95190 100644
+--- a/common/tls/std_client.go
++++ b/common/tls/std_client.go
+@@ -143,6 +143,23 @@ func newSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
+ 			return VerifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts)
+ 		}
+ 	}
++	if len(options.CertificateSHA256) > 0 {
++		for _, pin := range options.CertificateSHA256 {
++			if len(pin) != sha256.Size {
++				return nil, E.New("certificate_sha256 must contain SHA-256 fingerprints")
++			}
++		}
++		verifyPublicKey := tlsConfig.VerifyPeerCertificate
++		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
++			if err := VerifyCertificateSHA256(options.CertificateSHA256, rawCerts); err != nil {
++				return err
++			}
++			if verifyPublicKey != nil {
++				return verifyPublicKey(rawCerts, verifiedChains)
++			}
++			return nil
++		}
++	}
+ 	if len(options.ALPN) > 0 {
+ 		tlsConfig.NextProtos = options.ALPN
+ 	}
+diff --git a/common/tls/utls_client.go b/common/tls/utls_client.go
+index 16d0352..1b89336 100644
+--- a/common/tls/utls_client.go
++++ b/common/tls/utls_client.go
+@@ -4,6 +4,7 @@ package tls
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
+ 	"crypto/tls"
+ 	"crypto/x509"
+ 	"math/rand"
+@@ -218,6 +219,23 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
+ 			return VerifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts)
+ 		}
+ 	}
++	if len(options.CertificateSHA256) > 0 {
++		for _, pin := range options.CertificateSHA256 {
++			if len(pin) != sha256.Size {
++				return nil, E.New("certificate_sha256 must contain SHA-256 fingerprints")
++			}
++		}
++		verifyPublicKey := tlsConfig.VerifyPeerCertificate
++		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
++			if err := VerifyCertificateSHA256(options.CertificateSHA256, rawCerts); err != nil {
++				return err
++			}
++			if verifyPublicKey != nil {
++				return verifyPublicKey(rawCerts, verifiedChains)
++			}
++			return nil
++		}
++	}
+ 	if len(options.ALPN) > 0 {
+ 		tlsConfig.NextProtos = options.ALPN
+ 	}
 diff --git a/constant/v2ray.go b/constant/v2ray.go
 index c3089a6..1811df5 100644
 --- a/constant/v2ray.go
@@ -242,6 +425,18 @@ index bc0c07e..9585f51 100644
  	Outbounds                 []string `json:"outbounds" reference:"outbound"`
  	Default                   string   `json:"default,omitempty" reference:"outbound"`
  	InterruptExistConnections bool     `json:"interrupt_exist_connections,omitempty"`
+diff --git a/option/tls.go b/option/tls.go
+index 5c807d6..81da6e2 100644
+--- a/option/tls.go
++++ b/option/tls.go
+@@ -117,6 +117,7 @@ type OutboundTLSOptions struct {
+ 	CurvePreferences           badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
+ 	Certificate                badoption.Listable[string]          `json:"certificate,omitempty"`
+ 	CertificatePath            string                              `json:"certificate_path,omitempty"`
++	CertificateSHA256          badoption.Listable[[]byte]          `json:"certificate_sha256,omitempty"`
+ 	CertificatePublicKeySHA256 badoption.Listable[[]byte]          `json:"certificate_public_key_sha256,omitempty"`
+ 	ClientCertificate          badoption.Listable[string]          `json:"client_certificate,omitempty"`
+ 	ClientCertificatePath      string                              `json:"client_certificate_path,omitempty"`
 diff --git a/option/v2ray_transport.go b/option/v2ray_transport.go
 index 8788151..2858193 100644
 --- a/option/v2ray_transport.go
@@ -1570,15 +1765,19 @@ index 0000000..6addd4a
 +}
 diff --git a/transport/v2rayxhttp/hysteria_integration_test.go b/transport/v2rayxhttp/hysteria_integration_test.go
 new file mode 100644
-index 0000000..f875621
+index 0000000..92b3df9
 --- /dev/null
 +++ b/transport/v2rayxhttp/hysteria_integration_test.go
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,76 @@
 +//go:build with_quic
 +
 +package v2rayxhttp_test
 +
 +import (
++	"crypto/sha256"
++	"encoding/pem"
++	"github.com/stretchr/testify/require"
++	"os"
 +	"testing"
 +
 +	C "github.com/sagernet/sing-box/constant"
@@ -1589,45 +1788,61 @@ index 0000000..f875621
 +// Exercise authentication, TLS and obfuscation against a local native server.
 +func TestHysteriaProtocols(t *testing.T) {
 +	for _, protocol := range []string{C.TypeHysteria, C.TypeHysteria2} {
-+		t.Run(protocol, func(t *testing.T) {
-+			certificate, key, ca := interopCertificate(t)
-+			serverPort, proxyPort := interopPort(t), interopPort(t)
-+			targetPort, closeTarget := interopEchoServer(t)
-+			defer closeTarget()
-+			inboundTLS := option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key}}
-+			outboundTLS := option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca}}
-+			server := option.Inbound{Type: protocol}
-+			client := option.Outbound{Type: protocol}
-+			serverAddress := option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}
-+			switch protocol {
-+			case C.TypeHysteria:
-+				server.Options = &option.HysteriaInboundOptions{
-+					ListenOptions: interopListen(serverPort), UpMbps: 100, DownMbps: 100,
-+					Obfs: "obfuscation", Users: []option.HysteriaUser{{AuthString: "user:pass+word"}},
-+					InboundTLSOptionsContainer: inboundTLS,
-+				}
-+				client.Options = &option.HysteriaOutboundOptions{
-+					ServerOptions: serverAddress, UpMbps: 100, DownMbps: 100,
-+					AuthString: "user:pass+word", Obfs: "obfuscation", OutboundTLSOptionsContainer: outboundTLS,
-+				}
-+			case C.TypeHysteria2:
-+				server.Options = &option.Hysteria2InboundOptions{
-+					ListenOptions: interopListen(serverPort),
-+					Obfs:          &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"},
-+					Users:         []option.Hysteria2User{{Password: "user:pass+word"}}, InboundTLSOptionsContainer: inboundTLS,
-+				}
-+				client.Options = &option.Hysteria2OutboundOptions{
-+					ServerOptions: serverAddress, Password: "user:pass+word",
-+					Obfs: &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"}, OutboundTLSOptionsContainer: outboundTLS,
-+				}
++		for _, pinned := range []bool{false, true} {
++			name := protocol
++			if pinned {
++				name += "-certificate-pin"
 +			}
-+			startInteropBox(t, option.Options{Inbounds: []option.Inbound{server}, Outbounds: []option.Outbound{{Type: C.TypeDirect}}})
-+			startInteropBox(t, option.Options{
-+				Inbounds:  []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
-+				Outbounds: []option.Outbound{client},
++			t.Run(name, func(t *testing.T) {
++				certificate, key, ca := interopCertificate(t)
++				serverPort, proxyPort := interopPort(t), interopPort(t)
++				targetPort, closeTarget := interopEchoServer(t)
++				defer closeTarget()
++				inboundTLS := option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key}}
++				outboundTLS := option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca}}
++				if pinned {
++					content, err := os.ReadFile(certificate)
++					require.NoError(t, err)
++					block, _ := pem.Decode(content)
++					require.NotNil(t, block)
++					digest := sha256.Sum256(block.Bytes)
++					outboundTLS.TLS.CertificatePath = ""
++					outboundTLS.TLS.Insecure = true
++					outboundTLS.TLS.CertificateSHA256 = [][]byte{digest[:]}
++				}
++				server := option.Inbound{Type: protocol}
++				client := option.Outbound{Type: protocol}
++				serverAddress := option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}
++				switch protocol {
++				case C.TypeHysteria:
++					server.Options = &option.HysteriaInboundOptions{
++						ListenOptions: interopListen(serverPort), UpMbps: 100, DownMbps: 100,
++						Obfs: "obfuscation", Users: []option.HysteriaUser{{AuthString: "user:pass+word"}},
++						InboundTLSOptionsContainer: inboundTLS,
++					}
++					client.Options = &option.HysteriaOutboundOptions{
++						ServerOptions: serverAddress, UpMbps: 100, DownMbps: 100,
++						AuthString: "user:pass+word", Obfs: "obfuscation", OutboundTLSOptionsContainer: outboundTLS,
++					}
++				case C.TypeHysteria2:
++					server.Options = &option.Hysteria2InboundOptions{
++						ListenOptions: interopListen(serverPort),
++						Obfs:          &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"},
++						Users:         []option.Hysteria2User{{Password: "user:pass+word"}}, InboundTLSOptionsContainer: inboundTLS,
++					}
++					client.Options = &option.Hysteria2OutboundOptions{
++						ServerOptions: serverAddress, Password: "user:pass+word",
++						Obfs: &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"}, OutboundTLSOptionsContainer: outboundTLS,
++					}
++				}
++				startInteropBox(t, option.Options{Inbounds: []option.Inbound{server}, Outbounds: []option.Outbound{{Type: C.TypeDirect}}})
++				startInteropBox(t, option.Options{
++					Inbounds:  []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++					Outbounds: []option.Outbound{client},
++				})
++				interopPingPong(t, proxyPort, targetPort)
 +			})
-+			interopPingPong(t, proxyPort, targetPort)
-+		})
++		}
 +	}
 +}
 diff --git a/transport/v2rayxhttp/interop_test.go b/transport/v2rayxhttp/interop_test.go

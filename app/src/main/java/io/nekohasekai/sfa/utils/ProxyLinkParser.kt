@@ -57,12 +57,20 @@ internal object ProxyLinkParser {
         val params = query(body.substringAfter('?', ""))
         val auth = if ('@' in authority) decode(authority.substringBeforeLast('@')) else params["auth"].orEmpty()
         val server = endpoint(authority.substringAfterLast('@'))
-        require(params["pinSHA256"].isNullOrEmpty()) {
-            "Hysteria certificate fingerprint pinSHA256 cannot be converted to a public-key pin; import a native TLS configuration"
-        }
         val tls = JSONObject().put("enabled", true)
             .put("server_name", params["sni"] ?: params["peer"] ?: server.host)
         params["insecure"]?.let { tls.put("insecure", boolean(it)) }
+        params["pinSHA256"]?.takeIf { it.isNotBlank() }?.let { value ->
+            val hex = value.replace(":", "").trim()
+            val bytes = if (hex.length == 64 && hex.all { it in "0123456789abcdefABCDEF" }) {
+                hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            } else {
+                try { Base64.getDecoder().decode(value.trim()) }
+                catch (_: IllegalArgumentException) { error("Invalid Hysteria certificate SHA-256 fingerprint") }
+            }
+            require(bytes.size == 32) { "Invalid Hysteria certificate SHA-256 fingerprint" }
+            tls.put("certificate_sha256", JSONArray(listOf(Base64.getEncoder().encodeToString(bytes))))
+        }
         params["alpn"]?.takeIf { it.isNotBlank() }?.let { tls.put("alpn", JSONArray(it.split(','))) }
         params["ech"]?.takeIf { it.isNotBlank() }?.let {
             val encoded = Base64.getEncoder().encodeToString(Base64.getDecoder().decode(it))
@@ -189,6 +197,7 @@ internal object ProxyLinkParser {
                 else -> error("Unsupported XHTTP parameter: $key")
             }
         }
+        normalizeMode(result)
         val mode = result.optString("mode", "auto")
         require(mode in setOf("auto", "packet-up", "stream-up", "stream-one")) { "Unsupported XHTTP mode: $mode" }
         return result
@@ -200,6 +209,7 @@ internal object ProxyLinkParser {
         val settings = source.optJSONObject("xhttpSettings") ?: source.optJSONObject("splithttpSettings") ?: JSONObject()
         val result = convertExtra(settings.optJSONObject("extra") ?: JSONObject())
         for (key in listOf("host", "path", "mode")) if (settings.has(key)) result.put(key, settings.get(key))
+        normalizeMode(result)
         require(source.optString("network", "xhttp") in setOf("xhttp", "splithttp")) { "Unsupported XHTTP download transport" }
         result.put("server", source.getString("address")).put("server_port", source.getInt("port"))
         when (source.optString("security", "none")) {
@@ -222,9 +232,16 @@ internal object ProxyLinkParser {
         return result
     }
 
+    private fun normalizeMode(settings: JSONObject) {
+        if (settings.has("mode") && (settings.isNull("mode") || settings.optString("mode").isBlank())) {
+            settings.put("mode", "auto")
+        }
+    }
+
     private fun xhttp(params: Map<String, String>): JSONObject {
         val result = convertExtra(params["extra"]?.takeIf { it.isNotBlank() }?.let { JSONObject(it) } ?: JSONObject())
         for (key in listOf("host", "path", "mode")) params[key]?.takeIf { it.isNotBlank() }?.let { result.put(key, it) }
+        normalizeMode(result)
         require(result.optString("mode", "auto") in setOf("auto", "packet-up", "stream-up", "stream-one")) { "Unsupported XHTTP mode" }
         return result.put("type", "xhttp")
     }

@@ -61,6 +61,32 @@ class ProxyLinkParserTest {
         }
     }
 
+    @Test fun certificateFingerprintKeepsExactBytesForHexColonHexAndBase64() {
+        val bytes = ByteArray(32) { it.toByte() }
+        val base64 = java.util.Base64.getEncoder().encodeToString(bytes)
+        val hex = bytes.joinToString("") { "%02x".format(it) }
+        for (value in listOf(hex, hex.chunked(2).joinToString(":"), base64)) {
+            val tls = ProxyLinkParser.hysteria("hy2://secret@example.org?insecure=1&pinSHA256=" + URLEncoder.encode(value, "UTF-8")).getJSONObject("tls")
+            assertEquals(base64, tls.getJSONArray("certificate_sha256").getString(0))
+            assertTrue(tls.getBoolean("insecure"))
+            assertFalse(tls.has("certificate_public_key_sha256"))
+        }
+        val tls = ProxyLinkParser.hysteria("hy2://secret@example.org?pinSHA256=$hex").getJSONObject("tls")
+        assertFalse(tls.optBoolean("insecure"))
+    }
+
+    @Test fun blankXhttpModesUseAutoInExtraAndDownloadSettings() {
+        for (mode in listOf("", " ", JSONObject.NULL)) {
+            val extra = JSONObject().put("mode", mode).toString()
+            val transport = ProxyLinkParser.transport("xhttp", mapOf("extra" to extra), "example.org")!!
+            assertEquals("auto", transport.getString("mode"))
+        }
+        val extra = """{"downloadSettings":{"address":"download.example.org","port":443,"xhttpSettings":{"mode":""}}}"""
+        val transport = ProxyLinkParser.transport("xhttp", mapOf("extra" to extra, "mode" to "stream-up"), "example.org")!!
+        assertEquals("stream-up", transport.getString("mode"))
+        assertEquals("auto", transport.getJSONObject("download_settings").getString("mode"))
+    }
+
     @Test fun unsupportedHysteriaProtocolIsRejected() {
         assertThrows(IllegalArgumentException::class.java) {
             ProxyLinkParser.hysteria("hysteria://example.org?protocol=faketcp")

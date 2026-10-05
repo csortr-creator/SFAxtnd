@@ -103,6 +103,24 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private var lastProfileName = ""
 
+    /** Remove DNS options removed/deprecated in sing-box 1.14+ so core does not warn. */
+    private fun sanitizeRuntimeConfig(content: String): String {
+        return try {
+            val root = org.json.JSONObject(content)
+            val dns = root.optJSONObject("dns")
+            if (dns != null) {
+                dns.remove("independent_cache")
+            }
+            root.toString()
+        } catch (_: Exception) {
+            content
+                .replace("\"independent_cache\": true,", "")
+                .replace("\"independent_cache\":true,", "")
+                .replace("\"independent_cache\": false,", "")
+                .replace("\"independent_cache\":false,", "")
+        }
+    }
+
     private suspend fun startService() {
         try {
             withContext(Dispatchers.Main) {
@@ -121,7 +139,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
 
-            val content = File(profile.typed.path).readText()
+            val content = sanitizeRuntimeConfig(File(profile.typed.path).readText())
             if (content.isBlank()) {
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
@@ -211,7 +229,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             return
         }
 
-        val content = File(profile.typed.path).readText()
+        val content = sanitizeRuntimeConfig(File(profile.typed.path).readText())
         if (content.isBlank()) {
             stopAndAlert(Alert.EmptyConfiguration)
             return

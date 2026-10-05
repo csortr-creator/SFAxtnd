@@ -50,6 +50,17 @@ class OutboundProfileStateTest {
         assertFalse(items.getJSONObject(1).has("domain_resolver"))
     }
 
+    @Test fun ipv6ToggleIsAppliedAtStartupAndCanBeReversedWithoutEditingSubscription() {
+        val blocked = OutboundProfileState.runtimeConfig(profile, true, "mixed")
+        val root = JSONObject(blocked)
+        assertEquals("mixed", root.getJSONArray("inbounds").getJSONObject(0).getString("stack"))
+        assertEquals("reject", root.getJSONObject("route").getJSONArray("rules").getJSONObject(0).getString("action"))
+        val restored = JSONObject(OutboundProfileState.runtimeConfig(blocked, false, "system"))
+        assertEquals(1, restored.getJSONObject("route").getJSONArray("rules").length())
+        assertEquals("direct", restored.getJSONObject("route").getJSONArray("rules").getJSONObject(0).getString("outbound"))
+        assertEquals(1, JSONObject(profile).getJSONObject("route").getJSONArray("rules").length())
+    }
+
     @Test(expected = IllegalStateException::class) fun missingServerCannotProduceFakePing() {
         OutboundProfileState.probeConfig(profile, listOf("missing"))
     }

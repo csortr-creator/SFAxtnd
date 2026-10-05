@@ -103,32 +103,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private var lastProfileName = ""
 
-    /** Remove DNS options removed/deprecated in sing-box 1.14+ so core does not warn. */
-    private fun sanitizeRuntimeConfig(content: String): String {
-        return try {
-            val root = org.json.JSONObject(content)
-            val dns = root.optJSONObject("dns")
-            if (dns != null) {
-                dns.remove("independent_cache")
-            }
-            val inbounds = root.optJSONArray("inbounds")
-            if (inbounds != null) {
-                for (i in 0 until inbounds.length()) {
-                    val inbound = inbounds.optJSONObject(i) ?: continue
-                    if (inbound.optString("type") == "tun") {
-                        inbound.put("stack", Settings.tunStack)
-                    }
-                }
-            }
-            root.toString()
-        } catch (_: Exception) {
-            content
-                .replace("\"independent_cache\": true,", "")
-                .replace("\"independent_cache\":true,", "")
-                .replace("\"independent_cache\": false,", "")
-                .replace("\"independent_cache\":false,", "")
-        }
-    }
+    private fun sanitizeRuntimeConfig(content: String): String =
+        io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
+            content, Settings.routingBlockIpv6, Settings.tunStack,
+        )
 
     private suspend fun startService() {
         try {

@@ -237,14 +237,15 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     fun selectGroupItem(groupTag: String, itemTag: String) {
         // Check if this is actually a different selection
         val currentGroup = uiState.value.groups.find { it.tag == groupTag }
-        if (currentGroup?.selected == itemTag) {
+        if (currentGroup == null || !currentGroup.selectable || currentGroup.items.none { it.tag == itemTag } || currentGroup.selected == itemTag) {
             // Same item selected, no need to do anything
             return
         }
 
+        val profileId = uiState.value.profileId
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val profileId = uiState.value.profileId
+                if (uiState.value.profileId != profileId) return@launch
                 if (canUseCommandServer()) CommandTarget.standaloneClient().selectOutbound(groupTag, itemTag)
                 if (RemoteControlManager.remoteServer.value == null) saveSelection(profileId, groupTag, itemTag)
                 if (uiState.value.profileId != profileId) return@launch
@@ -503,7 +504,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                             tag = tag,
                             type = type,
                             displayType = type.replaceFirstChar { it.uppercase() },
-                            selectable = true,
+                            selectable = type == "selector",
                             selected = selected,
                             isExpand = true,
                             items = items,

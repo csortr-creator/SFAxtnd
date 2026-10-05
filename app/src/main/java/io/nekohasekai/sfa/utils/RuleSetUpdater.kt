@@ -35,6 +35,13 @@ object RuleSetUpdater {
                             val tag = ruleSet.optString("tag")
                             val fileName = "$tag.srs"
                             val file = File(dir, fileName)
+                            // Whitelist must be usable on a fresh install even when GitHub
+                            // is unreachable on the current restricted mobile network.
+                            if (!file.exists() && tag in RoutingPresets.remoteRuleSets) {
+                                context.assets.open("rule_sets/$fileName").use { input ->
+                                    file.outputStream().use { input.copyTo(it) }
+                                }
+                            }
 
                             var shouldDownload = true
                             if (file.exists()) {

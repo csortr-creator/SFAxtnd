@@ -38,9 +38,7 @@ object UserRoutingConfig {
         if (dnsUser.has("cacheEnabled")) {
             if (dnsUser.optBoolean("cacheEnabled", true)) dns.remove("disable_cache") else dns.put("disable_cache", true)
         }
-        if (dnsUser.has("independentCache")) {
-            if (dnsUser.optBoolean("independentCache", false)) dns.put("independent_cache", true) else dns.remove("independent_cache")
-        }
+        dns.remove("independent_cache")
         if (dnsUser.has("reverseMapping")) {
             if (dnsUser.optBoolean("reverseMapping", false)) dns.put("reverse_mapping", true) else dns.remove("reverse_mapping")
         }
@@ -226,16 +224,21 @@ object UserRoutingConfig {
         }
         val whitelistActive = usedRuleSetTags.any { it in RoutingPresets.remoteRuleSets }
         val combined = JSONArray()
+        fun essential(rule: JSONObject): Boolean =
+            rule.optString("action") in setOf("sniff", "hijack-dns") ||
+                (rule.optBoolean("ip_is_private") && rule.optString("outbound") == "direct") ||
+                (rule.optJSONArray("ip_cidr")?.let { it.length() == 1 && it.optString(0) == "::/0" } == true &&
+                    (rule.optString("outbound") == "block" || rule.optString("action") == "reject"))
         // DNS interception and sniffing must run before a Whitelist catch-all route.
         for (i in 0 until existing.length()) {
             val rule = existing.optJSONObject(i) ?: continue
-            if (rule.optString("action") in setOf("sniff", "hijack-dns")) combined.put(rule)
+            if (essential(rule)) combined.put(rule)
         }
         for (i in 0 until merged.length()) combined.put(merged.get(i))
         if (whitelistActive) combined.put(JSONObject().put("outbound", findProxyOutboundTag(root)))
         for (i in 0 until existing.length()) {
             val rule = existing.optJSONObject(i) ?: continue
-            if (rule.optString("action") !in setOf("sniff", "hijack-dns")) combined.put(rule)
+            if (!essential(rule)) combined.put(rule)
         }
         route.put("rules", combined)
         ensureRuleSetEntries(route, usedRuleSetTags)

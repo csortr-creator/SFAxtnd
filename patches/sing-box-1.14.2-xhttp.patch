@@ -106,18 +106,20 @@ index 0000000..2e2b309
 +}
 diff --git a/experimental/libbox/outbound_probe_test.go b/experimental/libbox/outbound_probe_test.go
 new file mode 100644
-index 0000000..a5ff568
+index 0000000..37d9aca
 --- /dev/null
 +++ b/experimental/libbox/outbound_probe_test.go
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,120 @@
 +package libbox
 +
 +import (
 +	"context"
 +	"fmt"
 +	"github.com/sagernet/sing-box/protocol/group"
++	"github.com/sagernet/sing/service/filemanager"
 +	"net/http"
 +	"net/http/httptest"
++	"os"
 +	"path/filepath"
 +	"testing"
 +	"time"
@@ -142,6 +144,7 @@ index 0000000..a5ff568
 +func testProbe(t *testing.T, content string) *OutboundProbe {
 +	t.Helper()
 +	ctx, cancel := context.WithCancel(baseContext(nil))
++	ctx = filemanager.WithDefault(ctx, t.TempDir(), t.TempDir(), os.Getuid(), os.Getgid())
 +	ctx = service.ContextWith[adapter.PlatformInterface](ctx, &probeTestPlatform{})
 +	options, err := parseConfig(ctx, content)
 +	if err != nil {

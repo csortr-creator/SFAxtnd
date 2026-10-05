@@ -36,12 +36,16 @@ decoded with sing-box 1.14.2: domain SRS version 3, IP SRS version 1. The preset
 replaces the broad Russian-direct preset, preserves other user rules, routes its
 allowed domains/IPs directly and routes remaining traffic through the profile's
 actual proxy selector. Existing sniff/DNS interception actions run first. Disabling
-both whitelist rules removes the catch-all policy on the next connection.
+both whitelist rules removes the catch-all policy on the next connection. Local
+network access and IPv6 blocking remain before the catch-all. IPv6 settings apply
+at startup, including when switching the setting on an existing subscription.
 
 Runetfreedom also documents `ru-whitelist` IP ranges sourced from
 https://github.com/hxehex/russia-mobile-internet-whitelist. Hydraponique was chosen
 because it provides both domain and IP lists together. Lists update through the
-existing rule-set updater and configured update interval.
+existing rule-set updater and configured update interval. The APK includes verified
+bootstrap SRS snapshots so first use does not require reaching GitHub before VPN
+connects. Runetfreedom's `geoip-ru-whitelist.srs` was also downloaded and decoded.
 
 ## Validation
 

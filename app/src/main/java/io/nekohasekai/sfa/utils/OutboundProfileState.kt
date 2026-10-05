@@ -21,6 +21,28 @@ object OutboundProfileState {
         return root.toString()
     }
 
+    fun runtimeConfig(content: String, blockIpv6: Boolean, tunStack: String): String {
+        val root = JSONObject(content)
+        root.optJSONObject("dns")?.remove("independent_cache")
+        val inbounds = root.optJSONArray("inbounds") ?: JSONArray()
+        for (i in 0 until inbounds.length()) {
+            inbounds.optJSONObject(i)?.takeIf { it.optString("type") == "tun" }?.put("stack", tunStack)
+        }
+        val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
+        val rules = route.optJSONArray("rules") ?: JSONArray()
+        val updated = JSONArray()
+        if (blockIpv6) updated.put(JSONObject().put("ip_cidr", JSONArray().put("::/0")).put("action", "reject"))
+        for (i in 0 until rules.length()) {
+            val rule = rules.optJSONObject(i) ?: continue
+            val ips = rule.optJSONArray("ip_cidr")
+            val ipv6Block = rule.length() == 2 && ips?.length() == 1 && ips.optString(0) == "::/0" &&
+                (rule.optString("outbound") == "block" || rule.optString("action") == "reject")
+            if (!ipv6Block) updated.put(rule)
+        }
+        route.put("rules", updated)
+        return root.toString()
+    }
+
     fun probeConfig(content: String, tags: Collection<String>): String {
         val original = JSONObject(content)
         val source = original.optJSONArray("outbounds") ?: error("В подписке нет серверов")

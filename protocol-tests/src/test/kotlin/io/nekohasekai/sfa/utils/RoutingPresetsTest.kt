@@ -19,6 +19,8 @@ class RoutingPresetsTest {
           "dns":{"servers":[{"type":"https","tag":"cld","detour":"my-subscription"},
             {"type":"udp","tag":"ynd","detour":"direct"}]},
           "route":{"rules":[{"action":"sniff"},{"protocol":"dns","action":"hijack-dns"},
+            {"ip_is_private":true,"outbound":"direct"},
+            {"ip_cidr":["::/0"],"action":"reject"},
             {"domain_suffix":["ru"],"outbound":"direct"}]}
         }""", user.toString()))
     }
@@ -37,16 +39,16 @@ class RoutingPresetsTest {
         val rules = route.getJSONArray("rules")
         assertEquals("sniff", rules.getJSONObject(0).getString("action"))
         assertEquals("hijack-dns", rules.getJSONObject(1).getString("action"))
-        assertEquals("direct", rules.getJSONObject(2).getString("outbound"))
-        assertEquals("direct", rules.getJSONObject(3).getString("outbound"))
-        assertEquals("my-subscription", rules.getJSONObject(4).getString("outbound"))
-        assertEquals(1, rules.getJSONObject(4).length())
+        assertEquals("direct", rules.getJSONObject(4).getString("outbound"))
+        assertEquals("direct", rules.getJSONObject(5).getString("outbound"))
+        assertEquals("my-subscription", rules.getJSONObject(6).getString("outbound"))
+        assertEquals(1, rules.getJSONObject(6).length())
         assertEquals("ynd", root.getJSONObject("dns").getJSONArray("rules").getJSONObject(0).getString("server"))
     }
 
     @Test fun disablingWhitelistRestoresOriginalProfileRouting() {
         val root = apply(enabled = false)
-        assertEquals(3, root.getJSONObject("route").getJSONArray("rules").length())
+        assertEquals(5, root.getJSONObject("route").getJSONArray("rules").length())
         assertEquals("direct", root.getJSONObject("route").getJSONArray("rules").getJSONObject(2).getString("outbound"))
         assertFalse(root.getJSONObject("route").has("rule_set"))
     }

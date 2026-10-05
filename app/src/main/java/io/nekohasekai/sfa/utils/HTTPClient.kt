@@ -238,6 +238,7 @@ class HTTPClient : Closeable {
             for (i in 0 until inbounds.length()) {
                 val inbound = inbounds.optJSONObject(i) ?: continue
                 if (inbound.optString("type") == "tun") {
+                    inbound.put("stack", io.nekohasekai.sfa.database.Settings.tunStack)
                     val addresses = JSONArray()
                     if (inbound.has("inet4_address")) {
                         val v = inbound.remove("inet4_address")
@@ -796,32 +797,8 @@ class HTTPClient : Closeable {
             )
         }
         dnsObj.put("servers", dnsServers)
-        dnsObj.put(
-            "rules",
-            JSONArray().apply {
-                put(
-                    JSONObject().apply {
-                        put("rule_set", JSONArray().apply { put("geosite-category-ru") })
-                        put("server", "dns-direct")
-                    },
-                )
-                put(
-                    JSONObject().apply {
-                        put(
-                            "domain_suffix",
-                            JSONArray().apply {
-                                put(".ru")
-                                put(".su")
-                                put(".xn--p1ai")
-                                put(".by")
-                                put(".kz")
-                            },
-                        )
-                        put("server", "dns-direct")
-                    },
-                )
-            },
-        )
+        // DNS rules: only from UserRoutingConfig / profile — no hard-coded RU rules.
+        dnsObj.put("rules", JSONArray())
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
         root.put("dns", dnsObj)
@@ -837,7 +814,7 @@ class HTTPClient : Closeable {
                         put("address", JSONArray().apply { put("172.19.0.1/30") })
                         put("auto_route", true)
                         put("strict_route", false)
-                        put("stack", "gvisor")
+                        put("stack", io.nekohasekai.sfa.database.Settings.tunStack)
                     },
                 )
             },

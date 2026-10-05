@@ -87,7 +87,6 @@ fun CoreSettingsScreen(navController: NavController) {
     var dataSize by remember { mutableStateOf("") }
     val version = remember { Libbox.version() }
     var showVersionMenu by remember { mutableStateOf(false) }
-    var disableDeprecatedWarnings by remember { mutableStateOf(Settings.disableDeprecatedWarnings) }
 
     // Calculate data size on launch
     LaunchedEffect(Unit) {
@@ -248,37 +247,6 @@ fun CoreSettingsScreen(navController: NavController) {
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ),
             ) {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.disable_deprecated_warnings),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.WarningAmber,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = disableDeprecatedWarnings,
-                            onCheckedChange = { checked ->
-                                disableDeprecatedWarnings = checked
-                                scope.launch(Dispatchers.IO) {
-                                    Settings.disableDeprecatedWarnings = checked
-                                }
-                            },
-                        )
-                    },
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp)),
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
             }
         }
 

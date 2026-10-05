@@ -158,6 +158,27 @@ jobs:
           set -euxo pipefail
           ./patch.sh
 
+      - name: Test XHTTP wire compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip \
+            -o /tmp/xray.zip
+          echo '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  /tmp/xray.zip' | sha256sum --check
+          mkdir -p /tmp/xray
+          unzip -q /tmp/xray.zip -d /tmp/xray
+          cd sing-box-core
+          XHTTP_XRAY_BINARY=/tmp/xray/xray go test -race -timeout 5m \
+            -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./transport/v2rayxhttp ./transport/v2ray ./option
+
+      - name: Test proxy share-link import
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x gradlew
+          ./gradlew -p protocol-tests test --stacktrace
+
       - name: Build libbox
         shell: bash
         run: |
@@ -289,6 +310,13 @@ jobs:
           echo "APK count: $APK_COUNT"
 
           test "$APK_COUNT" -gt 0
+
+      - name: Upload test APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SFAxtnd-${{ github.sha }}
+          path: dist/*.apk
+          retention-days: 14
 
       - name: Publish Release
         if: >-

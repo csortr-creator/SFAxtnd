@@ -13,6 +13,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
+import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.qrs.QRSDecoder
 import io.nekohasekai.sfa.qrs.readIntLE
@@ -368,7 +369,7 @@ class QRScanViewModel(application: Application) : AndroidViewModel(application) 
                 data
             }
             Log.d(TAG, "Decoding profile content, size: ${actualData.size}")
-            Libbox.decodeProfileContent(actualData)
+            ProfileContentDecoder.decode(actualData)
             _uiState.update { it.copy(result = QRScanResult.QRSData(actualData)) }
         } catch (e: Exception) {
             _uiState.update { it.copy(errorMessage = e.message) }

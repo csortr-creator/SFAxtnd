@@ -1,4 +1,14 @@
 #!/bin/bash
+set -euo pipefail
+
+# Backport the XHTTP transport onto the pinned core; never silently build without it.
+CORE_PATCH="$(dirname "$0")/patches/sing-box-1.14.2-xhttp.patch"
+if git -C sing-box-core apply --reverse --check "$PWD/$CORE_PATCH" 2>/dev/null; then
+    echo "XHTTP core patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$CORE_PATCH"
+    git -C sing-box-core apply "$PWD/$CORE_PATCH"
+fi
 
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)

@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.UpdateProfileWork
@@ -245,7 +246,7 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                 ProfileSource.CreateNew -> "{}"
                 ProfileSource.Import -> {
                     if (state.qrsData != null) {
-                        val content = Libbox.decodeProfileContent(state.qrsData)
+                        val content = ProfileContentDecoder.decode(state.qrsData)
                         content.config
                     } else {
                         state.importUri?.let { uri ->

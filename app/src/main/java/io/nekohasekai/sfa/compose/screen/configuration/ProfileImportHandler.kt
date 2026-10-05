@@ -3,6 +3,7 @@ package io.nekohasekai.sfa.compose.screen.configuration
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.ProfileContent
 import io.nekohasekai.sfa.R
@@ -61,7 +62,7 @@ class ProfileImportHandler(private val context: Context) {
             // Try to decode as ProfileContent (the old way)
             val content =
                 try {
-                    Libbox.decodeProfileContent(data)
+                    ProfileContentDecoder.decode(data)
                 } catch (e: Exception) {
                     // If it fails, try one more time as JSON
                     if (dataString.trimStart().startsWith("{") || dataString.trimStart().startsWith("[")) {
@@ -93,7 +94,7 @@ class ProfileImportHandler(private val context: Context) {
 
             val content =
                 try {
-                    Libbox.decodeProfileContent(data)
+                    ProfileContentDecoder.decode(data)
                 } catch (e: Exception) {
                     if (dataString.trimStart().startsWith("{") || dataString.trimStart().startsWith("[")) {
                         return@withContext UriParseResult.Success(name = filename)
@@ -140,7 +141,7 @@ class ProfileImportHandler(private val context: Context) {
             // Try to decode as profile content
             val content =
                 try {
-                    Libbox.decodeProfileContent(data.toByteArray())
+                    ProfileContentDecoder.decode(data.toByteArray())
                 } catch (e: Exception) {
                     return@withContext QRCodeParseResult.Error(
                         context.getString(R.string.error_decode_profile, e.message),
@@ -176,7 +177,7 @@ class ProfileImportHandler(private val context: Context) {
                 // Try to decode as profile content
                 val content =
                     try {
-                        Libbox.decodeProfileContent(data.toByteArray())
+                        ProfileContentDecoder.decode(data.toByteArray())
                     } catch (e: Exception) {
                         return@withContext ImportResult.Error(
                             context.getString(R.string.error_decode_profile, e.message),
@@ -192,7 +193,7 @@ class ProfileImportHandler(private val context: Context) {
     suspend fun parseQRSData(data: ByteArray): QRSParseResult = withContext(Dispatchers.IO) {
         try {
             val content = try {
-                Libbox.decodeProfileContent(data)
+                ProfileContentDecoder.decode(data)
             } catch (e: Exception) {
                 return@withContext QRSParseResult.Error(
                     context.getString(R.string.error_decode_profile, e.message),
@@ -207,7 +208,7 @@ class ProfileImportHandler(private val context: Context) {
     suspend fun importFromQRSData(data: ByteArray): ImportResult = withContext(Dispatchers.IO) {
         try {
             val content = try {
-                Libbox.decodeProfileContent(data)
+                ProfileContentDecoder.decode(data)
             } catch (e: Exception) {
                 return@withContext ImportResult.Error(
                     context.getString(R.string.error_decode_profile, e.message),

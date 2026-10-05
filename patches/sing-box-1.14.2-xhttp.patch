@@ -1,0 +1,4032 @@
+diff --git a/constant/v2ray.go b/constant/v2ray.go
+index c3089a6..1811df5 100644
+--- a/constant/v2ray.go
++++ b/constant/v2ray.go
+@@ -6,4 +6,5 @@ const (
+ 	V2RayTransportTypeQUIC        = "quic"
+ 	V2RayTransportTypeGRPC        = "grpc"
+ 	V2RayTransportTypeHTTPUpgrade = "httpupgrade"
++	V2RayTransportTypeXHTTP       = "xhttp"
+ )
+diff --git a/option/v2ray_transport.go b/option/v2ray_transport.go
+index 8788151..2858193 100644
+--- a/option/v2ray_transport.go
++++ b/option/v2ray_transport.go
+@@ -12,12 +12,13 @@ import (
+ )
+ 
+ type _V2RayTransportOptions struct {
+-	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade"`
++	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade,xhttp"`
+ 	HTTPOptions        V2RayHTTPOptions        `json:"-"`
+ 	WebsocketOptions   V2RayWebsocketOptions   `json:"-"`
+ 	QUICOptions        V2RayQUICOptions        `json:"-"`
+ 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
+ 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
++	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
+ }
+ 
+ type V2RayTransportOptions _V2RayTransportOptions
+@@ -35,6 +36,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
+ 		v = o.GRPCOptions
+ 	case C.V2RayTransportTypeHTTPUpgrade:
+ 		v = o.HTTPUpgradeOptions
++	case C.V2RayTransportTypeXHTTP:
++		v = o.XHTTPOptions
+ 	case "":
+ 		return nil, E.New("missing transport type")
+ 	default:
+@@ -60,6 +63,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
+ 		v = &o.GRPCOptions
+ 	case C.V2RayTransportTypeHTTPUpgrade:
+ 		v = &o.HTTPUpgradeOptions
++	case C.V2RayTransportTypeXHTTP:
++		v = &o.XHTTPOptions
+ 	default:
+ 		return E.New("unknown transport type: " + o.Type)
+ 	}
+@@ -78,6 +83,7 @@ func (o V2RayTransportOptions) DescribeSchema(builder schema.Builder) (*schema.N
+ 			{Value: C.V2RayTransportTypeQUIC, StructType: reflect.TypeFor[V2RayQUICOptions]()},
+ 			{Value: C.V2RayTransportTypeGRPC, StructType: reflect.TypeFor[V2RayGRPCOptions]()},
+ 			{Value: C.V2RayTransportTypeHTTPUpgrade, StructType: reflect.TypeFor[V2RayHTTPUpgradeOptions]()},
++			{Value: C.V2RayTransportTypeXHTTP, StructType: reflect.TypeFor[V2RayXHTTPOptions]()},
+ 		}, nil)
+ 	})
+ }
+@@ -113,3 +119,65 @@ type V2RayHTTPUpgradeOptions struct {
+ 	Path    string               `json:"path,omitempty"`
+ 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+ }
++
++// V2RayXHTTPRange is an inclusive random range. A zero value selects the
++// corresponding XHTTP protocol default.
++type V2RayXHTTPRange struct {
++	From int32 `json:"from,omitempty"`
++	To   int32 `json:"to,omitempty"`
++}
++
++// V2RayXHTTPXmuxOptions controls reuse of the HTTP client used by XHTTP.
++// max_connections and max_concurrency are mutually exclusive.
++type V2RayXHTTPXmuxOptions struct {
++	MaxConcurrency   V2RayXHTTPRange `json:"max_concurrency,omitempty"`
++	MaxConnections   V2RayXHTTPRange `json:"max_connections,omitempty"`
++	CMaxReuseTimes   V2RayXHTTPRange `json:"c_max_reuse_times,omitempty"`
++	HMaxRequestTimes V2RayXHTTPRange `json:"h_max_request_times,omitempty"`
++	HMaxReusableSecs V2RayXHTTPRange `json:"h_max_reusable_secs,omitempty"`
++	HKeepAlivePeriod int64           `json:"h_keep_alive_period,omitempty"`
++}
++
++// V2RayXHTTPDownloadSettings defines the independent XHTTP endpoint used for
++// the download stream. Its embedded XHTTP options describe that endpoint's
++// HTTP request shape; server and tls select how to reach it.
++type V2RayXHTTPDownloadSettings struct {
++	ServerOptions
++	OutboundTLSOptionsContainer
++	V2RayXHTTPOptions
++}
++
++// V2RayXHTTPOptions intentionally follows Xray's XHTTP wire configuration.
++// Field names use sing-box's snake_case JSON convention.
++type V2RayXHTTPOptions struct {
++	Host                 string                      `json:"host,omitempty"`
++	Path                 string                      `json:"path,omitempty"`
++	Mode                 string                      `json:"mode,omitempty"`
++	Headers              badoption.HTTPHeader        `json:"headers,omitempty"`
++	XPaddingBytes        V2RayXHTTPRange             `json:"x_padding_bytes,omitempty"`
++	XPaddingObfsMode     bool                        `json:"x_padding_obfs_mode,omitempty"`
++	XPaddingKey          string                      `json:"x_padding_key,omitempty"`
++	XPaddingHeader       string                      `json:"x_padding_header,omitempty"`
++	XPaddingPlacement    string                      `json:"x_padding_placement,omitempty"`
++	XPaddingMethod       string                      `json:"x_padding_method,omitempty"`
++	UplinkHTTPMethod     string                      `json:"uplink_http_method,omitempty"`
++	SessionIDPlacement   string                      `json:"session_id_placement,omitempty"`
++	SessionIDKey         string                      `json:"session_id_key,omitempty"`
++	SessionIDTable       string                      `json:"session_id_table,omitempty"`
++	SessionIDLength      V2RayXHTTPRange             `json:"session_id_length,omitempty"`
++	SeqPlacement         string                      `json:"seq_placement,omitempty"`
++	SeqKey               string                      `json:"seq_key,omitempty"`
++	UplinkDataPlacement  string                      `json:"uplink_data_placement,omitempty"`
++	UplinkDataKey        string                      `json:"uplink_data_key,omitempty"`
++	UplinkChunkSize      V2RayXHTTPRange             `json:"uplink_chunk_size,omitempty"`
++	NoGRPCHeader         bool                        `json:"no_grpc_header,omitempty"`
++	NoSSEHeader          bool                        `json:"no_sse_header,omitempty"`
++	SCMaxEachPostBytes   V2RayXHTTPRange             `json:"sc_max_each_post_bytes,omitempty"`
++	SCMinPostsIntervalMS V2RayXHTTPRange             `json:"sc_min_posts_interval_ms,omitempty"`
++	SCMaxBufferedPosts   int                         `json:"sc_max_buffered_posts,omitempty"`
++	SCStreamUpServerSecs V2RayXHTTPRange             `json:"sc_stream_up_server_secs,omitempty"`
++	ServerMaxHeaderBytes int                         `json:"server_max_header_bytes,omitempty"`
++	QUIC                 QUICOptions                 `json:"quic,omitempty"`
++	XMUX                 V2RayXHTTPXmuxOptions       `json:"xmux,omitempty"`
++	DownloadSettings     *V2RayXHTTPDownloadSettings `json:"download_settings,omitempty"`
++}
+diff --git a/transport/v2ray/transport.go b/transport/v2ray/transport.go
+index ab52f55..f775a49 100644
+--- a/transport/v2ray/transport.go
++++ b/transport/v2ray/transport.go
+@@ -10,6 +10,7 @@ import (
+ 	"github.com/sagernet/sing-box/transport/v2rayhttp"
+ 	"github.com/sagernet/sing-box/transport/v2rayhttpupgrade"
+ 	"github.com/sagernet/sing-box/transport/v2raywebsocket"
++	"github.com/sagernet/sing-box/transport/v2rayxhttp"
+ 	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	M "github.com/sagernet/sing/common/metadata"
+@@ -39,6 +40,8 @@ func NewServerTransport(ctx context.Context, logger logger.ContextLogger, option
+ 		return NewGRPCServer(ctx, logger, options.GRPCOptions, tlsConfig, handler)
+ 	case C.V2RayTransportTypeHTTPUpgrade:
+ 		return v2rayhttpupgrade.NewServer(ctx, logger, options.HTTPUpgradeOptions, tlsConfig, handler)
++	case C.V2RayTransportTypeXHTTP:
++		return v2rayxhttp.NewServer(ctx, logger, options.XHTTPOptions, tlsConfig, handler)
+ 	default:
+ 		return nil, E.New("unknown transport type: " + options.Type)
+ 	}
+@@ -62,6 +65,8 @@ func NewClientTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socks
+ 		return NewQUICClient(ctx, dialer, serverAddr, options.QUICOptions, tlsConfig)
+ 	case C.V2RayTransportTypeHTTPUpgrade:
+ 		return v2rayhttpupgrade.NewClient(ctx, dialer, serverAddr, options.HTTPUpgradeOptions, tlsConfig)
++	case C.V2RayTransportTypeXHTTP:
++		return v2rayxhttp.NewClient(ctx, dialer, serverAddr, options.XHTTPOptions, tlsConfig)
+ 	default:
+ 		return nil, E.New("unknown transport type: " + options.Type)
+ 	}
+diff --git a/transport/v2rayxhttp/client.go b/transport/v2rayxhttp/client.go
+new file mode 100644
+index 0000000..e793bfa
+--- /dev/null
++++ b/transport/v2rayxhttp/client.go
+@@ -0,0 +1,443 @@
++package v2rayxhttp
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"net"
++	"net/http"
++	"net/http/httptrace"
++	"os"
++	"sync"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/tls"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common"
++	E "github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++
++	"golang.org/x/net/http2"
++)
++
++var _ adapter.V2RayClientTransport = (*Client)(nil)
++
++type Client struct {
++	ctx      context.Context
++	upload   *clientTarget
++	download *clientTarget
++}
++
++type clientTarget struct {
++	serverAddr M.Socksaddr
++	config     *config
++	xmux       *xmuxManager
++	requestURL string
++	reality    bool
++}
++
++func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (*Client, error) {
++	config, err := newConfig(options)
++	if err != nil {
++		return nil, err
++	}
++	if options.DownloadSettings != nil && config.mode == "stream-one" {
++		return nil, E.New("xhttp download_settings cannot be used with stream-one")
++	}
++	upload, err := newClientTarget(dialer, serverAddr, config, tlsConfig)
++	if err != nil {
++		return nil, err
++	}
++	client := &Client{ctx: ctx, upload: upload}
++	if options.DownloadSettings == nil {
++		return client, nil
++	}
++	downloadOptions := options.DownloadSettings
++	if downloadOptions.DownloadSettings != nil {
++		return nil, E.New("nested xhttp download_settings is unsupported")
++	}
++	downloadAddr := downloadOptions.ServerOptions.Build()
++	if !downloadAddr.IsValid() {
++		return nil, E.New("invalid xhttp download_settings server")
++	}
++	downloadConfig, err := newConfig(downloadOptions.V2RayXHTTPOptions)
++	if err != nil {
++		return nil, E.Cause(err, "invalid xhttp download_settings")
++	}
++	downloadTLS, err := tls.NewClient(ctx, logger.NOP(), downloadOptions.Server, common.PtrValueOrDefault(downloadOptions.TLS))
++	if err != nil {
++		return nil, E.Cause(err, "create xhttp download_settings tls client")
++	}
++	download, err := newClientTarget(dialer, downloadAddr, downloadConfig, downloadTLS)
++	if err != nil {
++		return nil, err
++	}
++	client.download = download
++	return client, nil
++}
++
++func newClientTarget(dialer N.Dialer, serverAddr M.Socksaddr, config *config, tlsConfig tls.Config) (*clientTarget, error) {
++	scheme := "http"
++	var newTransport func() http.RoundTripper
++	var err error
++	if isHTTP3(tlsConfig) {
++		scheme = "https"
++		newTransport, err = newHTTP3TransportFactory(dialer, serverAddr, tlsConfig, config.quic)
++		if err != nil {
++			return nil, err
++		}
++	} else if tlsConfig == nil {
++		newTransport = func() http.RoundTripper {
++			return &http.Transport{
++				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
++					return dialer.DialContext(ctx, network, serverAddr)
++				},
++				MaxIdleConns: 64, MaxIdleConnsPerHost: 64, IdleConnTimeout: 30 * time.Minute,
++			}
++		}
++	} else {
++		scheme = "https"
++		if len(tlsConfig.NextProtos()) == 0 {
++			tlsConfig.SetNextProtos([]string{http2.NextProtoTLS})
++		}
++		tlsDialer := tls.NewDialer(dialer, tlsConfig)
++		if nextProtos := tlsConfig.NextProtos(); len(nextProtos) == 1 && nextProtos[0] == "http/1.1" {
++			newTransport = func() http.RoundTripper {
++				return &http.Transport{
++					DialTLSContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
++						return tlsDialer.DialTLSContext(ctx, serverAddr)
++					},
++					DisableKeepAlives: true,
++					MaxIdleConns:      64, MaxIdleConnsPerHost: 64, IdleConnTimeout: 30 * time.Minute,
++				}
++			}
++		} else {
++			readIdleTimeout := 30 * time.Second
++			if config.xmux.keepAlivePeriod > 0 {
++				readIdleTimeout = config.xmux.keepAlivePeriod
++			}
++			newTransport = func() http.RoundTripper {
++				return &http2.Transport{
++					DialTLSContext: func(ctx context.Context, network, _ string, _ *tls.STDConfig) (net.Conn, error) {
++						return tlsDialer.DialTLSContext(ctx, serverAddr)
++					},
++					ReadIdleTimeout: readIdleTimeout,
++					PingTimeout:     15 * time.Second,
++				}
++			}
++		}
++	}
++	host := serverAddr.String()
++	if config.host != "" {
++		host = config.host
++	}
++	requestURLValue := config.requestURL(scheme, host)
++	requestURL := requestURLValue.String()
++	return &clientTarget{serverAddr: serverAddr, config: config, xmux: newXMuxManager(config.xmux, newTransport), requestURL: requestURL, reality: isRealityClient(tlsConfig)}, nil
++}
++
++func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
++	ctx, cancel := context.WithCancel(ctx)
++	uploadClient := c.upload.xmux.acquireConnection()
++	downloadTarget, downloadClient := c.upload, uploadClient
++	if c.download != nil {
++		downloadTarget = c.download
++		downloadClient = c.download.xmux.acquireConnection()
++	}
++	closeXMuxClients := func() {
++		c.upload.xmux.doneConnection(uploadClient)
++		if c.download != nil {
++			c.download.xmux.doneConnection(downloadClient)
++		}
++	}
++	mode := resolvedMode(c.upload.config.mode, c.upload.reality, c.download != nil)
++	sessionID := ""
++	if mode != "stream-one" {
++		sessionID = c.upload.config.newSessionID()
++	}
++	if mode == "stream-one" {
++		reader, writer := io.Pipe()
++		response, err := c.upload.openStream(ctx, uploadClient.transport, http.MethodPost, sessionID, reader)
++		if err != nil {
++			cancel()
++			_ = writer.Close()
++			closeXMuxClients()
++			return nil, err
++		}
++		return &splitConn{reader: response.Body, writer: writer, cancel: cancel, onClose: closeXMuxClients}, nil
++	}
++	response, err := downloadTarget.openStream(ctx, downloadClient.transport, http.MethodGet, sessionID, nil)
++	if err != nil {
++		cancel()
++		closeXMuxClients()
++		return nil, err
++	}
++	if mode == "stream-up" {
++		reader, writer := io.Pipe()
++		go func() {
++			// Xray keeps the paired stream-up request on the same selected
++			// client even if this consumes its final request budget.
++			c.upload.xmux.consumeRequest(uploadClient)
++			response, err := c.upload.openStream(ctx, uploadClient.transport, c.upload.config.uplinkMethod, sessionID, reader)
++			if err != nil {
++				_ = reader.CloseWithError(err)
++				return
++			}
++			_, err = io.Copy(io.Discard, response.Body)
++			_ = response.Body.Close()
++			if err != nil {
++				_ = reader.CloseWithError(err)
++			}
++		}()
++		return &splitConn{reader: response.Body, writer: writer, cancel: cancel, onClose: closeXMuxClients}, nil
++	}
++	writer := newPacketWriter(ctx, c.upload, uploadClient, sessionID)
++	return &splitConn{reader: response.Body, writer: writer, cancel: cancel, onClose: closeXMuxClients}, nil
++}
++
++func resolvedMode(mode string, reality, downloadSettings bool) string {
++	if mode != "auto" {
++		return mode
++	}
++	if reality {
++		if downloadSettings {
++			return "stream-up"
++		}
++		return "stream-one"
++	}
++	return "packet-up"
++}
++
++func (c *clientTarget) openStream(ctx context.Context, transport http.RoundTripper, method, sessionID string, body io.Reader) (*http.Response, error) {
++	// The logical connection can outlive the routing context that initiated
++	// DialContext. Xray deliberately detaches its streaming HTTP request here;
++	// the pipe/response bodies still provide the transport close signal.
++	request, err := http.NewRequestWithContext(context.WithoutCancel(ctx), method, c.requestURL, body)
++	if err != nil {
++		return nil, err
++	}
++	c.config.fillStreamRequest(request, sessionID)
++	reader := newWaitingResponseBody()
++	gotConnection := make(chan struct{})
++	var gotConnectionOnce sync.Once
++	notifyConnection := func() { gotConnectionOnce.Do(func() { close(gotConnection) }) }
++	request = request.WithContext(httptrace.WithClientTrace(request.Context(), &httptrace.ClientTrace{
++		GotConn: func(httptrace.GotConnInfo) { notifyConnection() },
++	}))
++	go func() {
++		response, roundTripErr := transport.RoundTrip(request)
++		if roundTripErr != nil {
++			reader.set(nil, roundTripErr)
++			notifyConnection()
++			return
++		}
++		if response.StatusCode != http.StatusOK {
++			_ = response.Body.Close()
++			reader.set(nil, E.New("xhttp: unexpected status: ", response.Status))
++			notifyConnection()
++			return
++		}
++		reader.set(response.Body, nil)
++		notifyConnection()
++	}()
++	select {
++	case <-gotConnection:
++		return &http.Response{StatusCode: http.StatusOK, Body: reader}, nil
++	case <-ctx.Done():
++		_ = reader.Close()
++		return nil, ctx.Err()
++	}
++}
++
++type waitingResponseBody struct {
++	ready  chan struct{}
++	access sync.Mutex
++	body   io.ReadCloser
++	err    error
++	closed bool
++}
++
++func newWaitingResponseBody() *waitingResponseBody {
++	return &waitingResponseBody{ready: make(chan struct{})}
++}
++
++func (r *waitingResponseBody) set(body io.ReadCloser, err error) {
++	r.access.Lock()
++	if r.closed && body != nil {
++		_ = body.Close()
++	}
++	r.body, r.err = body, err
++	close(r.ready)
++	r.access.Unlock()
++}
++
++func (r *waitingResponseBody) Read(buffer []byte) (int, error) {
++	<-r.ready
++	r.access.Lock()
++	body, err := r.body, r.err
++	r.access.Unlock()
++	if err != nil {
++		return 0, err
++	}
++	if body == nil {
++		return 0, io.ErrClosedPipe
++	}
++	return body.Read(buffer)
++}
++
++func (r *waitingResponseBody) Close() error {
++	r.access.Lock()
++	r.closed = true
++	body := r.body
++	r.access.Unlock()
++	if body != nil {
++		return body.Close()
++	}
++	return nil
++}
++
++func (c *clientTarget) sendPacket(ctx context.Context, transport http.RoundTripper, sessionID string, sequence uint64, payload []byte) error {
++	request, err := http.NewRequestWithContext(ctx, c.config.uplinkMethod, c.requestURL, nil)
++	if err != nil {
++		return err
++	}
++	c.config.fillPacketRequest(request, sessionID, sequence, payload)
++	response, err := transport.RoundTrip(request)
++	if err != nil {
++		return err
++	}
++	defer response.Body.Close()
++	_, _ = io.Copy(io.Discard, response.Body)
++	if response.StatusCode != http.StatusOK {
++		return E.New("xhttp: unexpected upload status: ", response.Status)
++	}
++	return nil
++}
++
++func (c *Client) Close() error {
++	c.upload.xmux.Close()
++	if c.download != nil {
++		c.download.xmux.Close()
++	}
++	return nil
++}
++
++type splitConn struct {
++	reader  io.ReadCloser
++	writer  io.WriteCloser
++	cancel  context.CancelFunc
++	onClose func()
++	once    sync.Once
++}
++
++func (c *splitConn) Read(buffer []byte) (int, error)  { return c.reader.Read(buffer) }
++func (c *splitConn) Write(buffer []byte) (int, error) { return c.writer.Write(buffer) }
++func (c *splitConn) Close() error {
++	var err error
++	c.once.Do(func() {
++		c.cancel()
++		err = common.Close(c.writer, c.reader)
++		if c.onClose != nil {
++			c.onClose()
++		}
++	})
++	return err
++}
++func (c *splitConn) LocalAddr() net.Addr              { return M.Socksaddr{} }
++func (c *splitConn) RemoteAddr() net.Addr             { return M.Socksaddr{} }
++func (c *splitConn) SetDeadline(time.Time) error      { return os.ErrInvalid }
++func (c *splitConn) SetReadDeadline(time.Time) error  { return os.ErrInvalid }
++func (c *splitConn) SetWriteDeadline(time.Time) error { return os.ErrInvalid }
++
++type packetWriter struct {
++	ctx        context.Context
++	target     *clientTarget
++	xmuxClient *xmuxClient
++	sessionID  string
++	packets    chan []byte
++	closed     chan struct{}
++	once       sync.Once
++	access     sync.Mutex
++	err        error
++}
++
++func newPacketWriter(ctx context.Context, target *clientTarget, xmuxClient *xmuxClient, sessionID string) *packetWriter {
++	writer := &packetWriter{ctx: ctx, target: target, xmuxClient: xmuxClient, sessionID: sessionID, packets: make(chan []byte, target.config.maxBufferedPosts), closed: make(chan struct{})}
++	go writer.run()
++	return writer
++}
++
++func (w *packetWriter) Write(payload []byte) (int, error) {
++	w.access.Lock()
++	err := w.err
++	w.access.Unlock()
++	if err != nil {
++		return 0, err
++	}
++	copyPayload := bytes.Clone(payload)
++	select {
++	case w.packets <- copyPayload:
++		return len(payload), nil
++	case <-w.closed:
++		return 0, net.ErrClosed
++	case <-w.ctx.Done():
++		return 0, w.ctx.Err()
++	}
++}
++func (w *packetWriter) Close() error { w.once.Do(func() { close(w.closed) }); return nil }
++func (w *packetWriter) run() {
++	var sequence uint64
++	var remainder []byte
++	for {
++		select {
++		case first := <-w.packets:
++			limit := w.target.config.scMaxPost.random()
++			payload := append([]byte(nil), remainder...)
++			remainder = nil
++			payload = append(payload, first...)
++			for len(payload) < limit {
++				select {
++				case next := <-w.packets:
++					payload = append(payload, next...)
++				default:
++					goto flush
++				}
++			}
++		flush:
++			if len(payload) > limit {
++				remainder = append(remainder, payload[limit:]...)
++				payload = payload[:limit]
++			}
++			if !w.target.xmux.consumePacketRequest(w.xmuxClient) {
++				w.xmuxClient = w.target.xmux.acquireRequest()
++			}
++			if err := w.target.sendPacket(w.ctx, w.xmuxClient.transport, w.sessionID, sequence, payload); err != nil {
++				w.access.Lock()
++				w.err = err
++				w.access.Unlock()
++				return
++			}
++			sequence++
++			interval := time.Duration(w.target.config.scMinInterval.random()) * time.Millisecond
++			if interval > 0 {
++				timer := time.NewTimer(interval)
++				select {
++				case <-timer.C:
++				case <-w.closed:
++					timer.Stop()
++					return
++				case <-w.ctx.Done():
++					timer.Stop()
++					return
++				}
++			}
++		case <-w.closed:
++			return
++		case <-w.ctx.Done():
++			return
++		}
++	}
++}
+diff --git a/transport/v2rayxhttp/config.go b/transport/v2rayxhttp/config.go
+new file mode 100644
+index 0000000..cdb13af
+--- /dev/null
++++ b/transport/v2rayxhttp/config.go
+@@ -0,0 +1,277 @@
++// Package v2rayxhttp implements the XHTTP V2Ray transport.
++//
++// The implementation is independent from Xray-core. Its public behaviour is
++// verified against the XHTTP wire protocol and sing-box integration tests.
++package v2rayxhttp
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"net/http"
++	"net/url"
++	"strings"
++
++	"github.com/sagernet/sing-box/option"
++	E "github.com/sagernet/sing/common/exceptions"
++)
++
++const (
++	placementPath          = "path"
++	placementQuery         = "query"
++	placementHeader        = "header"
++	placementCookie        = "cookie"
++	placementBody          = "body"
++	placementAuto          = "auto"
++	placementQueryInHeader = "queryInHeader"
++)
++
++type byteRange struct{ from, to int32 }
++
++func makeRange(value option.V2RayXHTTPRange, defaultFrom, defaultTo int32) byteRange {
++	if value.To == 0 {
++		return byteRange{defaultFrom, defaultTo}
++	}
++	return byteRange{value.From, value.To}
++}
++
++func (r byteRange) valid() bool { return r.from > 0 && r.to >= r.from }
++
++func (r byteRange) random() int {
++	if r.to <= r.from {
++		return int(r.from)
++	}
++	span := uint32(r.to-r.from) + 1
++	var raw [4]byte
++	_, _ = rand.Read(raw[:])
++	value := uint32(raw[0])<<24 | uint32(raw[1])<<16 | uint32(raw[2])<<8 | uint32(raw[3])
++	return int(r.from + int32(value%span))
++}
++
++type config struct {
++	host, path, query                                          string
++	mode                                                       string
++	headers                                                    http.Header
++	padding                                                    byteRange
++	paddingObfs                                                bool
++	paddingKey, paddingHeader, paddingPlacement, paddingMethod string
++	uplinkMethod, sessionPlacement, sessionKey                 string
++	seqPlacement, seqKey, dataPlacement, dataKey               string
++	scMaxPost, scMinInterval, scStreamUp                       byteRange
++	uplinkChunk                                                byteRange
++	maxBufferedPosts, maxHeaderBytes                           int
++	quic                                                       option.QUICOptions
++	noGRPCHeader, noSSEHeader                                  bool
++	sessionTable                                               string
++	sessionLength                                              byteRange
++	xmux                                                       xmuxConfig
++}
++
++func newConfig(options option.V2RayXHTTPOptions) (*config, error) {
++	xmux, err := newXMuxConfig(options.XMUX)
++	if err != nil {
++		return nil, err
++	}
++	c := &config{
++		host:             options.Host,
++		mode:             options.Mode,
++		headers:          options.Headers.Build(),
++		padding:          makeRange(options.XPaddingBytes, 100, 1000),
++		paddingObfs:      options.XPaddingObfsMode,
++		paddingKey:       options.XPaddingKey,
++		paddingHeader:    options.XPaddingHeader,
++		paddingPlacement: options.XPaddingPlacement,
++		paddingMethod:    options.XPaddingMethod,
++		uplinkMethod:     strings.ToUpper(options.UplinkHTTPMethod),
++		sessionPlacement: options.SessionIDPlacement,
++		sessionKey:       options.SessionIDKey,
++		seqPlacement:     options.SeqPlacement,
++		seqKey:           options.SeqKey,
++		dataPlacement:    options.UplinkDataPlacement,
++		dataKey:          options.UplinkDataKey,
++		scMaxPost:        makeRange(options.SCMaxEachPostBytes, 1000000, 1000000),
++		scMinInterval:    makeRange(options.SCMinPostsIntervalMS, 30, 30),
++		scStreamUp:       makeRange(options.SCStreamUpServerSecs, 20, 80),
++		maxBufferedPosts: options.SCMaxBufferedPosts,
++		maxHeaderBytes:   options.ServerMaxHeaderBytes,
++		quic:             options.QUIC,
++		noGRPCHeader:     options.NoGRPCHeader,
++		noSSEHeader:      options.NoSSEHeader,
++		sessionTable:     predefinedTable(options.SessionIDTable),
++		sessionLength:    makeRange(options.SessionIDLength, 0, 0),
++		xmux:             xmux,
++	}
++	if c.headers.Get("Host") != "" {
++		return nil, E.New("xhttp headers must not contain Host")
++	}
++	pathAndQuery := strings.SplitN(options.Path, "?", 2)
++	c.path = pathAndQuery[0]
++	if c.path == "" {
++		c.path = "/"
++	}
++	if !strings.HasPrefix(c.path, "/") {
++		c.path = "/" + c.path
++	}
++	if len(pathAndQuery) == 2 {
++		c.query = pathAndQuery[1]
++	}
++	if c.mode == "" {
++		c.mode = "auto"
++	}
++	if c.mode != "auto" && c.mode != "packet-up" && c.mode != "stream-up" && c.mode != "stream-one" {
++		return nil, E.New("unsupported xhttp mode: ", c.mode)
++	}
++	if !c.padding.valid() {
++		return nil, E.New("invalid xhttp x_padding_bytes")
++	}
++	if c.paddingKey == "" {
++		c.paddingKey = "x_padding"
++	}
++	if c.paddingHeader == "" {
++		c.paddingHeader = "X-Padding"
++	}
++	if c.paddingPlacement == "" {
++		c.paddingPlacement = placementQueryInHeader
++	}
++	if c.paddingPlacement != placementCookie && c.paddingPlacement != placementHeader && c.paddingPlacement != placementQuery && c.paddingPlacement != placementQueryInHeader {
++		return nil, E.New("unsupported xhttp padding placement: ", c.paddingPlacement)
++	}
++	if c.paddingMethod == "" {
++		c.paddingMethod = "repeat-x"
++	}
++	if c.paddingMethod != "repeat-x" && c.paddingMethod != "tokenish" {
++		return nil, E.New("unsupported xhttp padding method: ", c.paddingMethod)
++	}
++	if c.uplinkMethod == "" {
++		c.uplinkMethod = http.MethodPost
++	}
++	if c.uplinkMethod == http.MethodGet && c.mode != "packet-up" && c.mode != "auto" {
++		return nil, E.New("xhttp uplink_http_method GET requires packet-up mode")
++	}
++	if c.sessionPlacement == "" {
++		c.sessionPlacement = placementPath
++	}
++	if c.seqPlacement == "" {
++		c.seqPlacement = placementPath
++	}
++	if !validMetaPlacement(c.sessionPlacement) || !validMetaPlacement(c.seqPlacement) {
++		return nil, E.New("unsupported xhttp session or sequence placement")
++	}
++	if c.sessionKey == "" {
++		c.sessionKey = defaultMetaKey(c.sessionPlacement, "session")
++	}
++	if c.seqKey == "" {
++		c.seqKey = defaultMetaKey(c.seqPlacement, "seq")
++	}
++	if c.dataPlacement == "" {
++		c.dataPlacement = placementBody
++	}
++	if c.dataPlacement != placementAuto && c.dataPlacement != placementBody && c.dataPlacement != placementHeader && c.dataPlacement != placementCookie {
++		return nil, E.New("unsupported xhttp uplink data placement: ", c.dataPlacement)
++	}
++	if c.dataKey == "" && c.dataPlacement != placementBody {
++		if c.dataPlacement == placementCookie {
++			c.dataKey = "x_data"
++		} else {
++			c.dataKey = "X-Data"
++		}
++	}
++	c.uplinkChunk = normalizedUplinkChunk(options.UplinkChunkSize, c.dataPlacement, c.scMaxPost)
++	if !c.scMaxPost.valid() || !c.scMinInterval.valid() || !c.scStreamUp.valid() {
++		return nil, E.New("invalid xhttp upload range")
++	}
++	if c.maxBufferedPosts == 0 {
++		c.maxBufferedPosts = 30
++	}
++	if c.maxBufferedPosts < 1 || c.maxHeaderBytes < 0 {
++		return nil, E.New("invalid xhttp server limit")
++	}
++	if c.maxHeaderBytes == 0 {
++		c.maxHeaderBytes = 8192
++	}
++	return c, nil
++}
++
++func normalizedUplinkChunk(value option.V2RayXHTTPRange, placement string, postLimit byteRange) byteRange {
++	if value.To != 0 {
++		from := max(value.From, 64)
++		to := max(value.To, from)
++		return byteRange{from: from, to: to}
++	}
++	switch placement {
++	case placementCookie:
++		return byteRange{from: 2 * 1024, to: 3 * 1024}
++	case placementHeader:
++		return byteRange{from: 3 * 1000, to: 4 * 1000}
++	default:
++		return postLimit
++	}
++}
++
++func validMetaPlacement(value string) bool {
++	return value == placementPath || value == placementQuery || value == placementHeader || value == placementCookie
++}
++
++func defaultMetaKey(placement, name string) string {
++	if placement == placementHeader {
++		if name == "session" {
++			return "X-Session"
++		}
++		return "X-Seq"
++	}
++	if placement == placementCookie || placement == placementQuery {
++		return "x_" + name
++	}
++	return ""
++}
++
++func predefinedTable(table string) string {
++	switch table {
++	case "ALPHABET":
++		return "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
++	case "Alphabet":
++		return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
++	case "BASE36":
++		return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
++	case "Base62":
++		return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
++	case "HEX":
++		return "0123456789ABCDEF"
++	case "alphabet":
++		return "abcdefghijklmnopqrstuvwxyz"
++	case "base36":
++		return "0123456789abcdefghijklmnopqrstuvwxyz"
++	case "hex":
++		return "0123456789abcdef"
++	case "number":
++		return "0123456789"
++	default:
++		return table
++	}
++}
++
++func (c *config) newSessionID() string {
++	if c.sessionTable != "" && c.sessionLength.valid() {
++		length := c.sessionLength.random()
++		id := make([]byte, length)
++		for i := range id {
++			id[i] = c.sessionTable[c.randomTableIndex()]
++		}
++		return string(id)
++	}
++	var raw [16]byte
++	_, _ = rand.Read(raw[:])
++	raw[6] = raw[6]&0x0f | 0x40
++	raw[8] = raw[8]&0x3f | 0x80
++	encoded := hex.EncodeToString(raw[:])
++	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:]
++}
++
++func (c *config) randomTableIndex() int {
++	var raw [1]byte
++	_, _ = rand.Read(raw[:])
++	return int(raw[0]) % len(c.sessionTable)
++}
++
++func (c *config) requestURL(scheme, host string) url.URL {
++	return url.URL{Scheme: scheme, Host: host, Path: c.path, RawQuery: c.query}
++}
+diff --git a/transport/v2rayxhttp/conn.go b/transport/v2rayxhttp/conn.go
+new file mode 100644
+index 0000000..d825432
+--- /dev/null
++++ b/transport/v2rayxhttp/conn.go
+@@ -0,0 +1,51 @@
++package v2rayxhttp
++
++import (
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"sync"
++	"time"
++
++	M "github.com/sagernet/sing/common/metadata"
++)
++
++type responseConn struct {
++	reader io.Reader
++	writer http.ResponseWriter
++	done   <-chan struct{}
++	access sync.Mutex
++	closed bool
++}
++
++func newResponseConn(reader io.Reader, writer http.ResponseWriter, done <-chan struct{}) *responseConn {
++	return &responseConn{reader: reader, writer: writer, done: done}
++}
++func (c *responseConn) Read(buffer []byte) (int, error) { return c.reader.Read(buffer) }
++func (c *responseConn) Write(buffer []byte) (int, error) {
++	c.access.Lock()
++	defer c.access.Unlock()
++	if c.closed {
++		return 0, net.ErrClosed
++	}
++	n, err := c.writer.Write(buffer)
++	if err == nil {
++		if flusher, ok := c.writer.(http.Flusher); ok {
++			flusher.Flush()
++		}
++	}
++	return n, err
++}
++
++func (c *responseConn) Close() error {
++	c.access.Lock()
++	defer c.access.Unlock()
++	c.closed = true
++	return nil
++}
++func (c *responseConn) LocalAddr() net.Addr              { return M.Socksaddr{} }
++func (c *responseConn) RemoteAddr() net.Addr             { return M.Socksaddr{} }
++func (c *responseConn) SetDeadline(time.Time) error      { return os.ErrInvalid }
++func (c *responseConn) SetReadDeadline(time.Time) error  { return os.ErrInvalid }
++func (c *responseConn) SetWriteDeadline(time.Time) error { return os.ErrInvalid }
+diff --git a/transport/v2rayxhttp/http3.go b/transport/v2rayxhttp/http3.go
+new file mode 100644
+index 0000000..8a9ca1e
+--- /dev/null
++++ b/transport/v2rayxhttp/http3.go
+@@ -0,0 +1,89 @@
++//go:build with_quic
++
++package v2rayxhttp
++
++import (
++	"context"
++	"net"
++	"net/http"
++	"runtime"
++	"time"
++
++	"github.com/sagernet/quic-go"
++	"github.com/sagernet/quic-go/http3"
++	"github.com/sagernet/sing-box/common/tls"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/bufio"
++	E "github.com/sagernet/sing/common/exceptions"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++)
++
++func validateHTTP3() error {
++	return nil
++}
++
++func newHTTP3TransportFactory(dialer N.Dialer, serverAddr M.Socksaddr, tlsConfig tls.Config, options option.QUICOptions) (func() http.RoundTripper, error) {
++	stdTLSConfig, err := tlsConfig.STDConfig()
++	if err != nil {
++		return nil, E.Cause(err, "xhttp HTTP/3 requires standard TLS")
++	}
++	stdTLSConfig = stdTLSConfig.Clone()
++	stdTLSConfig.NextProtos = []string{http3.NextProtoH3}
++	return func() http.RoundTripper {
++		clientTLSConfig := stdTLSConfig.Clone()
++		return &http3.Transport{
++			TLSClientConfig: clientTLSConfig,
++			QUICConfig:      newHTTP3QUICConfig(options),
++			Dial: func(ctx context.Context, _ string, _ *tls.STDConfig, config *quic.Config) (*quic.Conn, error) {
++				connection, err := dialer.DialContext(ctx, N.NetworkUDP, serverAddr)
++				if err != nil {
++					return nil, err
++				}
++				packetConn := bufio.NewUnbindPacketConn(connection)
++				quicConn, err := quic.DialEarly(ctx, packetConn, connection.RemoteAddr(), clientTLSConfig, config)
++				if err != nil {
++					_ = packetConn.Close()
++					return nil, err
++				}
++				context.AfterFunc(quicConn.Context(), func() { _ = packetConn.Close() })
++				return quicConn, nil
++			},
++		}
++	}, nil
++}
++
++func newHTTP3QUICConfig(options option.QUICOptions) *quic.Config {
++	config := &quic.Config{
++		InitialStreamReceiveWindow:     options.StreamReceiveWindow.Value(),
++		MaxStreamReceiveWindow:         options.StreamReceiveWindow.Value(),
++		InitialConnectionReceiveWindow: options.ConnectionReceiveWindow.Value(),
++		MaxConnectionReceiveWindow:     options.ConnectionReceiveWindow.Value(),
++		KeepAlivePeriod:                time.Duration(options.KeepAlivePeriod),
++		MaxIdleTimeout:                 time.Duration(options.IdleTimeout),
++		DisablePathMTUDiscovery:        options.DisablePathMTUDiscovery || (runtime.GOOS != "linux" && runtime.GOOS != "windows" && runtime.GOOS != "darwin"),
++	}
++	if options.InitialPacketSize > 0 {
++		config.InitialPacketSize = uint16(options.InitialPacketSize)
++	}
++	if options.MaxConcurrentStreams > 0 {
++		config.MaxIncomingStreams = int64(options.MaxConcurrentStreams)
++	}
++	return config
++}
++
++func (s *Server) ServePacket(listener net.PacketConn) error {
++	stdTLSConfig, err := s.tlsConfig.STDConfig()
++	if err != nil {
++		return E.Cause(err, "xhttp HTTP/3 requires standard TLS")
++	}
++	stdTLSConfig = stdTLSConfig.Clone()
++	stdTLSConfig.NextProtos = []string{http3.NextProtoH3}
++	server := &http3.Server{
++		Handler:    s,
++		TLSConfig:  stdTLSConfig,
++		QUICConfig: newHTTP3QUICConfig(s.config.quic),
++	}
++	s.packetServer = server
++	return server.Serve(listener)
++}
+diff --git a/transport/v2rayxhttp/http3_common.go b/transport/v2rayxhttp/http3_common.go
+new file mode 100644
+index 0000000..45b63dc
+--- /dev/null
++++ b/transport/v2rayxhttp/http3_common.go
+@@ -0,0 +1,11 @@
++package v2rayxhttp
++
++import "github.com/sagernet/sing-box/common/tls"
++
++func isHTTP3(config tls.Config) bool {
++	if config == nil {
++		return false
++	}
++	nextProtos := config.NextProtos()
++	return len(nextProtos) == 1 && nextProtos[0] == "h3"
++}
+diff --git a/transport/v2rayxhttp/http3_interop_test.go b/transport/v2rayxhttp/http3_interop_test.go
+new file mode 100644
+index 0000000..78b304c
+--- /dev/null
++++ b/transport/v2rayxhttp/http3_interop_test.go
+@@ -0,0 +1,127 @@
++//go:build with_quic
++
++package v2rayxhttp_test
++
++import (
++	"bytes"
++	"context"
++	stdtls "crypto/tls"
++	"crypto/x509"
++	"encoding/json"
++	"net"
++	"net/http"
++	"net/url"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strconv"
++	"testing"
++	"time"
++
++	"github.com/sagernet/quic-go/http3"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestXHTTPXRayHTTP3Interop(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode+"/sing-box-client-to-xray-server", func(t *testing.T) {
++			testSingBoxClientToXRayHTTP3(t, xrayBinary, mode)
++		})
++		t.Run(mode+"/xray-client-to-sing-box-server", func(t *testing.T) {
++			testXRayClientToSingBoxHTTP3(t, xrayBinary, mode)
++		})
++	}
++}
++
++func testSingBoxClientToXRayHTTP3(t *testing.T, xrayBinary, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startXRayHTTP3(t, xrayBinary, serverPort, ca, xrayVMessServerConfig(serverPort, userID, certificate, key, "h3", mode))
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{"h3"}}},
++				Transport:                   interopTransportOptions(option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode}),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxHTTP3(t *testing.T, xrayBinary, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{"h3"}}},
++				Transport:                  interopTransportOptions(option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode}),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessClientConfig(proxyPort, serverPort, userID, ca, "h3", mode))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func startXRayHTTP3(t testing.TB, binary string, port uint16, ca string, config any) {
++	t.Helper()
++	data, err := json.Marshal(config)
++	require.NoError(t, err)
++	configPath := filepath.Join(t.TempDir(), "xray.json")
++	require.NoError(t, os.WriteFile(configPath, data, 0o600))
++	ctx, cancel := context.WithCancel(context.Background())
++	command := exec.CommandContext(ctx, binary, "run", "-c", configPath)
++	var output bytes.Buffer
++	command.Stdout = &output
++	command.Stderr = &output
++	require.NoError(t, command.Start())
++	t.Cleanup(func() {
++		cancel()
++		_ = command.Wait()
++		if t.Failed() {
++			t.Logf("Xray output:\n%s", output.String())
++		}
++	})
++
++	certificate, err := os.ReadFile(ca)
++	require.NoError(t, err)
++	pool := x509.NewCertPool()
++	require.True(t, pool.AppendCertsFromPEM(certificate))
++	for range 50 {
++		transport := &http3.Transport{TLSClientConfig: &stdtls.Config{RootCAs: pool, ServerName: "xhttp.test", NextProtos: []string{http3.NextProtoH3}}}
++		response, requestErr := (&http.Client{Transport: transport}).Do(&http.Request{Method: http.MethodOptions, URL: mustHTTP3URL(port), Header: make(http.Header)})
++		if requestErr == nil {
++			_ = response.Body.Close()
++			_ = transport.Close()
++			return
++		}
++		_ = transport.Close()
++		if command.ProcessState != nil {
++			require.Failf(t, "Xray exited before becoming ready", "%s", output.String())
++		}
++		time.Sleep(20 * time.Millisecond)
++	}
++	require.Failf(t, "Xray HTTP/3 did not become ready", "%s", output.String())
++}
++
++func mustHTTP3URL(port uint16) *url.URL {
++	return &url.URL{Scheme: "https", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))), Path: "/xhttp/"}
++}
+diff --git a/transport/v2rayxhttp/http3_stub.go b/transport/v2rayxhttp/http3_stub.go
+new file mode 100644
+index 0000000..674dc0a
+--- /dev/null
++++ b/transport/v2rayxhttp/http3_stub.go
+@@ -0,0 +1,26 @@
++//go:build !with_quic
++
++package v2rayxhttp
++
++import (
++	"net"
++	"net/http"
++
++	"github.com/sagernet/sing-box/common/tls"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++)
++
++func validateHTTP3() error {
++	return C.ErrQUICNotIncluded
++}
++
++func newHTTP3TransportFactory(N.Dialer, M.Socksaddr, tls.Config, option.QUICOptions) (func() http.RoundTripper, error) {
++	return nil, C.ErrQUICNotIncluded
++}
++
++func (s *Server) ServePacket(net.PacketConn) error {
++	return C.ErrQUICNotIncluded
++}
+diff --git a/transport/v2rayxhttp/http3_stub_test.go b/transport/v2rayxhttp/http3_stub_test.go
+new file mode 100644
+index 0000000..b3ddf4b
+--- /dev/null
++++ b/transport/v2rayxhttp/http3_stub_test.go
+@@ -0,0 +1,25 @@
++//go:build !with_quic
++
++package v2rayxhttp
++
++import (
++	"context"
++	"testing"
++
++	"github.com/sagernet/sing-box/common/tls"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestHTTP3RequiresQUICBuildTag(t *testing.T) {
++	tlsConfig, err := tls.NewClient(context.Background(), logger.NOP(), "xhttp.test", option.OutboundTLSOptions{
++		Enabled: true, ServerName: "xhttp.test", Insecure: true, ALPN: []string{"h3"},
++	})
++	require.NoError(t, err)
++	_, err = NewClient(context.Background(), nil, M.ParseSocksaddrHostPort("127.0.0.1", 443), option.V2RayXHTTPOptions{}, tlsConfig)
++	require.ErrorIs(t, err, C.ErrQUICNotIncluded)
++}
+diff --git a/transport/v2rayxhttp/http3_test.go b/transport/v2rayxhttp/http3_test.go
+new file mode 100644
+index 0000000..6addd4a
+--- /dev/null
++++ b/transport/v2rayxhttp/http3_test.go
+@@ -0,0 +1,53 @@
++//go:build with_quic
++
++package v2rayxhttp_test
++
++import (
++	"testing"
++
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++)
++
++func TestXHTTPHTTP3(t *testing.T) {
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode, func(t *testing.T) {
++			certificate, key, ca := interopCertificate(t)
++			serverPort, proxyPort := interopPort(t), interopPort(t)
++			targetPort, closeTarget := interopEchoServer(t)
++			defer closeTarget()
++			userID := interopUUID(t)
++			xhttp := option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: mode,
++				QUIC: option.QUICOptions{
++					HTTP2Options:            option.HTTP2Options{MaxConcurrentStreams: 8},
++					DisablePathMTUDiscovery: true,
++				},
++			}
++
++			startInteropBox(t, option.Options{
++				Inbounds: []option.Inbound{{
++					Type: C.TypeVMess,
++					Options: &option.VMessInboundOptions{
++						ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++						InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{"h3"}}},
++						Transport:                  interopTransportOptions(xhttp),
++					},
++				}},
++				Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++			})
++			startInteropBox(t, option.Options{
++				Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++				Outbounds: []option.Outbound{{
++					Type: C.TypeVMess,
++					Options: &option.VMessOutboundOptions{
++						ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++						OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{"h3"}}},
++						Transport:                   interopTransportOptions(xhttp),
++					},
++				}},
++			})
++			interopPingPong(t, proxyPort, targetPort)
++		})
++	}
++}
+diff --git a/transport/v2rayxhttp/hysteria_integration_test.go b/transport/v2rayxhttp/hysteria_integration_test.go
+new file mode 100644
+index 0000000..f875621
+--- /dev/null
++++ b/transport/v2rayxhttp/hysteria_integration_test.go
+@@ -0,0 +1,56 @@
++//go:build with_quic
++
++package v2rayxhttp_test
++
++import (
++	"testing"
++
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++)
++
++// The Android build must retain both Hysteria protocols alongside XHTTP.
++// Exercise authentication, TLS and obfuscation against a local native server.
++func TestHysteriaProtocols(t *testing.T) {
++	for _, protocol := range []string{C.TypeHysteria, C.TypeHysteria2} {
++		t.Run(protocol, func(t *testing.T) {
++			certificate, key, ca := interopCertificate(t)
++			serverPort, proxyPort := interopPort(t), interopPort(t)
++			targetPort, closeTarget := interopEchoServer(t)
++			defer closeTarget()
++			inboundTLS := option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key}}
++			outboundTLS := option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca}}
++			server := option.Inbound{Type: protocol}
++			client := option.Outbound{Type: protocol}
++			serverAddress := option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}
++			switch protocol {
++			case C.TypeHysteria:
++				server.Options = &option.HysteriaInboundOptions{
++					ListenOptions: interopListen(serverPort), UpMbps: 100, DownMbps: 100,
++					Obfs: "obfuscation", Users: []option.HysteriaUser{{AuthString: "user:pass+word"}},
++					InboundTLSOptionsContainer: inboundTLS,
++				}
++				client.Options = &option.HysteriaOutboundOptions{
++					ServerOptions: serverAddress, UpMbps: 100, DownMbps: 100,
++					AuthString: "user:pass+word", Obfs: "obfuscation", OutboundTLSOptionsContainer: outboundTLS,
++				}
++			case C.TypeHysteria2:
++				server.Options = &option.Hysteria2InboundOptions{
++					ListenOptions: interopListen(serverPort),
++					Obfs:          &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"},
++					Users:         []option.Hysteria2User{{Password: "user:pass+word"}}, InboundTLSOptionsContainer: inboundTLS,
++				}
++				client.Options = &option.Hysteria2OutboundOptions{
++					ServerOptions: serverAddress, Password: "user:pass+word",
++					Obfs: &option.Hysteria2Obfs{Type: "salamander", Password: "obfuscation"}, OutboundTLSOptionsContainer: outboundTLS,
++				}
++			}
++			startInteropBox(t, option.Options{Inbounds: []option.Inbound{server}, Outbounds: []option.Outbound{{Type: C.TypeDirect}}})
++			startInteropBox(t, option.Options{
++				Inbounds:  []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++				Outbounds: []option.Outbound{client},
++			})
++			interopPingPong(t, proxyPort, targetPort)
++		})
++	}
++}
+diff --git a/transport/v2rayxhttp/interop_test.go b/transport/v2rayxhttp/interop_test.go
+new file mode 100644
+index 0000000..8397a19
+--- /dev/null
++++ b/transport/v2rayxhttp/interop_test.go
+@@ -0,0 +1,751 @@
++package v2rayxhttp_test
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"io"
++	"net"
++	"net/netip"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strconv"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box"
++	"github.com/sagernet/sing-box/common/tls"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/include"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common"
++	"github.com/sagernet/sing/common/json/badoption"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/protocol/socks"
++	"github.com/sagernet/sing/protocol/socks/socks5"
++
++	"github.com/gofrs/uuid/v5"
++	"github.com/stretchr/testify/require"
++)
++
++// TestXHTTPXRayInterop verifies the XHTTP wire protocol against a locally
++// built Xray binary. Set XHTTP_XRAY_BINARY to that binary's path to run it.
++// Keeping the binary opt-in makes the regular unit-test suite hermetic.
++func TestXHTTPXRayInterop(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++
++	for _, httpVersion := range []string{"http/1.1", "h2"} {
++		for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++			t.Run(httpVersion+"/sing-box-client-to-xray-server/"+mode, func(t *testing.T) {
++				testSingBoxClientToXRayServer(t, xrayBinary, httpVersion, mode)
++			})
++			t.Run(httpVersion+"/xray-client-to-sing-box-server/"+mode, func(t *testing.T) {
++				testXRayClientToSingBoxServer(t, xrayBinary, httpVersion, mode)
++			})
++		}
++	}
++}
++
++// TestXHTTPXRayInteropParameters expands the wire baseline to the XHTTP
++// metadata, payload-placement, and obfuscated-padding variants. Packet-up is
++// used where a sequence and an explicit uplink payload placement are present.
++func TestXHTTPXRayInteropParameters(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	profiles := []struct {
++		name    string
++		options option.V2RayXHTTPOptions
++	}{
++		{
++			name: "obfs-header-tokenish-stream-one",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "stream-one",
++				XPaddingBytes:     option.V2RayXHTTPRange{From: 32, To: 64},
++				XPaddingObfsMode:  true,
++				XPaddingPlacement: "header", XPaddingHeader: "X-Interop-Pad", XPaddingMethod: "tokenish",
++			},
++		},
++		{
++			name: "session-header-sequence-query-body",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "packet-up",
++				SessionIDPlacement: "header", SessionIDKey: "X-Interop-Session",
++				SeqPlacement: "query", SeqKey: "x_interop_seq", UplinkDataPlacement: "body",
++			},
++		},
++		{
++			name: "session-query-sequence-header-data-header",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "packet-up",
++				SessionIDPlacement: "query", SessionIDKey: "x_interop_session",
++				SeqPlacement: "header", SeqKey: "X-Interop-Seq",
++				UplinkDataPlacement: "header", UplinkDataKey: "X-Interop-Data",
++				UplinkChunkSize: option.V2RayXHTTPRange{From: 64, To: 96},
++			},
++		},
++		{
++			name: "session-cookie-sequence-cookie-data-cookie",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "packet-up",
++				SessionIDPlacement: "cookie", SessionIDKey: "x_interop_session",
++				SeqPlacement: "cookie", SeqKey: "x_interop_seq",
++				UplinkDataPlacement: "cookie", UplinkDataKey: "x_interop_data",
++				UplinkChunkSize: option.V2RayXHTTPRange{From: 64, To: 96},
++			},
++		},
++		{
++			name: "session-path-sequence-path-data-auto",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "packet-up", UplinkDataPlacement: "auto",
++			},
++		},
++	}
++	for _, profile := range profiles {
++		t.Run(profile.name+"/sing-box-client-to-xray-server", func(t *testing.T) {
++			testSingBoxClientToXRayServerWithXHTTP(t, xrayBinary, "h2", profile.options)
++		})
++		t.Run(profile.name+"/xray-client-to-sing-box-server", func(t *testing.T) {
++			testXRayClientToSingBoxServerWithXHTTP(t, xrayBinary, "h2", profile.options)
++		})
++	}
++}
++
++// TestXHTTPXRayOuterProtocols verifies that the shared XHTTP transport is
++// usable by all three TCP proxy protocols that expose it in sing-box.
++func TestXHTTPXRayOuterProtocols(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	for _, protocol := range []string{"vless", "trojan"} {
++		for _, httpVersion := range []string{"http/1.1", "h2"} {
++			for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++				t.Run(protocol+"/"+httpVersion+"/sing-box-client-to-xray-server/"+mode, func(t *testing.T) {
++					testSingBoxClientToXRayServerOuter(t, xrayBinary, protocol, httpVersion, mode)
++				})
++				t.Run(protocol+"/"+httpVersion+"/xray-client-to-sing-box-server/"+mode, func(t *testing.T) {
++					testXRayClientToSingBoxServerOuter(t, xrayBinary, protocol, httpVersion, mode)
++				})
++			}
++		}
++	}
++}
++
++// TestXHTTPXRayDownloadSettingsInterop verifies that XHTTP's upload and
++// download streams may use different client targets while retaining a shared
++// server-side session. The second local port forwards to the same XHTTP
++// server, modelling distinct CDN front doors with one backend.
++func TestXHTTPXRayDownloadSettingsInterop(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	t.Run("sing-box-client-to-xray-server", func(t *testing.T) {
++		testSingBoxClientToXRayDownloadSettings(t, xrayBinary)
++	})
++	t.Run("xray-client-to-sing-box-server", func(t *testing.T) {
++		testXRayClientToSingBoxDownloadSettings(t, xrayBinary)
++	})
++}
++
++func testSingBoxClientToXRayDownloadSettings(t *testing.T, xrayBinary string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	downloadPort, closeDownload := interopTCPForwarder(t, serverPort)
++	defer closeDownload()
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	xhttp := option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "packet-up"}
++
++	startXRay(t, xrayBinary, serverPort, xrayVMessServerConfigWithXHTTP(serverPort, userID, certificate, key, "h2", xhttp))
++	downloadXHTTP := xhttp
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{"h2"}}},
++				Transport: interopTransportOptions(option.V2RayXHTTPOptions{
++					Path: "/xhttp/", Mode: "packet-up",
++					DownloadSettings: &option.V2RayXHTTPDownloadSettings{
++						ServerOptions:               option.ServerOptions{Server: "127.0.0.1", ServerPort: downloadPort},
++						OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{"h2"}}},
++						V2RayXHTTPOptions:           downloadXHTTP,
++					},
++				}),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxDownloadSettings(t *testing.T, xrayBinary string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	downloadPort, closeDownload := interopTCPForwarder(t, serverPort)
++	defer closeDownload()
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	xhttp := option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "packet-up"}
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{"h2"}}},
++				Transport:                  interopTransportOptions(xhttp),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessClientConfigWithDownloadSettings(proxyPort, serverPort, downloadPort, userID, ca, "h2", xhttp))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func requireXRayBinary(t testing.TB) string {
++	t.Helper()
++	xrayBinary := os.Getenv("XHTTP_XRAY_BINARY")
++	if xrayBinary == "" {
++		t.Skip("set XHTTP_XRAY_BINARY to run Xray XHTTP interoperability tests")
++	}
++	_, err := os.Stat(xrayBinary)
++	require.NoError(t, err)
++	return xrayBinary
++}
++
++func testSingBoxClientToXRayServer(t *testing.T, xrayBinary, alpn, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort := interopPort(t)
++	proxyPort := interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startXRay(t, xrayBinary, serverPort, xrayVMessServerConfig(serverPort, userID, certificate, key, alpn, mode))
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type:    C.TypeSOCKS,
++			Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)},
++		}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort},
++				UUID:          userID,
++				Security:      "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{
++					Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{alpn},
++				}},
++				Transport: interopTransport(mode),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxServer(t *testing.T, xrayBinary, alpn, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort := interopPort(t)
++	proxyPort := interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort),
++				Users:         []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{
++					Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{alpn},
++				}},
++				Transport: interopTransport(mode),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessClientConfig(proxyPort, serverPort, userID, ca, alpn, mode))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testSingBoxClientToXRayServerWithXHTTP(t *testing.T, xrayBinary, alpn string, xhttp option.V2RayXHTTPOptions) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startXRay(t, xrayBinary, serverPort, xrayVMessServerConfigWithXHTTP(serverPort, userID, certificate, key, alpn, xhttp))
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{alpn}}},
++				Transport:                   interopTransportOptions(xhttp),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxServerWithXHTTP(t *testing.T, xrayBinary, alpn string, xhttp option.V2RayXHTTPOptions) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{alpn}}},
++				Transport:                  interopTransportOptions(xhttp),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessClientConfigWithXHTTP(proxyPort, serverPort, userID, ca, alpn, xhttp))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testSingBoxClientToXRayServerOuter(t *testing.T, xrayBinary, protocol, alpn, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	credential := interopCredential(t, protocol)
++
++	startXRay(t, xrayBinary, serverPort, xrayOuterServerConfig(protocol, serverPort, credential, certificate, key, alpn, mode))
++	startInteropBox(t, option.Options{
++		Inbounds:  []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{interopOuterClientOutbound(protocol, serverPort, credential, ca, alpn, mode)},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxServerOuter(t *testing.T, xrayBinary, protocol, alpn, mode string) {
++	certificate, key, ca := interopCertificate(t)
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	credential := interopCredential(t, protocol)
++
++	startInteropBox(t, option.Options{
++		Inbounds:  []option.Inbound{interopOuterServerInbound(protocol, serverPort, credential, certificate, key, alpn, mode)},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayOuterClientConfig(protocol, proxyPort, serverPort, credential, ca, alpn, mode))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func interopCredential(t *testing.T, protocol string) string {
++	t.Helper()
++	if protocol == "vless" {
++		return interopUUID(t)
++	}
++	return "xhttp-interop-password"
++}
++
++func interopOuterClientOutbound(protocol string, serverPort uint16, credential, ca, alpn, mode string) option.Outbound {
++	tlsOptions := option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{alpn}}}
++	switch protocol {
++	case "vless":
++		return option.Outbound{Type: C.TypeVLESS, Options: &option.VLESSOutboundOptions{
++			ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: credential,
++			OutboundTLSOptionsContainer: tlsOptions, Transport: interopTransport(mode),
++		}}
++	case "trojan":
++		return option.Outbound{Type: C.TypeTrojan, Options: &option.TrojanOutboundOptions{
++			ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, Password: credential,
++			OutboundTLSOptionsContainer: tlsOptions, Transport: interopTransport(mode),
++		}}
++	default:
++		panic("unknown interop protocol: " + protocol)
++	}
++}
++
++func interopOuterServerInbound(protocol string, serverPort uint16, credential, certificate, key, alpn, mode string) option.Inbound {
++	tlsOptions := option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key, ALPN: []string{alpn}}}
++	switch protocol {
++	case "vless":
++		return option.Inbound{Type: C.TypeVLESS, Options: &option.VLESSInboundOptions{
++			ListenOptions: interopListen(serverPort), Users: []option.VLESSUser{{UUID: credential}},
++			InboundTLSOptionsContainer: tlsOptions, Transport: interopTransport(mode),
++		}}
++	case "trojan":
++		return option.Inbound{Type: C.TypeTrojan, Options: &option.TrojanInboundOptions{
++			ListenOptions: interopListen(serverPort), Users: []option.TrojanUser{{Password: credential}},
++			InboundTLSOptionsContainer: tlsOptions, Transport: interopTransport(mode),
++		}}
++	default:
++		panic("unknown interop protocol: " + protocol)
++	}
++}
++
++func interopTransport(mode string) *option.V2RayTransportOptions {
++	return interopTransportOptions(option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode})
++}
++
++func interopTransportOptions(xhttp option.V2RayXHTTPOptions) *option.V2RayTransportOptions {
++	return &option.V2RayTransportOptions{
++		Type: C.V2RayTransportTypeXHTTP,
++		// Xray normalizes a path to include a trailing slash when its default
++		// path placement is active. Use that canonical form on both sides.
++		XHTTPOptions: xhttp,
++	}
++}
++
++func interopListen(port uint16) option.ListenOptions {
++	return option.ListenOptions{
++		Listen:     common.Ptr(badoption.Addr(netip.MustParseAddr("127.0.0.1"))),
++		ListenPort: port,
++	}
++}
++
++func interopCertificate(t testing.TB) (certificatePath, keyPath, caPath string) {
++	t.Helper()
++	directory := t.TempDir()
++	key, certificate, err := tls.GenerateCertificate(nil, nil, time.Now, "xhttp.test", time.Now().Add(time.Hour))
++	require.NoError(t, err)
++	certificatePath = filepath.Join(directory, "certificate.pem")
++	keyPath = filepath.Join(directory, "key.pem")
++	caPath = filepath.Join(directory, "ca.pem")
++	require.NoError(t, os.WriteFile(certificatePath, certificate, 0o600))
++	require.NoError(t, os.WriteFile(keyPath, key, 0o600))
++	require.NoError(t, os.WriteFile(caPath, certificate, 0o600))
++	return certificatePath, keyPath, caPath
++}
++
++func interopPort(t testing.TB) uint16 {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	defer listener.Close()
++	return uint16(listener.Addr().(*net.TCPAddr).Port)
++}
++
++func interopEchoServer(t testing.TB) (uint16, func()) {
++	t.Helper()
++	_, benchmark := t.(*testing.B)
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		for {
++			connection, err := listener.Accept()
++			if err != nil {
++				return
++			}
++			if !benchmark {
++				t.Log("echo accepted connection")
++			}
++			go func() {
++				defer connection.Close()
++				n, copyErr := io.Copy(connection, connection)
++				if !benchmark {
++					t.Logf("echo connection completed: bytes=%d error=%v", n, copyErr)
++				}
++			}()
++		}
++	}()
++	return uint16(listener.Addr().(*net.TCPAddr).Port), func() {
++		_ = listener.Close()
++		<-done
++	}
++}
++
++func interopTCPForwarder(t testing.TB, targetPort uint16) (uint16, func()) {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		for {
++			connection, acceptErr := listener.Accept()
++			if acceptErr != nil {
++				return
++			}
++			go func() {
++				defer connection.Close()
++				upstream, dialErr := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(targetPort))))
++				if dialErr != nil {
++					return
++				}
++				defer upstream.Close()
++				doneCopy := make(chan struct{})
++				go func() { _, _ = io.Copy(upstream, connection); close(doneCopy) }()
++				_, _ = io.Copy(connection, upstream)
++				<-doneCopy
++			}()
++		}
++	}()
++	return uint16(listener.Addr().(*net.TCPAddr).Port), func() {
++		_ = listener.Close()
++		<-done
++	}
++}
++
++func interopUUID(t testing.TB) string {
++	t.Helper()
++	userID, err := uuid.DefaultGenerator.NewV4()
++	require.NoError(t, err)
++	return userID.String()
++}
++
++func interopPingPong(t testing.TB, proxyPort, targetPort uint16) {
++	interopPingPongPayload(t, proxyPort, targetPort, []byte("xhttp interop"))
++}
++
++func interopPingPongPayload(t testing.TB, proxyPort, targetPort uint16, payload []byte) {
++	t.Helper()
++	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++	defer cancel()
++	connection, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(proxyPort))))
++	require.NoError(t, err)
++	defer connection.Close()
++	require.NoError(t, connection.SetDeadline(time.Now().Add(10*time.Second)))
++	_, err = socks.ClientHandshake5(connection, socks5.CommandConnect, M.ParseSocksaddrHostPort("127.0.0.1", targetPort), "", "")
++	require.NoError(t, err)
++	_, err = connection.Write(payload)
++	require.NoError(t, err)
++	response := make([]byte, len(payload))
++	_, err = io.ReadFull(connection, response)
++	require.NoError(t, err)
++	require.Equal(t, payload, response)
++}
++
++func startInteropBox(t testing.TB, options option.Options) {
++	t.Helper()
++	if _, benchmark := t.(*testing.B); benchmark {
++		options.Log = &option.LogOptions{Disabled: true}
++	}
++	ctx, cancel := context.WithCancel(include.Context(context.Background()))
++	instance, err := box.New(box.Options{Context: ctx, Options: options})
++	require.NoError(t, err)
++	require.NoError(t, instance.Start())
++	t.Cleanup(func() {
++		_ = instance.Close()
++		cancel()
++	})
++}
++
++func startXRay(t testing.TB, binary string, port uint16, config any) {
++	t.Helper()
++	data, err := json.Marshal(config)
++	require.NoError(t, err)
++	configPath := filepath.Join(t.TempDir(), "xray.json")
++	require.NoError(t, os.WriteFile(configPath, data, 0o600))
++	ctx, cancel := context.WithCancel(context.Background())
++	command := exec.CommandContext(ctx, binary, "run", "-c", configPath)
++	var output bytes.Buffer
++	command.Stdout = &output
++	command.Stderr = &output
++	require.NoError(t, command.Start())
++	t.Cleanup(func() {
++		cancel()
++		_ = command.Wait()
++		if t.Failed() {
++			t.Logf("Xray output:\n%s", output.String())
++		}
++	})
++	// Xray has no readiness endpoint. Wait for the listener before connecting
++	// its peer, while keeping the retry window short.
++	for range 50 {
++		if command.ProcessState != nil {
++			require.Failf(t, "Xray exited before becoming ready", "%s", output.String())
++		}
++		connection, dialErr := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))), 20*time.Millisecond)
++		if dialErr == nil {
++			_ = connection.Close()
++			return
++		}
++		time.Sleep(20 * time.Millisecond)
++	}
++	require.Failf(t, "Xray did not become ready", "%s", output.String())
++}
++
++func xrayVMessServerConfig(port uint16, userID, certificate, key, alpn, mode string) map[string]any {
++	return xrayVMessServerConfigWithXHTTP(port, userID, certificate, key, alpn, option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode})
++}
++
++func xrayVMessServerConfigWithXHTTP(port uint16, userID, certificate, key, alpn string, xhttp option.V2RayXHTTPOptions) map[string]any {
++	return map[string]any{
++		"log": map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{
++			"listen": "127.0.0.1", "port": port, "protocol": "vmess",
++			"settings": map[string]any{"clients": []any{map[string]any{"id": userID}}},
++			"streamSettings": xrayXHTTPStreamSettingsWithOptions(alpn, xhttp, map[string]any{
++				"certificates": []any{map[string]any{"certificateFile": certificate, "keyFile": key}},
++			}),
++		}},
++		"outbounds": []any{map[string]any{
++			"protocol": "freedom",
++			// Xray v26 blocks private destinations by default for VMess inbounds.
++			// The regression peer is intentionally a loopback echo server.
++			"settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow"}}},
++		}},
++	}
++}
++
++func xrayVMessClientConfig(proxyPort, serverPort uint16, userID, ca, alpn, mode string) map[string]any {
++	return xrayVMessClientConfigWithXHTTP(proxyPort, serverPort, userID, ca, alpn, option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode})
++}
++
++func xrayVMessClientConfigWithXHTTP(proxyPort, serverPort uint16, userID, ca, alpn string, xhttp option.V2RayXHTTPOptions) map[string]any {
++	return map[string]any{
++		"log": map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{
++			"listen": "127.0.0.1", "port": proxyPort, "protocol": "socks",
++			"settings": map[string]any{"udp": false},
++		}},
++		"outbounds": []any{map[string]any{
++			"protocol": "vmess",
++			"settings": map[string]any{"vnext": []any{map[string]any{
++				"address": "127.0.0.1", "port": serverPort,
++				"users": []any{map[string]any{"id": userID, "security": "aes-128-gcm"}},
++			}}},
++			"streamSettings": xrayXHTTPStreamSettingsWithOptions(alpn, xhttp, map[string]any{
++				"serverName":   "xhttp.test",
++				"certificates": []any{map[string]any{"certificateFile": ca, "usage": "verify"}},
++			}),
++		}},
++	}
++}
++
++func xrayVMessClientConfigWithDownloadSettings(proxyPort, serverPort, downloadPort uint16, userID, ca, alpn string, xhttp option.V2RayXHTTPOptions) map[string]any {
++	config := xrayVMessClientConfigWithXHTTP(proxyPort, serverPort, userID, ca, alpn, xhttp)
++	streamSettings := config["outbounds"].([]any)[0].(map[string]any)["streamSettings"].(map[string]any)
++	downloadSettings := xrayXHTTPStreamSettingsWithOptions(alpn, xhttp, map[string]any{
++		"serverName": "xhttp.test", "certificates": []any{map[string]any{"certificateFile": ca, "usage": "verify"}},
++	})
++	downloadSettings["address"] = "127.0.0.1"
++	downloadSettings["port"] = downloadPort
++	streamSettings["xhttpSettings"].(map[string]any)["downloadSettings"] = downloadSettings
++	return config
++}
++
++func xrayOuterServerConfig(protocol string, port uint16, credential, certificate, key, alpn, mode string) map[string]any {
++	var settings map[string]any
++	switch protocol {
++	case "vless":
++		settings = map[string]any{"decryption": "none", "clients": []any{map[string]any{"id": credential}}}
++	case "trojan":
++		settings = map[string]any{"clients": []any{map[string]any{"password": credential}}}
++	default:
++		panic("unknown interop protocol: " + protocol)
++	}
++	return map[string]any{
++		"log": map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{
++			"listen": "127.0.0.1", "port": port, "protocol": protocol, "settings": settings,
++			"streamSettings": xrayXHTTPStreamSettings(alpn, mode, map[string]any{
++				"certificates": []any{map[string]any{"certificateFile": certificate, "keyFile": key}},
++			}),
++		}},
++		"outbounds": []any{map[string]any{
++			"protocol": "freedom",
++			"settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow"}}},
++		}},
++	}
++}
++
++func xrayOuterClientConfig(protocol string, proxyPort, serverPort uint16, credential, ca, alpn, mode string) map[string]any {
++	var settings map[string]any
++	switch protocol {
++	case "vless":
++		settings = map[string]any{"vnext": []any{map[string]any{
++			"address": "127.0.0.1", "port": serverPort,
++			"users": []any{map[string]any{"id": credential, "encryption": "none"}},
++		}}}
++	case "trojan":
++		settings = map[string]any{"servers": []any{map[string]any{
++			"address": "127.0.0.1", "port": serverPort, "password": credential,
++		}}}
++	default:
++		panic("unknown interop protocol: " + protocol)
++	}
++	return map[string]any{
++		"log": map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{
++			"listen": "127.0.0.1", "port": proxyPort, "protocol": "socks",
++			"settings": map[string]any{"udp": false},
++		}},
++		"outbounds": []any{map[string]any{
++			"protocol": protocol, "settings": settings,
++			"streamSettings": xrayXHTTPStreamSettings(alpn, mode, map[string]any{
++				"serverName": "xhttp.test", "certificates": []any{map[string]any{"certificateFile": ca, "usage": "verify"}},
++			}),
++		}},
++	}
++}
++
++func xrayXHTTPStreamSettings(alpn, mode string, tlsSettings map[string]any) map[string]any {
++	return xrayXHTTPStreamSettingsWithOptions(alpn, option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: mode}, tlsSettings)
++}
++
++func xrayXHTTPStreamSettingsWithOptions(alpn string, options option.V2RayXHTTPOptions, tlsSettings map[string]any) map[string]any {
++	tlsSettings["alpn"] = []string{alpn}
++	xhttpSettings := map[string]any{"path": options.Path, "mode": options.Mode}
++	if options.XPaddingBytes.To != 0 {
++		xhttpSettings["xPaddingBytes"] = xrayRange(options.XPaddingBytes)
++	}
++	if options.XPaddingObfsMode {
++		xhttpSettings["xPaddingObfsMode"] = true
++		xhttpSettings["xPaddingKey"] = options.XPaddingKey
++		xhttpSettings["xPaddingHeader"] = options.XPaddingHeader
++		xhttpSettings["xPaddingPlacement"] = options.XPaddingPlacement
++		xhttpSettings["xPaddingMethod"] = options.XPaddingMethod
++	}
++	set := func(key, value string) {
++		if value != "" {
++			xhttpSettings[key] = value
++		}
++	}
++	set("sessionIDPlacement", options.SessionIDPlacement)
++	set("sessionIDKey", options.SessionIDKey)
++	set("seqPlacement", options.SeqPlacement)
++	set("seqKey", options.SeqKey)
++	set("uplinkDataPlacement", options.UplinkDataPlacement)
++	set("uplinkDataKey", options.UplinkDataKey)
++	if options.UplinkChunkSize.To != 0 {
++		xhttpSettings["uplinkChunkSize"] = xrayRange(options.UplinkChunkSize)
++	}
++	if options.XMUX.MaxConcurrency.To != 0 || options.XMUX.MaxConnections.To != 0 || options.XMUX.CMaxReuseTimes.To != 0 || options.XMUX.HMaxRequestTimes.To != 0 || options.XMUX.HMaxReusableSecs.To != 0 || options.XMUX.HKeepAlivePeriod != 0 {
++		xmux := map[string]any{}
++		if options.XMUX.MaxConcurrency.To != 0 {
++			xmux["maxConcurrency"] = xrayRange(options.XMUX.MaxConcurrency)
++		}
++		if options.XMUX.MaxConnections.To != 0 {
++			xmux["maxConnections"] = xrayRange(options.XMUX.MaxConnections)
++		}
++		if options.XMUX.CMaxReuseTimes.To != 0 {
++			xmux["cMaxReuseTimes"] = xrayRange(options.XMUX.CMaxReuseTimes)
++		}
++		if options.XMUX.HMaxRequestTimes.To != 0 {
++			xmux["hMaxRequestTimes"] = xrayRange(options.XMUX.HMaxRequestTimes)
++		}
++		if options.XMUX.HMaxReusableSecs.To != 0 {
++			xmux["hMaxReusableSecs"] = xrayRange(options.XMUX.HMaxReusableSecs)
++		}
++		if options.XMUX.HKeepAlivePeriod != 0 {
++			xmux["hKeepAlivePeriod"] = options.XMUX.HKeepAlivePeriod
++		}
++		xhttpSettings["xmux"] = xmux
++	}
++	return map[string]any{
++		"network": "xhttp", "security": "tls", "tlsSettings": tlsSettings,
++		"xhttpSettings": xhttpSettings,
++	}
++}
++
++func xrayRange(value option.V2RayXHTTPRange) string {
++	if value.From == value.To {
++		return strconv.FormatInt(int64(value.From), 10)
++	}
++	return strconv.FormatInt(int64(value.From), 10) + "-" + strconv.FormatInt(int64(value.To), 10)
++}
+diff --git a/transport/v2rayxhttp/lifecycle_test.go b/transport/v2rayxhttp/lifecycle_test.go
+new file mode 100644
+index 0000000..b926cc4
+--- /dev/null
++++ b/transport/v2rayxhttp/lifecycle_test.go
+@@ -0,0 +1,270 @@
++package v2rayxhttp
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"net"
++	"net/http"
++	"runtime"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/common/dialer"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestTransportLongLivedConnections(t *testing.T) {
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode, func(t *testing.T) {
++			client, _ := newLifecycleTransport(t, mode, nil)
++			connection, err := client.DialContext(context.Background())
++			require.NoError(t, err)
++			defer connection.Close()
++
++			for index := range 32 {
++				payload := bytes.Repeat([]byte{byte(index)}, 2048)
++				_, err = connection.Write(payload)
++				require.NoError(t, err)
++				response := make([]byte, len(payload))
++				_, err = io.ReadFull(connection, response)
++				require.NoError(t, err)
++				require.Equal(t, payload, response)
++			}
++		})
++	}
++}
++
++func TestServerSessionReordersDelayedPackets(t *testing.T) {
++	session := newServerSession(4)
++	t.Cleanup(session.close)
++
++	// The second packet arrives first. It must not be exposed until the missing
++	// first packet arrives, then both packets must be delivered in sequence.
++	require.True(t, session.push(packet{sequence: 1, payload: []byte("B")}))
++	readResult := make(chan []byte, 1)
++	readError := make(chan error, 1)
++	go func() {
++		payload := make([]byte, 2)
++		_, err := io.ReadFull(session.reader, payload)
++		if err != nil {
++			readError <- err
++			return
++		}
++		readResult <- payload
++	}()
++
++	select {
++	case payload := <-readResult:
++		t.Fatalf("received packet data before the sequence gap was filled: %q", payload)
++	case err := <-readError:
++		t.Fatalf("read failed before the sequence gap was filled: %v", err)
++	case <-time.After(75 * time.Millisecond):
++	}
++
++	require.True(t, session.push(packet{sequence: 0, payload: []byte("A")}))
++	select {
++	case payload := <-readResult:
++		require.Equal(t, []byte("AB"), payload)
++	case err := <-readError:
++		require.NoError(t, err)
++	case <-time.After(time.Second):
++		t.Fatal("timed out waiting for reordered packets")
++	}
++}
++
++func TestPacketUpReordersDelayedHTTPRequests(t *testing.T) {
++	options := option.V2RayXHTTPOptions{Path: "/xhttp", Mode: "packet-up"}
++	server, err := NewServer(context.Background(), logger.NOP(), options, nil, echoHandler{})
++	require.NoError(t, err)
++	listener := newTrackingListener(t)
++	go func() { _ = server.Serve(listener) }()
++	t.Cleanup(func() {
++		_ = server.Close()
++		_ = listener.Close()
++	})
++
++	httpClient := &http.Client{Transport: &http.Transport{}}
++	t.Cleanup(func() { httpClient.CloseIdleConnections() })
++	endpoint := "http://" + listener.Addr().String() + options.Path
++	sendPacket := func(sequence uint64, payload []byte) {
++		request, requestErr := http.NewRequest(http.MethodPost, endpoint, nil)
++		require.NoError(t, requestErr)
++		server.config.fillPacketRequest(request, "delayed", sequence, payload)
++		response, requestErr := httpClient.Do(request)
++		require.NoError(t, requestErr)
++		require.Equal(t, http.StatusOK, response.StatusCode)
++		require.NoError(t, response.Body.Close())
++	}
++
++	// Simulate a delayed (or retransmitted) first request: packet 1 is accepted
++	// but cannot cross the session pipe until packet 0 arrives.
++	sendPacket(1, []byte("B"))
++	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
++	require.NoError(t, err)
++	server.config.fillStreamRequest(request, "delayed")
++	response, err := httpClient.Do(request)
++	require.NoError(t, err)
++	defer response.Body.Close()
++	require.Equal(t, http.StatusOK, response.StatusCode)
++
++	readResult := make(chan []byte, 1)
++	readError := make(chan error, 1)
++	go func() {
++		payload := make([]byte, 2)
++		_, readErr := io.ReadFull(response.Body, payload)
++		if readErr != nil {
++			readError <- readErr
++			return
++		}
++		readResult <- payload
++	}()
++	select {
++	case payload := <-readResult:
++		t.Fatalf("received HTTP packet data before the sequence gap was filled: %q", payload)
++	case readErr := <-readError:
++		t.Fatalf("HTTP read failed before the sequence gap was filled: %v", readErr)
++	case <-time.After(75 * time.Millisecond):
++	}
++
++	sendPacket(0, []byte("A"))
++	select {
++	case payload := <-readResult:
++		require.Equal(t, []byte("AB"), payload)
++	case readErr := <-readError:
++		require.NoError(t, readErr)
++	case <-time.After(time.Second):
++		t.Fatal("timed out waiting for reordered HTTP packets")
++	}
++}
++
++func TestServerSessionExpiryReclaimsOrphan(t *testing.T) {
++	server, err := NewServer(context.Background(), logger.NOP(), option.V2RayXHTTPOptions{Path: "/xhttp", Mode: "packet-up"}, nil, echoHandler{})
++	require.NoError(t, err)
++	server.sessionTimeout = 50 * time.Millisecond
++	t.Cleanup(func() { _ = server.Close() })
++
++	session := server.session("orphan")
++	waitForLifecycle(t, time.Second, func() bool {
++		_, exists := server.sessions.Load("orphan")
++		return !exists
++	})
++	select {
++	case <-session.closed:
++	default:
++		t.Fatal("expired session was removed without closing its streams")
++	}
++}
++
++func TestTransportResourceCleanup(t *testing.T) {
++	beforeGoroutines := runtime.NumGoroutine()
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode, func(t *testing.T) {
++			listener := newTrackingListener(t)
++			client, server := newLifecycleTransport(t, mode, listener)
++			for index := range 12 {
++				connection, err := client.DialContext(context.Background())
++				require.NoError(t, err)
++				payload := []byte{byte(index), 'x', 'h', 't', 't', 'p'}
++				_, err = connection.Write(payload)
++				require.NoError(t, err)
++				response := make([]byte, len(payload))
++				_, err = io.ReadFull(connection, response)
++				require.NoError(t, err)
++				require.Equal(t, payload, response)
++				require.NoError(t, connection.Close())
++			}
++			_ = client.Close()
++			_ = server.Close()
++			_ = listener.Close()
++			waitForLifecycle(t, 2*time.Second, func() bool { return listener.active.Load() == 0 })
++		})
++	}
++
++	runtime.GC()
++	runtime.GC()
++	// The package test process itself retains a few HTTP and test-runner
++	// goroutines. A small bounded delta catches leaked request/session workers
++	// without making the check dependent on their exact implementation.
++	waitForLifecycle(t, 2*time.Second, func() bool {
++		return runtime.NumGoroutine() <= beforeGoroutines+12
++	})
++}
++
++func newLifecycleTransport(t *testing.T, mode string, listener *trackingListener) (*Client, *Server) {
++	t.Helper()
++	options := option.V2RayXHTTPOptions{
++		Path:                 "/xhttp",
++		Mode:                 mode,
++		SCMaxEachPostBytes:   option.V2RayXHTTPRange{From: 2048, To: 2048},
++		SCMinPostsIntervalMS: option.V2RayXHTTPRange{From: 1, To: 1},
++		SCMaxBufferedPosts:   8,
++	}
++	server, err := NewServer(context.Background(), logger.NOP(), options, nil, echoHandler{})
++	require.NoError(t, err)
++	if listener == nil {
++		listener = newTrackingListener(t)
++	}
++	go func() { _ = server.Serve(listener) }()
++	t.Cleanup(func() {
++		_ = server.Close()
++		_ = listener.Close()
++	})
++
++	dialer, err := dialer.NewDefault(context.Background(), option.DialerOptions{})
++	require.NoError(t, err)
++	client, err := NewClient(context.Background(), dialer, M.SocksaddrFromNet(listener.Addr()), options, nil)
++	require.NoError(t, err)
++	t.Cleanup(func() { _ = client.Close() })
++	return client, server
++}
++
++func waitForLifecycle(t *testing.T, timeout time.Duration, condition func() bool) {
++	t.Helper()
++	deadline := time.Now().Add(timeout)
++	for !condition() {
++		if time.Now().After(deadline) {
++			t.Fatal("timed out waiting for XHTTP lifecycle cleanup")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++}
++
++type trackingListener struct {
++	net.Listener
++	active atomic.Int64
++}
++
++func newTrackingListener(t *testing.T) *trackingListener {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	return &trackingListener{Listener: listener}
++}
++
++func (l *trackingListener) Accept() (net.Conn, error) {
++	connection, err := l.Listener.Accept()
++	if err != nil {
++		return nil, err
++	}
++	l.active.Add(1)
++	return &trackingConn{Conn: connection, onClose: func() { l.active.Add(-1) }}, nil
++}
++
++type trackingConn struct {
++	net.Conn
++	onClose func()
++	once    sync.Once
++}
++
++func (c *trackingConn) Close() error {
++	err := c.Conn.Close()
++	c.once.Do(c.onClose)
++	return err
++}
+diff --git a/transport/v2rayxhttp/protocol.go b/transport/v2rayxhttp/protocol.go
+new file mode 100644
+index 0000000..74c0aee
+--- /dev/null
++++ b/transport/v2rayxhttp/protocol.go
+@@ -0,0 +1,271 @@
++package v2rayxhttp
++
++import (
++	"bytes"
++	"encoding/base64"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strconv"
++	"strings"
++
++	"golang.org/x/net/http2/hpack"
++)
++
++func (c *config) applyMetadata(request *http.Request, sessionID, sequence string) {
++	applyMeta(request, c.sessionPlacement, c.sessionKey, sessionID)
++	applyMeta(request, c.seqPlacement, c.seqKey, sequence)
++}
++
++func applyMeta(request *http.Request, placement, key, value string) {
++	if value == "" {
++		return
++	}
++	switch placement {
++	case placementPath:
++		if !strings.HasSuffix(request.URL.Path, "/") {
++			request.URL.Path += "/"
++		}
++		request.URL.Path += value
++	case placementQuery:
++		query := request.URL.Query()
++		query.Set(key, value)
++		request.URL.RawQuery = query.Encode()
++	case placementHeader:
++		request.Header.Set(key, value)
++	case placementCookie:
++		request.AddCookie(&http.Cookie{Name: key, Value: value})
++	}
++}
++
++func (c *config) extractMetadata(request *http.Request) (string, string) {
++	path := strings.TrimPrefix(request.URL.Path, c.path)
++	parts := strings.Split(strings.Trim(path, "/"), "/")
++	nextPath := 0
++	extract := func(placement, key string) string {
++		switch placement {
++		case placementPath:
++			if nextPath < len(parts) && parts[nextPath] != "" {
++				value := parts[nextPath]
++				nextPath++
++				return value
++			}
++		case placementQuery:
++			return request.URL.Query().Get(key)
++		case placementHeader:
++			return request.Header.Get(key)
++		case placementCookie:
++			cookie, _ := request.Cookie(key)
++			if cookie != nil {
++				return cookie.Value
++			}
++		}
++		return ""
++	}
++	return extract(c.sessionPlacement, c.sessionKey), extract(c.seqPlacement, c.seqKey)
++}
++
++func (c *config) applyPadding(request *http.Request) {
++	length := c.padding.random()
++	method := c.paddingMethod
++	placement, key, header := c.paddingPlacement, c.paddingKey, c.paddingHeader
++	if !c.paddingObfs {
++		placement, key, header, method = placementQueryInHeader, "x_padding", "Referer", "repeat-x"
++	}
++	value := paddingValue(method, length)
++	switch placement {
++	case placementHeader:
++		request.Header.Set(header, value)
++	case placementCookie:
++		request.AddCookie(&http.Cookie{Name: key, Value: value})
++	case placementQuery:
++		query := request.URL.Query()
++		query.Set(key, value)
++		request.URL.RawQuery = query.Encode()
++	case placementQueryInHeader:
++		copyURL := *request.URL
++		query := copyURL.Query()
++		query.Set(key, value)
++		copyURL.RawQuery = query.Encode()
++		request.Header.Set(header, copyURL.String())
++	}
++}
++
++func (c *config) validPadding(request *http.Request) bool {
++	placement, key, header, method := c.paddingPlacement, c.paddingKey, c.paddingHeader, c.paddingMethod
++	if !c.paddingObfs {
++		placement, key, header, method = placementQueryInHeader, "x_padding", "Referer", "repeat-x"
++	}
++	var value string
++	switch placement {
++	case placementHeader:
++		value = request.Header.Get(header)
++	case placementCookie:
++		cookie, _ := request.Cookie(key)
++		if cookie != nil {
++			value = cookie.Value
++		}
++	case placementQuery:
++		value = request.URL.Query().Get(key)
++	case placementQueryInHeader:
++		if reference, err := url.Parse(request.Header.Get(header)); err == nil {
++			value = reference.Query().Get(key)
++		}
++	}
++	if method == "tokenish" {
++		encodedLength := int(hpack.HuffmanEncodeLength(value))
++		return encodedLength >= int(c.padding.from)-2 && encodedLength <= int(c.padding.to)+2
++	}
++	return len(value) >= int(c.padding.from) && len(value) <= int(c.padding.to)
++}
++
++func paddingValue(method string, length int) string {
++	if method != "tokenish" {
++		return strings.Repeat("X", length)
++	}
++	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
++	// Base62 has a close-to-browser Huffman profile. Select the nearest length
++	// so the value falls into the configured compressed-byte range.
++	value := make([]byte, length+length/2+8)
++	for index := range value {
++		value[index] = alphabet[(index*37+length*17)%len(alphabet)]
++	}
++	for index := 1; index <= len(value); index++ {
++		encodedLength := int(hpack.HuffmanEncodeLength(string(value[:index])))
++		if encodedLength >= length {
++			return string(value[:index])
++		}
++	}
++	return string(value)
++}
++
++func (c *config) fillStreamRequest(request *http.Request, sessionID string) {
++	request.Header = c.headers.Clone()
++	c.applyPadding(request)
++	c.applyMetadata(request, sessionID, "")
++	if request.Body != nil && !c.noGRPCHeader {
++		request.Header.Set("Content-Type", "application/grpc")
++	}
++}
++
++func (c *config) fillPacketRequest(request *http.Request, sessionID string, sequence uint64, payload []byte) {
++	request.Header = c.headers.Clone()
++	switch c.dataPlacement {
++	case placementHeader:
++		c.fillHeaderPayload(request.Header, c.dataKey, payload)
++	case placementCookie:
++		for index, chunk := range c.splitEncodedPayload(payload) {
++			request.AddCookie(&http.Cookie{Name: fmt.Sprintf("%s_%d", c.dataKey, index), Value: chunk})
++		}
++	default:
++		request.Body = io.NopCloser(bytes.NewReader(payload))
++		request.ContentLength = int64(len(payload))
++	}
++	c.applyPadding(request)
++	c.applyMetadata(request, sessionID, strconv.FormatUint(sequence, 10))
++}
++
++func (c *config) fillHeaderPayload(header http.Header, key string, payload []byte) {
++	for index, chunk := range c.splitEncodedPayload(payload) {
++		header.Set(fmt.Sprintf("%s-%d", key, index), chunk)
++	}
++}
++
++func (c *config) splitEncodedPayload(payload []byte) []string {
++	encoded := base64.RawURLEncoding.EncodeToString(payload)
++	if encoded == "" {
++		return nil
++	}
++	var chunks []string
++	for len(encoded) > 0 {
++		size := min(c.uplinkChunk.random(), len(encoded))
++		chunks, encoded = append(chunks, encoded[:size]), encoded[size:]
++	}
++	return chunks
++}
++
++func (c *config) applyResponsePadding(writer http.ResponseWriter) {
++	length := c.padding.random()
++	if !c.paddingObfs {
++		writer.Header().Set("X-Padding", paddingValue("repeat-x", length))
++		return
++	}
++	value := paddingValue(c.paddingMethod, length)
++	switch c.paddingPlacement {
++	case placementHeader:
++		writer.Header().Set(c.paddingHeader, value)
++	case placementCookie:
++		http.SetCookie(writer, &http.Cookie{Name: c.paddingKey, Value: value, Path: "/"})
++	}
++}
++
++func (c *config) extractPacketPayload(request *http.Request) ([]byte, error) {
++	maxSize := c.scMaxPost.random()
++	headerPayload, err := decodeHeaderPayload(request, c.dataKey)
++	if err != nil {
++		return nil, err
++	}
++	cookiePayload, err := decodeCookiePayload(request, c.dataKey)
++	if err != nil {
++		return nil, err
++	}
++	bodyPayload, err := readRequestBody(request, maxSize)
++	if err != nil {
++		return nil, err
++	}
++	switch c.dataPlacement {
++	case placementHeader:
++		return headerPayload, nil
++	case placementCookie:
++		return cookiePayload, nil
++	case placementAuto:
++		return append(append(headerPayload, cookiePayload...), bodyPayload...), nil
++	default:
++		return bodyPayload, nil
++	}
++}
++
++func decodeHeaderPayload(request *http.Request, key string) ([]byte, error) {
++	var encoded strings.Builder
++	for index := 0; ; index++ {
++		value := request.Header.Get(fmt.Sprintf("%s-%d", key, index))
++		if value == "" {
++			break
++		}
++		encoded.WriteString(value)
++	}
++	if encoded.Len() == 0 {
++		return nil, nil
++	}
++	return base64.RawURLEncoding.DecodeString(encoded.String())
++}
++
++func decodeCookiePayload(request *http.Request, key string) ([]byte, error) {
++	var encoded strings.Builder
++	for index := 0; ; index++ {
++		cookie, _ := request.Cookie(fmt.Sprintf("%s_%d", key, index))
++		if cookie == nil {
++			break
++		}
++		encoded.WriteString(cookie.Value)
++	}
++	if encoded.Len() == 0 {
++		return nil, nil
++	}
++	return base64.RawURLEncoding.DecodeString(encoded.String())
++}
++
++func readRequestBody(request *http.Request, maxSize int) ([]byte, error) {
++	if request.ContentLength > int64(maxSize) {
++		return nil, fmt.Errorf("request body exceeds xhttp limit")
++	}
++	data, err := io.ReadAll(io.LimitReader(request.Body, int64(maxSize)+1))
++	if err != nil {
++		return nil, err
++	}
++	if len(data) > maxSize {
++		return nil, fmt.Errorf("request body exceeds xhttp limit")
++	}
++	return data, nil
++}
+diff --git a/transport/v2rayxhttp/protocol_test.go b/transport/v2rayxhttp/protocol_test.go
+new file mode 100644
+index 0000000..85fb99c
+--- /dev/null
++++ b/transport/v2rayxhttp/protocol_test.go
+@@ -0,0 +1,99 @@
++package v2rayxhttp
++
++import (
++	"bytes"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"strconv"
++	"testing"
++
++	"github.com/sagernet/sing-box/option"
++
++	"github.com/stretchr/testify/require"
++	"golang.org/x/net/http2/hpack"
++)
++
++func TestResolvedMode(t *testing.T) {
++	require.Equal(t, "packet-up", resolvedMode("auto", false, false))
++	require.Equal(t, "stream-one", resolvedMode("auto", true, false))
++	require.Equal(t, "stream-up", resolvedMode("auto", true, true))
++	require.Equal(t, "stream-up", resolvedMode("stream-up", true, false))
++}
++
++func TestDownloadSettingsJSON(t *testing.T) {
++	options := option.V2RayXHTTPOptions{
++		Path: "/upload",
++		DownloadSettings: &option.V2RayXHTTPDownloadSettings{
++			ServerOptions:               option.ServerOptions{Server: "download.example", ServerPort: 443},
++			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "download.example"}},
++			V2RayXHTTPOptions:           option.V2RayXHTTPOptions{Path: "/download", Mode: "packet-up"},
++		},
++	}
++	encoded, err := json.Marshal(options)
++	require.NoError(t, err)
++	var decoded option.V2RayXHTTPOptions
++	require.NoError(t, json.Unmarshal(encoded, &decoded))
++	require.NotNil(t, decoded.DownloadSettings)
++	require.Equal(t, "download.example", decoded.DownloadSettings.Server)
++	require.Equal(t, uint16(443), decoded.DownloadSettings.ServerPort)
++	require.Equal(t, "/download", decoded.DownloadSettings.Path)
++	require.True(t, decoded.DownloadSettings.TLS.Enabled)
++}
++
++func TestPacketPayloadChunking(t *testing.T) {
++	payload := bytes.Repeat([]byte("x"), 600)
++	for _, placement := range []string{placementHeader, placementCookie} {
++		t.Run(placement, func(t *testing.T) {
++			config, err := newConfig(option.V2RayXHTTPOptions{
++				UplinkDataPlacement: placement,
++				UplinkChunkSize:     option.V2RayXHTTPRange{From: 65, To: 65},
++			})
++			require.NoError(t, err)
++			request := httptest.NewRequest(http.MethodPost, "http://example.com/xhttp/", nil)
++			config.fillPacketRequest(request, "session", 0, payload)
++			decoded, err := config.extractPacketPayload(request)
++			require.NoError(t, err)
++			require.Equal(t, payload, decoded)
++			for index := 0; ; index++ {
++				var chunk string
++				if placement == placementHeader {
++					chunk = request.Header.Get(config.dataKey + "-" + strconv.Itoa(index))
++				} else if cookie, _ := request.Cookie(config.dataKey + "_" + strconv.Itoa(index)); cookie != nil {
++					chunk = cookie.Value
++				}
++				if chunk == "" {
++					break
++				}
++				require.LessOrEqual(t, len(chunk), 65)
++			}
++		})
++	}
++}
++
++func TestResponsePadding(t *testing.T) {
++	t.Run("legacy", func(t *testing.T) {
++		config, err := newConfig(option.V2RayXHTTPOptions{
++			XPaddingBytes: option.V2RayXHTTPRange{From: 12, To: 12},
++		})
++		require.NoError(t, err)
++		recorder := httptest.NewRecorder()
++		config.applyResponsePadding(recorder)
++		require.Len(t, recorder.Header().Get("X-Padding"), 12)
++	})
++	t.Run("obfs-header", func(t *testing.T) {
++		config, err := newConfig(option.V2RayXHTTPOptions{
++			XPaddingBytes:     option.V2RayXHTTPRange{From: 12, To: 12},
++			XPaddingObfsMode:  true,
++			XPaddingPlacement: placementHeader,
++			XPaddingHeader:    "X-Test-Padding",
++			XPaddingMethod:    "tokenish",
++		})
++		require.NoError(t, err)
++		recorder := httptest.NewRecorder()
++		config.applyResponsePadding(recorder)
++		value := recorder.Header().Get("X-Test-Padding")
++		require.NotEmpty(t, value)
++		require.InDelta(t, 12, hpack.HuffmanEncodeLength(value), 2)
++	})
++}
+diff --git a/transport/v2rayxhttp/reality_interop_test.go b/transport/v2rayxhttp/reality_interop_test.go
+new file mode 100644
+index 0000000..e5a6bde
+--- /dev/null
++++ b/transport/v2rayxhttp/reality_interop_test.go
+@@ -0,0 +1,270 @@
++//go:build with_utls
++
++package v2rayxhttp_test
++
++import (
++	"crypto/ecdh"
++	"crypto/rand"
++	stdtls "crypto/tls"
++	"encoding/base64"
++	"net"
++	"strconv"
++	"testing"
++
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++)
++
++// TestXHTTPRealityInterop verifies the H2 XHTTP path through REALITY/uTLS
++// against Xray in both directions. REALITY's fallback target is local so the
++// test remains self-contained; authenticated test traffic never uses it.
++func TestXHTTPRealityInterop(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	privateKey, publicKey := interopRealityKeyPair(t)
++	const serverName = "xhttp.test"
++	const shortID = "0123456789abcdef"
++
++	for _, mode := range []string{"stream-one", "auto"} {
++		t.Run(mode+"/sing-box-client-to-xray-server", func(t *testing.T) {
++			testSingBoxClientToXRayRealityServer(t, xrayBinary, privateKey, publicKey, serverName, shortID, mode)
++		})
++		t.Run(mode+"/xray-client-to-sing-box-server", func(t *testing.T) {
++			testXRayClientToSingBoxRealityServer(t, xrayBinary, privateKey, publicKey, serverName, shortID, mode)
++		})
++	}
++}
++
++func TestXHTTPRealityDownloadSettingsInterop(t *testing.T) {
++	xrayBinary := requireXRayBinary(t)
++	privateKey, publicKey := interopRealityKeyPair(t)
++	const serverName = "xhttp.test"
++	const shortID = "0123456789abcdef"
++
++	t.Run("sing-box-client-to-xray-server", func(t *testing.T) {
++		testSingBoxClientToXRayRealityDownloadSettings(t, xrayBinary, privateKey, publicKey, serverName, shortID)
++	})
++	t.Run("xray-client-to-sing-box-server", func(t *testing.T) {
++		testXRayClientToSingBoxRealityDownloadSettings(t, xrayBinary, privateKey, publicKey, serverName, shortID)
++	})
++}
++
++func interopRealityKeyPair(t *testing.T) (privateKey, publicKey string) {
++	t.Helper()
++	key, err := ecdh.X25519().GenerateKey(rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return base64.RawURLEncoding.EncodeToString(key.Bytes()), base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
++}
++
++func interopRealityFallback(t *testing.T, serverName string) (uint16, func()) {
++	t.Helper()
++	certificatePath, keyPath, _ := interopCertificate(t)
++	certificate, err := stdtls.LoadX509KeyPair(certificatePath, keyPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	listener, err := stdtls.Listen("tcp", "127.0.0.1:0", &stdtls.Config{Certificates: []stdtls.Certificate{certificate}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		for {
++			connection, acceptErr := listener.Accept()
++			if acceptErr != nil {
++				return
++			}
++			go func() {
++				defer connection.Close()
++				if tlsConnection, ok := connection.(*stdtls.Conn); ok {
++					_ = tlsConnection.Handshake()
++				}
++			}()
++		}
++	}()
++	return uint16(listener.Addr().(*net.TCPAddr).Port), func() {
++		_ = listener.Close()
++		<-done
++	}
++}
++
++func testSingBoxClientToXRayRealityServer(t *testing.T, xrayBinary, privateKey, publicKey, serverName, shortID, mode string) {
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	fallbackPort, closeFallback := interopRealityFallback(t, serverName)
++	defer closeFallback()
++
++	startXRay(t, xrayBinary, serverPort, xrayVMessRealityServerConfig(serverPort, fallbackPort, userID, privateKey, serverName, shortID, mode))
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: interopRealityClientTLS(serverName, publicKey, shortID)},
++				Transport:                   interopTransport(mode),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxRealityServer(t *testing.T, xrayBinary, privateKey, publicKey, serverName, shortID, mode string) {
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	fallbackPort, closeFallback := interopRealityFallback(t, serverName)
++	defer closeFallback()
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: interopRealityServerTLS(fallbackPort, privateKey, serverName, shortID)},
++				Transport:                  interopTransport(mode),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessRealityClientConfig(proxyPort, serverPort, userID, publicKey, serverName, shortID, mode))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testSingBoxClientToXRayRealityDownloadSettings(t *testing.T, xrayBinary, privateKey, publicKey, serverName, shortID string) {
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	downloadPort, closeDownload := interopTCPForwarder(t, serverPort)
++	defer closeDownload()
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	fallbackPort, closeFallback := interopRealityFallback(t, serverName)
++	defer closeFallback()
++
++	startXRay(t, xrayBinary, serverPort, xrayVMessRealityServerConfig(serverPort, fallbackPort, userID, privateKey, serverName, shortID, "auto"))
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: interopRealityClientTLS(serverName, publicKey, shortID)},
++				Transport: interopTransportOptions(option.V2RayXHTTPOptions{
++					Path: "/xhttp/", Mode: "auto",
++					DownloadSettings: &option.V2RayXHTTPDownloadSettings{
++						ServerOptions:               option.ServerOptions{Server: "127.0.0.1", ServerPort: downloadPort},
++						OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: interopRealityClientTLS(serverName, publicKey, shortID)},
++						V2RayXHTTPOptions:           option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "auto"},
++					},
++				}),
++			},
++		}},
++	})
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func testXRayClientToSingBoxRealityDownloadSettings(t *testing.T, xrayBinary, privateKey, publicKey, serverName, shortID string) {
++	serverPort, proxyPort := interopPort(t), interopPort(t)
++	downloadPort, closeDownload := interopTCPForwarder(t, serverPort)
++	defer closeDownload()
++	targetPort, closeTarget := interopEchoServer(t)
++	defer closeTarget()
++	userID := interopUUID(t)
++	fallbackPort, closeFallback := interopRealityFallback(t, serverName)
++	defer closeFallback()
++
++	startInteropBox(t, option.Options{
++		Inbounds: []option.Inbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessInboundOptions{
++				ListenOptions: interopListen(serverPort), Users: []option.VMessUser{{UUID: userID}},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: interopRealityServerTLS(fallbackPort, privateKey, serverName, shortID)},
++				Transport:                  interopTransport("auto"),
++			},
++		}},
++		Outbounds: []option.Outbound{{Type: C.TypeDirect}},
++	})
++	startXRay(t, xrayBinary, proxyPort, xrayVMessRealityClientConfigWithDownloadSettings(proxyPort, serverPort, downloadPort, userID, publicKey, serverName, shortID))
++	interopPingPong(t, proxyPort, targetPort)
++}
++
++func interopRealityClientTLS(serverName, publicKey, shortID string) *option.OutboundTLSOptions {
++	return &option.OutboundTLSOptions{
++		Enabled: true, ServerName: serverName,
++		Reality: &option.OutboundRealityOptions{Enabled: true, PublicKey: publicKey, ShortID: shortID},
++		UTLS:    &option.OutboundUTLSOptions{Enabled: true, Fingerprint: "chrome"},
++	}
++}
++
++func interopRealityServerTLS(fallbackPort uint16, privateKey, serverName, shortID string) *option.InboundTLSOptions {
++	return &option.InboundTLSOptions{
++		Enabled: true, ServerName: serverName, ALPN: []string{"h2"},
++		Reality: &option.InboundRealityOptions{
++			Enabled: true, PrivateKey: privateKey, ShortID: []string{shortID},
++			Handshake: option.InboundRealityHandshakeOptions{ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: fallbackPort}},
++		},
++	}
++}
++
++func xrayVMessRealityServerConfig(port, fallbackPort uint16, userID, privateKey, serverName, shortID, mode string) map[string]any {
++	return map[string]any{
++		"log": map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{
++			"listen": "127.0.0.1", "port": port, "protocol": "vmess",
++			"settings":       map[string]any{"clients": []any{map[string]any{"id": userID}}},
++			"streamSettings": xrayXHTTPRealityStreamSettings("server", fallbackPort, privateKey, "", serverName, shortID, mode),
++		}},
++		"outbounds": []any{map[string]any{
++			"protocol": "freedom",
++			"settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow"}}},
++		}},
++	}
++}
++
++func xrayVMessRealityClientConfig(proxyPort, serverPort uint16, userID, publicKey, serverName, shortID, mode string) map[string]any {
++	return map[string]any{
++		"log":      map[string]any{"loglevel": "warning"},
++		"inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": proxyPort, "protocol": "socks", "settings": map[string]any{"udp": false}}},
++		"outbounds": []any{map[string]any{
++			"protocol":       "vmess",
++			"settings":       map[string]any{"vnext": []any{map[string]any{"address": "127.0.0.1", "port": serverPort, "users": []any{map[string]any{"id": userID, "security": "aes-128-gcm"}}}}},
++			"streamSettings": xrayXHTTPRealityStreamSettings("client", 0, "", publicKey, serverName, shortID, mode),
++		}},
++	}
++}
++
++func xrayVMessRealityClientConfigWithDownloadSettings(proxyPort, serverPort, downloadPort uint16, userID, publicKey, serverName, shortID string) map[string]any {
++	config := xrayVMessRealityClientConfig(proxyPort, serverPort, userID, publicKey, serverName, shortID, "auto")
++	streamSettings := config["outbounds"].([]any)[0].(map[string]any)["streamSettings"].(map[string]any)
++	downloadSettings := xrayXHTTPRealityStreamSettings("client", 0, "", publicKey, serverName, shortID, "auto")
++	downloadSettings["address"] = "127.0.0.1"
++	downloadSettings["port"] = downloadPort
++	streamSettings["xhttpSettings"].(map[string]any)["downloadSettings"] = downloadSettings
++	return config
++}
++
++func xrayXHTTPRealityStreamSettings(role string, fallbackPort uint16, privateKey, publicKey, serverName, shortID, mode string) map[string]any {
++	realitySettings := map[string]any{"serverName": serverName, "shortId": shortID}
++	if role == "server" {
++		realitySettings["dest"] = "127.0.0.1:" + strconv.Itoa(int(fallbackPort))
++		realitySettings["serverNames"] = []string{serverName}
++		realitySettings["privateKey"] = privateKey
++		realitySettings["shortIds"] = []string{shortID}
++		// sing-box follows the original REALITY client-version encoding. Xray
++		// v26 defaults its server-side minimum to its own current version, so
++		// make the interop peer explicitly accept compatible implementations.
++		realitySettings["minClientVer"] = "0.0.0"
++	} else {
++		realitySettings["fingerprint"] = "chrome"
++		realitySettings["publicKey"] = publicKey
++	}
++	return map[string]any{
++		"network": "xhttp", "security": "reality", "realitySettings": realitySettings,
++		"xhttpSettings": map[string]any{"path": "/xhttp/", "mode": mode},
++	}
++}
+diff --git a/transport/v2rayxhttp/reality_stub.go b/transport/v2rayxhttp/reality_stub.go
+new file mode 100644
+index 0000000..7e97663
+--- /dev/null
++++ b/transport/v2rayxhttp/reality_stub.go
+@@ -0,0 +1,9 @@
++//go:build !with_utls
++
++package v2rayxhttp
++
++import "github.com/sagernet/sing-box/common/tls"
++
++func isRealityClient(tls.Config) bool {
++	return false
++}
+diff --git a/transport/v2rayxhttp/reality_utls.go b/transport/v2rayxhttp/reality_utls.go
+new file mode 100644
+index 0000000..5622c0b
+--- /dev/null
++++ b/transport/v2rayxhttp/reality_utls.go
+@@ -0,0 +1,16 @@
++//go:build with_utls
++
++package v2rayxhttp
++
++import "github.com/sagernet/sing-box/common/tls"
++
++func isRealityClient(config tls.Config) bool {
++	switch config := config.(type) {
++	case *tls.RealityClientConfig:
++		return true
++	case *tls.KTLSClientConfig:
++		return isRealityClient(config.Config)
++	default:
++		return false
++	}
++}
+diff --git a/transport/v2rayxhttp/server.go b/transport/v2rayxhttp/server.go
+new file mode 100644
+index 0000000..7bed587
+--- /dev/null
++++ b/transport/v2rayxhttp/server.go
+@@ -0,0 +1,333 @@
++package v2rayxhttp
++
++import (
++	"context"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"strconv"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/tls"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common"
++	E "github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++	aTLS "github.com/sagernet/sing/common/tls"
++	sHTTP "github.com/sagernet/sing/protocol/http"
++
++	"golang.org/x/net/http2"
++	"golang.org/x/net/http2/h2c"
++)
++
++var _ adapter.V2RayServerTransport = (*Server)(nil)
++
++type Server struct {
++	ctx          context.Context
++	logger       logger.ContextLogger
++	tlsConfig    tls.ServerConfig
++	handler      adapter.V2RayServerTransportHandler
++	config       *config
++	httpServer   *http.Server
++	packetServer io.Closer
++	sessions     sync.Map
++	// sessionTimeout bounds an upload-only session that never receives its
++	// paired download request. It is a field rather than a package constant so
++	// lifecycle tests can exercise cleanup without waiting for the production
++	// timeout.
++	sessionTimeout time.Duration
++}
++
++func NewServer(ctx context.Context, logger logger.ContextLogger, options option.V2RayXHTTPOptions, tlsConfig tls.ServerConfig, handler adapter.V2RayServerTransportHandler) (*Server, error) {
++	config, err := newConfig(options)
++	if err != nil {
++		return nil, err
++	}
++	if isHTTP3(tlsConfig) {
++		if err = validateHTTP3(); err != nil {
++			return nil, err
++		}
++	}
++	server := &Server{ctx: ctx, logger: logger, tlsConfig: tlsConfig, handler: handler, config: config, sessionTimeout: 30 * time.Second}
++	handlerWithH2C := h2c.NewHandler(server, &http2.Server{})
++	server.httpServer = &http.Server{
++		Handler:           handlerWithH2C,
++		ReadHeaderTimeout: C.TCPTimeout,
++		MaxHeaderBytes:    config.maxHeaderBytes,
++		BaseContext:       func(net.Listener) context.Context { return ctx },
++		ConnContext:       func(ctx context.Context, conn net.Conn) context.Context { return log.ContextWithNewID(ctx) },
++	}
++	return server, nil
++}
++
++func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
++	if s.config.host != "" && request.Host != s.config.host {
++		s.invalid(writer, request, http.StatusNotFound, E.New("bad host"))
++		return
++	}
++	if !strings.HasPrefix(request.URL.Path, s.config.path) {
++		s.invalid(writer, request, http.StatusNotFound, E.New("bad path"))
++		return
++	}
++	s.writeCORS(writer, request)
++	s.config.applyResponsePadding(writer)
++	if request.Method == http.MethodOptions {
++		writer.WriteHeader(http.StatusOK)
++		return
++	}
++	if !s.config.validPadding(request) {
++		s.invalid(writer, request, http.StatusBadRequest, E.New("invalid xhttp padding"))
++		return
++	}
++	sessionID, sequence := s.config.extractMetadata(request)
++	if sessionID == "" && s.config.mode != "auto" && s.config.mode != "stream-one" {
++		s.invalid(writer, request, http.StatusBadRequest, E.New("stream-one is not allowed"))
++		return
++	}
++
++	if isUplink(request, sequence) && sessionID != "" {
++		session := s.session(sessionID)
++		if sequence == "" {
++			if s.config.mode != "auto" && s.config.mode != "stream-up" {
++				s.invalid(writer, request, http.StatusBadRequest, E.New("stream-up is not allowed"))
++				return
++			}
++			session.startStream(request.Body)
++			_ = http.NewResponseController(writer).EnableFullDuplex()
++			writer.Header().Set("X-Accel-Buffering", "no")
++			writer.Header().Set("Cache-Control", "no-store")
++			writer.WriteHeader(http.StatusOK)
++			if flusher, ok := writer.(http.Flusher); ok {
++				flusher.Flush()
++			}
++			if s.keepStreamUpResponseAlive(writer, request) {
++				return
++			}
++			<-request.Context().Done()
++			return
++		}
++		if s.config.mode != "auto" && s.config.mode != "packet-up" {
++			s.invalid(writer, request, http.StatusBadRequest, E.New("packet-up is not allowed"))
++			return
++		}
++		payload, err := s.config.extractPacketPayload(request)
++		if err != nil || len(payload) > s.config.scMaxPost.random() {
++			s.invalid(writer, request, http.StatusBadRequest, E.New("invalid xhttp upload"))
++			return
++		}
++		seq, err := strconv.ParseUint(sequence, 10, 64)
++		if err != nil {
++			s.invalid(writer, request, http.StatusBadRequest, E.New("invalid xhttp sequence"))
++			return
++		}
++		if !session.push(packet{sequence: seq, payload: payload}) {
++			s.invalid(writer, request, http.StatusConflict, E.New("closed xhttp session"))
++			return
++		}
++		writer.Header().Set("Cache-Control", "no-store")
++		writer.WriteHeader(http.StatusOK)
++		return
++	}
++
++	if request.Method != http.MethodGet && sessionID != "" {
++		s.invalid(writer, request, http.StatusMethodNotAllowed, E.New("unsupported xhttp method"))
++		return
++	}
++	// Go's HTTP/1.1 server otherwise drains a request body before flushing the
++	// response. XHTTP stream-one deliberately needs both directions live.
++	if request.Body != nil {
++		_ = http.NewResponseController(writer).EnableFullDuplex()
++	}
++	writer.Header().Set("X-Accel-Buffering", "no")
++	writer.Header().Set("Cache-Control", "no-store")
++	if !s.config.noSSEHeader {
++		writer.Header().Set("Content-Type", "text/event-stream")
++	}
++	writer.WriteHeader(http.StatusOK)
++	if flusher, ok := writer.(http.Flusher); ok {
++		flusher.Flush()
++	}
++
++	reader := io.Reader(request.Body)
++	var session *serverSession
++	if sessionID != "" {
++		session = s.session(sessionID)
++		session.markConnected()
++		reader = session.reader
++	}
++	response := newResponseConn(reader, writer, request.Context().Done())
++	defer response.Close()
++	if session != nil {
++		defer s.closeSession(sessionID, session)
++	}
++	done := make(chan struct{})
++	var closeOnce sync.Once
++	onClose := func(error) { closeOnce.Do(func() { close(done) }) }
++	s.handler.NewConnectionEx(request.Context(), response, sHTTP.SourceAddress(request), M.Socksaddr{}, onClose)
++	select {
++	case <-done:
++	case <-request.Context().Done():
++	}
++}
++
++func (s *Server) keepStreamUpResponseAlive(writer http.ResponseWriter, request *http.Request) bool {
++	if s.config.scStreamUp.to <= 0 || !(request.Header.Get("Referer") != "" || s.config.paddingObfs) {
++		return false
++	}
++	for {
++		if _, err := io.WriteString(writer, strings.Repeat("X", s.config.padding.random())); err != nil {
++			return true
++		}
++		if flusher, ok := writer.(http.Flusher); ok {
++			flusher.Flush()
++		}
++		timer := time.NewTimer(time.Duration(s.config.scStreamUp.random()) * time.Second)
++		select {
++		case <-request.Context().Done():
++			timer.Stop()
++			return true
++		case <-timer.C:
++		}
++	}
++}
++
++func isUplink(request *http.Request, sequence string) bool {
++	return request.Method != http.MethodGet || sequence != ""
++}
++
++func (s *Server) session(id string) *serverSession {
++	if existing, loaded := s.sessions.Load(id); loaded {
++		return existing.(*serverSession)
++	}
++	session := newServerSession(s.config.maxBufferedPosts)
++	actual, loaded := s.sessions.LoadOrStore(id, session)
++	if loaded {
++		session.close()
++		return actual.(*serverSession)
++	}
++	go func() {
++		select {
++		case <-time.After(s.sessionTimeout):
++			s.closeSession(id, session)
++		case <-session.connected:
++		}
++	}()
++	return session
++}
++
++func (s *Server) closeSession(id string, session *serverSession) {
++	session.markConnected()
++	s.sessions.CompareAndDelete(id, session)
++	session.close()
++}
++
++func (s *Server) writeCORS(writer http.ResponseWriter, request *http.Request) {
++	origin := request.Header.Get("Origin")
++	if origin == "" {
++		origin = "*"
++	}
++	writer.Header().Set("Access-Control-Allow-Origin", origin)
++	if s.config.sessionPlacement == placementCookie || s.config.seqPlacement == placementCookie || s.config.dataPlacement == placementCookie || s.config.paddingPlacement == placementCookie {
++		writer.Header().Set("Access-Control-Allow-Credentials", "true")
++	}
++}
++
++func (s *Server) invalid(writer http.ResponseWriter, request *http.Request, status int, err error) {
++	writer.WriteHeader(status)
++	s.logger.DebugContext(request.Context(), E.Cause(err, "process xhttp request from ", request.RemoteAddr))
++}
++
++func (s *Server) Network() []string {
++	if isHTTP3(s.tlsConfig) {
++		return []string{N.NetworkUDP}
++	}
++	return []string{N.NetworkTCP}
++}
++
++func (s *Server) Serve(listener net.Listener) error {
++	if isHTTP3(s.tlsConfig) {
++		return os.ErrInvalid
++	}
++	if s.tlsConfig != nil {
++		if len(s.tlsConfig.NextProtos()) == 0 {
++			s.tlsConfig.SetNextProtos([]string{http2.NextProtoTLS, "http/1.1"})
++		}
++		listener = aTLS.NewListener(listener, s.tlsConfig)
++	}
++	return s.httpServer.Serve(listener)
++}
++
++func (s *Server) Close() error {
++	s.sessions.Range(func(_, value any) bool { value.(*serverSession).close(); return true })
++	return common.Close(s.httpServer, s.packetServer)
++}
++
++type packet struct {
++	sequence uint64
++	payload  []byte
++}
++type serverSession struct {
++	reader      *io.PipeReader
++	writer      *io.PipeWriter
++	packets     chan packet
++	closed      chan struct{}
++	connected   chan struct{}
++	closeOnce   sync.Once
++	connectOnce sync.Once
++}
++
++func newServerSession(maxPackets int) *serverSession {
++	reader, writer := io.Pipe()
++	session := &serverSession{reader: reader, writer: writer, packets: make(chan packet, maxPackets), closed: make(chan struct{}), connected: make(chan struct{})}
++	go session.copyPackets()
++	return session
++}
++
++func (s *serverSession) copyPackets() {
++	pending := make(map[uint64][]byte)
++	var next uint64
++	for {
++		select {
++		case item := <-s.packets:
++			pending[item.sequence] = item.payload
++			for {
++				payload, ok := pending[next]
++				if !ok {
++					break
++				}
++				delete(pending, next)
++				if _, err := s.writer.Write(payload); err != nil {
++					return
++				}
++				next++
++			}
++		case <-s.closed:
++			return
++		}
++	}
++}
++
++func (s *serverSession) push(item packet) bool {
++	select {
++	case s.packets <- item:
++		return true
++	case <-s.closed:
++		return false
++	}
++}
++
++func (s *serverSession) startStream(reader io.ReadCloser) {
++	go func() { _, _ = io.Copy(s.writer, reader); _ = reader.Close() }()
++}
++func (s *serverSession) markConnected() { s.connectOnce.Do(func() { close(s.connected) }) }
++func (s *serverSession) close() {
++	s.closeOnce.Do(func() { close(s.closed); _ = s.reader.Close(); _ = s.writer.Close(); s.markConnected() })
++}
+diff --git a/transport/v2rayxhttp/transport_test.go b/transport/v2rayxhttp/transport_test.go
+new file mode 100644
+index 0000000..6238420
+--- /dev/null
++++ b/transport/v2rayxhttp/transport_test.go
+@@ -0,0 +1,126 @@
++package v2rayxhttp
++
++import (
++	"context"
++	"io"
++	"net"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/dialer"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++
++	"github.com/stretchr/testify/require"
++)
++
++type echoHandler struct{}
++
++func (echoHandler) NewConnectionEx(_ context.Context, conn net.Conn, _ M.Socksaddr, _ M.Socksaddr, _ N.CloseHandlerFunc) {
++	defer conn.Close()
++	buffer := make([]byte, 32*1024)
++	for {
++		n, err := conn.Read(buffer)
++		if n > 0 {
++			_, _ = conn.Write(buffer[:n])
++		}
++		if err != nil {
++			return
++		}
++	}
++}
++
++var _ adapter.V2RayServerTransportHandler = echoHandler{}
++
++func TestTransportModes(t *testing.T) {
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode, func(t *testing.T) { testTransportMode(t, mode) })
++	}
++}
++
++func TestDownloadSettings(t *testing.T) {
++	options := option.V2RayXHTTPOptions{
++		Path: "/xhttp", Mode: "stream-up",
++	}
++	server, err := NewServer(context.Background(), logger.NOP(), options, nil, echoHandler{})
++	require.NoError(t, err)
++	uplinkListener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	downloadListener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	uplinkCounter := &countingListener{Listener: uplinkListener}
++	downloadCounter := &countingListener{Listener: downloadListener}
++	go server.Serve(uplinkCounter)
++	go server.Serve(downloadCounter)
++	defer func() {
++		_ = uplinkListener.Close()
++		_ = downloadListener.Close()
++		_ = server.Close()
++	}()
++
++	dialer, err := dialer.NewDefault(context.Background(), option.DialerOptions{})
++	require.NoError(t, err)
++	clientOptions := options
++	clientOptions.DownloadSettings = &option.V2RayXHTTPDownloadSettings{
++		ServerOptions:     option.ServerOptions{Server: "127.0.0.1", ServerPort: uint16(downloadListener.Addr().(*net.TCPAddr).Port)},
++		V2RayXHTTPOptions: option.V2RayXHTTPOptions{Path: "/xhttp", Mode: "stream-up"},
++	}
++	client, err := NewClient(context.Background(), dialer, M.SocksaddrFromNet(uplinkListener.Addr()), clientOptions, nil)
++	require.NoError(t, err)
++	defer client.Close()
++	conn, err := client.DialContext(context.Background())
++	require.NoError(t, err)
++	defer conn.Close()
++	payload := []byte("xhttp download settings test")
++	_, err = conn.Write(payload)
++	require.NoError(t, err)
++	response := make([]byte, len(payload))
++	_, err = io.ReadFull(conn, response)
++	require.NoError(t, err)
++	require.Equal(t, payload, response)
++	require.Positive(t, uplinkCounter.accepted.Load(), "upload target was not used")
++	require.Positive(t, downloadCounter.accepted.Load(), "download target was not used")
++}
++
++type countingListener struct {
++	net.Listener
++	accepted atomic.Int64
++}
++
++func (l *countingListener) Accept() (net.Conn, error) {
++	connection, err := l.Listener.Accept()
++	if err == nil {
++		l.accepted.Add(1)
++	}
++	return connection, err
++}
++
++func testTransportMode(t *testing.T, mode string) {
++	options := option.V2RayXHTTPOptions{Path: "/xhttp", Mode: mode}
++	server, err := NewServer(context.Background(), logger.NOP(), options, nil, echoHandler{})
++	require.NoError(t, err)
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	require.NoError(t, err)
++	defer listener.Close()
++	go server.Serve(listener)
++	defer server.Close()
++	dialer, err := dialer.NewDefault(context.Background(), option.DialerOptions{})
++	require.NoError(t, err)
++	client, err := NewClient(context.Background(), dialer, M.SocksaddrFromNet(listener.Addr()), options, nil)
++	require.NoError(t, err)
++	conn, err := client.DialContext(context.Background())
++	require.NoError(t, err)
++	defer conn.Close()
++	payload := []byte("xhttp transport test")
++	_, err = conn.Write(payload)
++	require.NoError(t, err)
++	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
++	response := make([]byte, len(payload))
++	_, err = io.ReadFull(conn, response)
++	require.NoError(t, err)
++	require.Equal(t, payload, response)
++}
+diff --git a/transport/v2rayxhttp/xmux.go b/transport/v2rayxhttp/xmux.go
+new file mode 100644
+index 0000000..0de34fd
+--- /dev/null
++++ b/transport/v2rayxhttp/xmux.go
+@@ -0,0 +1,202 @@
++package v2rayxhttp
++
++import (
++	"net/http"
++	"sync"
++	"time"
++
++	"github.com/sagernet/sing-box/option"
++	E "github.com/sagernet/sing/common/exceptions"
++)
++
++// xmuxConfig mirrors Xray's XHTTP client-reuse budgets. A zero range means
++// unlimited (or disabled for the corresponding limit).
++type xmuxConfig struct {
++	maxConcurrency, maxConnections     byteRange
++	maxReuse, maxRequests, maxReusable byteRange
++	keepAlivePeriod                    time.Duration
++}
++
++func newXMuxConfig(options option.V2RayXHTTPXmuxOptions) (xmuxConfig, error) {
++	if options.MaxConcurrency.To != 0 && options.MaxConnections.To != 0 {
++		return xmuxConfig{}, E.New("xhttp xmux max_concurrency and max_connections are mutually exclusive")
++	}
++	config := xmuxConfig{
++		maxConcurrency: optionalRange(options.MaxConcurrency),
++		maxConnections: optionalRange(options.MaxConnections),
++		maxReuse:       optionalRange(options.CMaxReuseTimes),
++		maxRequests:    optionalRange(options.HMaxRequestTimes),
++		maxReusable:    optionalRange(options.HMaxReusableSecs),
++	}
++	for _, value := range []byteRange{config.maxConcurrency, config.maxConnections, config.maxReuse, config.maxRequests, config.maxReusable} {
++		if value.to != 0 && (!value.valid() || value.from < 0) {
++			return xmuxConfig{}, E.New("invalid xhttp xmux range")
++		}
++	}
++	if options.HKeepAlivePeriod < 0 {
++		return xmuxConfig{}, E.New("invalid xhttp xmux h_keep_alive_period")
++	}
++	config.keepAlivePeriod = time.Duration(options.HKeepAlivePeriod) * time.Second
++	return config, nil
++}
++
++func optionalRange(value option.V2RayXHTTPRange) byteRange {
++	if value.To == 0 {
++		return byteRange{}
++	}
++	return byteRange{from: value.From, to: value.To}
++}
++
++type xmuxClient struct {
++	transport http.RoundTripper
++	running   int
++	// remainingReuse counts future logical-connection assignments. -1 means
++	// unlimited. remainingRequests uses the same convention for HTTP requests.
++	remainingReuse, remainingRequests int
++	unusableAt                        time.Time
++	retired                           bool
++}
++
++type xmuxManager struct {
++	access                         sync.Mutex
++	config                         xmuxConfig
++	maxConcurrency, maxConnections int
++	newTransport                   func() http.RoundTripper
++	clients                        []*xmuxClient
++	closed                         bool
++}
++
++func newXMuxManager(config xmuxConfig, newTransport func() http.RoundTripper) *xmuxManager {
++	return &xmuxManager{
++		config:         config,
++		maxConcurrency: config.maxConcurrency.random(),
++		maxConnections: config.maxConnections.random(),
++		newTransport:   newTransport,
++	}
++}
++
++func (m *xmuxManager) acquireConnection() *xmuxClient {
++	m.access.Lock()
++	defer m.access.Unlock()
++	client := m.pickLocked(true)
++	client.running++
++	m.consumeRequestLocked(client)
++	return client
++}
++
++// acquireRequest may select a different HTTP client once the logical
++// connection's initial client has spent its request budget (packet-up).
++func (m *xmuxManager) acquireRequest() *xmuxClient {
++	m.access.Lock()
++	defer m.access.Unlock()
++	client := m.pickLocked(false)
++	m.consumeRequestLocked(client)
++	return client
++}
++
++func (m *xmuxManager) consumeRequest(client *xmuxClient) {
++	m.access.Lock()
++	defer m.access.Unlock()
++	m.consumeRequestLocked(client)
++}
++
++// consumePacketRequest keeps packet-up uploads on their current client until
++// its HTTP-request or time budget is spent, matching Xray's dynamic uploader.
++func (m *xmuxManager) consumePacketRequest(client *xmuxClient) bool {
++	m.access.Lock()
++	defer m.access.Unlock()
++	now := time.Now()
++	if client.retired || client.remainingRequests == 0 || (!client.unusableAt.IsZero() && !now.Before(client.unusableAt)) {
++		client.retired = true
++		if client.running == 0 {
++			closeIdleConnections(client.transport)
++		}
++		return false
++	}
++	m.consumeRequestLocked(client)
++	return true
++}
++
++func (m *xmuxManager) consumeRequestLocked(client *xmuxClient) {
++	if client.remainingRequests > 0 {
++		client.remainingRequests--
++	}
++}
++
++func (m *xmuxManager) doneConnection(client *xmuxClient) {
++	m.access.Lock()
++	if client.running > 0 {
++		client.running--
++	}
++	if client.retired && client.running == 0 {
++		closeIdleConnections(client.transport)
++	}
++	m.access.Unlock()
++}
++
++func (m *xmuxManager) pickLocked(connection bool) *xmuxClient {
++	now := time.Now()
++	for _, client := range m.clients {
++		if !client.retired && (client.remainingReuse == 0 || client.remainingRequests == 0 || (!client.unusableAt.IsZero() && !now.Before(client.unusableAt))) {
++			client.retired = true
++			if client.running == 0 {
++				closeIdleConnections(client.transport)
++			}
++		}
++	}
++	active := make([]*xmuxClient, 0, len(m.clients))
++	for _, client := range m.clients {
++		if !client.retired && (!connection || m.maxConcurrency == 0 || client.running < m.maxConcurrency) {
++			active = append(active, client)
++		}
++	}
++	activeCount := 0
++	for _, client := range m.clients {
++		if !client.retired {
++			activeCount++
++		}
++	}
++	if len(active) == 0 || (m.maxConnections > 0 && activeCount < m.maxConnections) {
++		return m.newClientLocked()
++	}
++	client := active[byteRange{from: 0, to: int32(len(active) - 1)}.random()]
++	if connection && client.remainingReuse > 0 {
++		client.remainingReuse--
++	}
++	return client
++}
++
++func (m *xmuxManager) newClientLocked() *xmuxClient {
++	client := &xmuxClient{transport: m.newTransport(), remainingReuse: -1, remainingRequests: -1}
++	if value := m.config.maxReuse.random(); value > 0 {
++		client.remainingReuse = value - 1
++	}
++	if value := m.config.maxRequests.random(); value > 0 {
++		client.remainingRequests = value
++	}
++	if value := m.config.maxReusable.random(); value > 0 {
++		client.unusableAt = time.Now().Add(time.Duration(value) * time.Second)
++	}
++	m.clients = append(m.clients, client)
++	return client
++}
++
++func (m *xmuxManager) Close() {
++	m.access.Lock()
++	if m.closed {
++		m.access.Unlock()
++		return
++	}
++	m.closed = true
++	for _, client := range m.clients {
++		client.retired = true
++		closeIdleConnections(client.transport)
++	}
++	m.access.Unlock()
++}
++
++func closeIdleConnections(transport http.RoundTripper) {
++	if pool, ok := transport.(interface{ CloseIdleConnections() }); ok {
++		pool.CloseIdleConnections()
++	}
++}
+diff --git a/transport/v2rayxhttp/xmux_benchmark_test.go b/transport/v2rayxhttp/xmux_benchmark_test.go
+new file mode 100644
+index 0000000..2920ce3
+--- /dev/null
++++ b/transport/v2rayxhttp/xmux_benchmark_test.go
+@@ -0,0 +1,157 @@
++package v2rayxhttp_test
++
++import (
++	"context"
++	"fmt"
++	"io"
++	"net"
++	"slices"
++	"strconv"
++	"sync"
++	"testing"
++	"time"
++
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/protocol/socks"
++	"github.com/sagernet/sing/protocol/socks/socks5"
++)
++
++// BenchmarkXHTTPXMux compares sing-box and Xray clients on the same local
++// Xray XHTTP server. Run with -benchmem for allocs/op and -cpuprofile /
++// -memprofile for CPU and allocation profiles; see PLANS.md for commands.
++func BenchmarkXHTTPXMux(b *testing.B) {
++	xrayBinary := requireXRayBinary(b)
++	variants := []struct {
++		name  string
++		xhttp option.V2RayXHTTPOptions
++	}{
++		{name: "no-xmux", xhttp: option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "packet-up"}},
++		{name: "xmux", xhttp: option.V2RayXHTTPOptions{
++			Path: "/xhttp/", Mode: "packet-up",
++			XMUX: option.V2RayXHTTPXmuxOptions{
++				MaxConcurrency:   option.V2RayXHTTPRange{From: 4, To: 4},
++				CMaxReuseTimes:   option.V2RayXHTTPRange{From: 16, To: 16},
++				HMaxRequestTimes: option.V2RayXHTTPRange{From: 64, To: 64},
++				HMaxReusableSecs: option.V2RayXHTTPRange{From: 60, To: 60},
++				HKeepAlivePeriod: 15,
++			},
++		}},
++	}
++	for _, variant := range variants {
++		b.Run("sing-box/"+variant.name, func(b *testing.B) {
++			benchmarkSingBoxXMux(b, xrayBinary, variant.xhttp)
++		})
++		b.Run("xray/"+variant.name, func(b *testing.B) {
++			benchmarkXRayXMux(b, xrayBinary, variant.xhttp)
++		})
++	}
++}
++
++func benchmarkSingBoxXMux(b *testing.B, xrayBinary string, xhttp option.V2RayXHTTPOptions) {
++	certificate, key, ca := interopCertificate(b)
++	serverPort, proxyPort := interopPort(b), interopPort(b)
++	targetPort, closeTarget := interopEchoServer(b)
++	defer closeTarget()
++	userID := interopUUID(b)
++	serverXHTTP := option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "packet-up"}
++	startXRay(b, xrayBinary, serverPort, xrayVMessServerConfigWithXHTTP(serverPort, userID, certificate, key, "h2", serverXHTTP))
++	startInteropBox(b, option.Options{
++		Inbounds: []option.Inbound{{Type: C.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++		Outbounds: []option.Outbound{{
++			Type: C.TypeVMess,
++			Options: &option.VMessOutboundOptions{
++				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: serverPort}, UUID: userID, Security: "aes-128-gcm",
++				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca, ALPN: []string{"h2"}}},
++				Transport:                   interopTransportOptions(xhttp),
++			},
++		}},
++	})
++	benchmarkProxyTraffic(b, proxyPort, targetPort)
++}
++
++func benchmarkXRayXMux(b *testing.B, xrayBinary string, xhttp option.V2RayXHTTPOptions) {
++	certificate, key, ca := interopCertificate(b)
++	serverPort, proxyPort := interopPort(b), interopPort(b)
++	targetPort, closeTarget := interopEchoServer(b)
++	defer closeTarget()
++	userID := interopUUID(b)
++	serverXHTTP := option.V2RayXHTTPOptions{Path: "/xhttp/", Mode: "packet-up"}
++	startXRay(b, xrayBinary, serverPort, xrayVMessServerConfigWithXHTTP(serverPort, userID, certificate, key, "h2", serverXHTTP))
++	startXRay(b, xrayBinary, proxyPort, xrayVMessClientConfigWithXHTTP(proxyPort, serverPort, userID, ca, "h2", xhttp))
++	benchmarkProxyTraffic(b, proxyPort, targetPort)
++}
++
++func benchmarkProxyTraffic(b *testing.B, proxyPort, targetPort uint16) {
++	payload := make([]byte, 64*1024)
++	for index := range payload {
++		payload[index] = byte(index)
++	}
++	latencies := make([]time.Duration, 0, b.N)
++	var access sync.Mutex
++	var firstErr error
++	b.SetBytes(int64(len(payload)))
++	b.ResetTimer()
++	started := time.Now()
++	b.RunParallel(func(pb *testing.PB) {
++		for pb.Next() {
++			access.Lock()
++			failed := firstErr != nil
++			access.Unlock()
++			if failed {
++				continue
++			}
++			startedAt := time.Now()
++			err := benchmarkPingPong(proxyPort, targetPort, payload)
++			access.Lock()
++			if err != nil && firstErr == nil {
++				firstErr = err
++			}
++			if err == nil {
++				latencies = append(latencies, time.Since(startedAt))
++			}
++			access.Unlock()
++		}
++	})
++	elapsed := time.Since(started)
++	b.StopTimer()
++	if firstErr != nil {
++		b.Fatal(firstErr)
++	}
++	if len(latencies) > 0 {
++		slices.Sort(latencies)
++		index := (len(latencies)*99+99)/100 - 1
++		b.ReportMetric(float64(latencies[index].Microseconds())/1000, "p99_ms")
++	}
++	b.ReportMetric(float64(b.N)/elapsed.Seconds(), "connections/s")
++}
++
++func benchmarkPingPong(proxyPort, targetPort uint16, payload []byte) error {
++	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++	defer cancel()
++	connection, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(proxyPort))))
++	if err != nil {
++		return err
++	}
++	defer connection.Close()
++	if err = connection.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
++		return err
++	}
++	if _, err = socks.ClientHandshake5(connection, socks5.CommandConnect, M.ParseSocksaddrHostPort("127.0.0.1", targetPort), "", ""); err != nil {
++		return err
++	}
++	if _, err = connection.Write(payload); err != nil {
++		return err
++	}
++	response := make([]byte, len(payload))
++	if _, err = io.ReadFull(connection, response); err != nil {
++		return err
++	}
++	for index := range payload {
++		if response[index] != payload[index] {
++			return fmt.Errorf("unexpected response byte at %d", index)
++		}
++	}
++	return nil
++}
+diff --git a/transport/v2rayxhttp/xmux_test.go b/transport/v2rayxhttp/xmux_test.go
+new file mode 100644
+index 0000000..8a8f5f7
+--- /dev/null
++++ b/transport/v2rayxhttp/xmux_test.go
+@@ -0,0 +1,87 @@
++package v2rayxhttp
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"testing"
++
++	"github.com/sagernet/sing-box/option"
++
++	"github.com/stretchr/testify/require"
++)
++
++type xmuxTestTransport struct{}
++
++func (xmuxTestTransport) RoundTrip(*http.Request) (*http.Response, error) {
++	return nil, errors.New("not used")
++}
++
++func newTestXMux(config xmuxConfig) *xmuxManager {
++	return newXMuxManager(config, func() http.RoundTripper { return xmuxTestTransport{} })
++}
++
++func TestXMuxMaxConnections(t *testing.T) {
++	manager := newTestXMux(xmuxConfig{maxConnections: byteRange{from: 4, to: 4}})
++	clients := map[*xmuxClient]struct{}{}
++	for range 32 {
++		client := manager.acquireConnection()
++		clients[client] = struct{}{}
++		manager.doneConnection(client)
++	}
++	require.Len(t, clients, 4)
++}
++
++func TestXMuxReuseAndRequestBudgets(t *testing.T) {
++	t.Run("connection reuse", func(t *testing.T) {
++		manager := newTestXMux(xmuxConfig{maxReuse: byteRange{from: 2, to: 2}})
++		clients := map[*xmuxClient]struct{}{}
++		for range 64 {
++			client := manager.acquireConnection()
++			clients[client] = struct{}{}
++			manager.doneConnection(client)
++		}
++		require.Len(t, clients, 32)
++	})
++	t.Run("request budget", func(t *testing.T) {
++		manager := newTestXMux(xmuxConfig{maxRequests: byteRange{from: 2, to: 2}})
++		clients := map[*xmuxClient]struct{}{}
++		for range 64 {
++			client := manager.acquireConnection()
++			clients[client] = struct{}{}
++			manager.doneConnection(client)
++		}
++		require.Len(t, clients, 32)
++	})
++	t.Run("packet request rotates after budget", func(t *testing.T) {
++		manager := newTestXMux(xmuxConfig{maxRequests: byteRange{from: 2, to: 2}})
++		first := manager.acquireConnection() // consumes the stream-down request
++		require.True(t, manager.consumePacketRequest(first))
++		require.False(t, manager.consumePacketRequest(first))
++		second := manager.acquireRequest()
++		require.NotSame(t, first, second)
++		manager.doneConnection(first)
++	})
++}
++
++func TestXMuxMaxConcurrency(t *testing.T) {
++	manager := newTestXMux(xmuxConfig{maxConcurrency: byteRange{from: 2, to: 2}})
++	clients := map[*xmuxClient]struct{}{}
++	for range 64 {
++		client := manager.acquireConnection()
++		clients[client] = struct{}{}
++	}
++	require.Len(t, clients, 32)
++}
++
++func TestXMuxConfigValidation(t *testing.T) {
++	_, err := newXMuxConfig(option.V2RayXHTTPXmuxOptions{
++		MaxConcurrency: option.V2RayXHTTPRange{From: 1, To: 1},
++		MaxConnections: option.V2RayXHTTPRange{From: 1, To: 1},
++	})
++	require.Error(t, err)
++	_, err = NewClient(context.Background(), nil, option.ServerOptions{}.Build(), option.V2RayXHTTPOptions{
++		XMUX: option.V2RayXHTTPXmuxOptions{HKeepAlivePeriod: -1},
++	}, nil)
++	require.Error(t, err)
++}

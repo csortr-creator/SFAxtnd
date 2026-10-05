@@ -18,11 +18,8 @@ private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 
 class HTTPClient : Closeable {
 
-    private val client = Libbox.newHTTPClient()
-
-    init {
-        client.modernTLS()
-    }
+    private val clientDelegate = lazy { Libbox.newHTTPClient().apply { modernTLS() } }
+    private val client by clientDelegate
 
     fun getString(url: String): String {
         val request = client.newRequest()
@@ -114,7 +111,7 @@ class HTTPClient : Closeable {
         }
     }
 
-    private fun processSubscriptionContent(raw: String): String {
+    internal fun processSubscriptionContent(raw: String): String {
         val trimmed = raw.trim()
         val mode = SubscriptionRouting.detectMode(trimmed)
 
@@ -399,7 +396,7 @@ class HTTPClient : Closeable {
         outbound.put("multiplex", multiplex)
     }
 
-    private fun parseUriLines(text: String): List<JSONObject> {
+    internal fun parseUriLines(text: String): List<JSONObject> {
         val nodes = mutableListOf<JSONObject>()
         for (line in text.lines()) {
             val trimmed = line.trim()
@@ -409,6 +406,7 @@ class HTTPClient : Closeable {
                 trimmed.startsWith("vmess://") -> parseVmess(trimmed)
                 trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
                 trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
+                trimmed.startsWith("hysteria://") || trimmed.startsWith("hysteria2://") || trimmed.startsWith("hy2://") -> ProxyLinkParser.hysteria(trimmed)
                 else -> null
             }
             if (node != null) nodes.add(node)
@@ -423,17 +421,19 @@ class HTTPClient : Closeable {
         val main = if (hashIdx >= 0) withoutScheme.substring(0, hashIdx) else withoutScheme
         val tag = cleanNodeName(rawTag)
 
-        val atIdx = main.indexOf("@")
+        val atIdx = main.lastIndexOf("@")
         if (atIdx < 0) return null
-        val uuid = main.substring(0, atIdx)
+        val uuid = ProxyLinkParser.decode(main.substring(0, atIdx))
         val rest = main.substring(atIdx + 1)
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = if (qIdx >= 0) rest.substring(qIdx + 1) else null
-        val params = parseQueryParams(query)
+        val params = ProxyLinkParser.query(query)
 
-        val host = hostPort.substringBefore(":")
-        val port = hostPort.substringAfter(":", "443").toIntOrNull() ?: 443
+        val endpoint = ProxyLinkParser.endpoint(hostPort)
+        require(endpoint.ports.size == 1 && ":" !in endpoint.ports.first()) { "Port hopping requires Hysteria" }
+        val host = endpoint.host
+        val port = endpoint.port
         if (host.isEmpty() || uuid.isEmpty()) return null
 
         val outbound = JSONObject()
@@ -450,8 +450,6 @@ class HTTPClient : Closeable {
         val sni = params["sni"] ?: params["host"] ?: host
         val fp = params["fp"] ?: "chrome"
         val alpn = params["alpn"]
-        val path = params["path"] ?: "/"
-        val hostHeader = params["host"] ?: sni
 
         if (security == "reality") {
             val tls = JSONObject()
@@ -487,24 +485,15 @@ class HTTPClient : Closeable {
             outbound.put("tls", tls)
         }
 
-        if (network == "ws") {
-            outbound.put(
-                "transport",
-                JSONObject().apply {
-                    put("type", "ws")
-                    put("path", path)
-                    put("headers", JSONObject().apply { put("Host", hostHeader) })
-                },
-            )
-        } else if (network == "grpc") {
-            outbound.put(
-                "transport",
-                JSONObject().apply {
-                    put("type", "grpc")
-                    put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
-                },
-            )
+        outbound.optJSONObject("tls")?.let { tls ->
+            if (!alpn.isNullOrBlank()) tls.put("alpn", JSONArray(alpn.split(',')))
+            params["allowInsecure"]?.let { tls.put("insecure", it == "1" || it.equals("true", true)) }
+            if (security == "tls" && !params["fp"].isNullOrBlank()) {
+                tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", params.getValue("fp")))
+            }
         }
+
+        ProxyLinkParser.transport(network, params, sni)?.let { outbound.put("transport", it) }
 
         applyMultiplex(outbound, params)
         return outbound
@@ -559,29 +548,9 @@ class HTTPClient : Closeable {
             )
         }
 
-        if (network == "ws") {
-            outbound.put(
-                "transport",
-                JSONObject().apply {
-                    put("type", "ws")
-                    put("path", vmessJson.optString("path", "/"))
-                    put(
-                        "headers",
-                        JSONObject().apply {
-                            put("Host", vmessJson.optString("host").ifEmpty { sni })
-                        },
-                    )
-                },
-            )
-        } else if (network == "grpc") {
-            outbound.put(
-                "transport",
-                JSONObject().apply {
-                    put("type", "grpc")
-                    put("service_name", vmessJson.optString("path", ""))
-                },
-            )
-        }
+        val transportParams = vmessJson.keys().asSequence().associateWith { vmessJson.optString(it) }.toMutableMap()
+        if (network == "grpc") transportParams["serviceName"] = vmessJson.optString("path")
+        ProxyLinkParser.transport(network, transportParams, sni)?.let { outbound.put("transport", it) }
 
         applyMultiplex(outbound, source = vmessJson)
         return outbound
@@ -594,17 +563,19 @@ class HTTPClient : Closeable {
         val main = if (hashIdx >= 0) withoutScheme.substring(0, hashIdx) else withoutScheme
         val tag = cleanNodeName(rawTag)
 
-        val atIdx = main.indexOf("@")
+        val atIdx = main.lastIndexOf("@")
         if (atIdx < 0) return null
-        val password = main.substring(0, atIdx)
+        val password = ProxyLinkParser.decode(main.substring(0, atIdx))
         val rest = main.substring(atIdx + 1)
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = if (qIdx >= 0) rest.substring(qIdx + 1) else null
-        val params = parseQueryParams(query)
+        val params = ProxyLinkParser.query(query)
 
-        val host = hostPort.substringBefore(":")
-        val port = hostPort.substringAfter(":", "443").toIntOrNull() ?: 443
+        val endpoint = ProxyLinkParser.endpoint(hostPort)
+        require(endpoint.ports.size == 1 && ":" !in endpoint.ports.first()) { "Port hopping requires Hysteria" }
+        val host = endpoint.host
+        val port = endpoint.port
         if (host.isEmpty() || password.isEmpty()) return null
 
         val outbound = JSONObject()
@@ -620,25 +591,16 @@ class HTTPClient : Closeable {
             JSONObject().apply {
                 put("enabled", true)
                 put("server_name", sni)
+                params["alpn"]?.takeIf { it.isNotBlank() }?.let { put("alpn", JSONArray(it.split(','))) }
+                params["allowInsecure"]?.let { put("insecure", it == "1" || it.equals("true", true)) }
+                params["fp"]?.takeIf { it.isNotBlank() }?.let {
+                    put("utls", JSONObject().put("enabled", true).put("fingerprint", it))
+                }
             },
         )
 
         val network = params["type"] ?: "tcp"
-        if (network == "ws") {
-            outbound.put(
-                "transport",
-                JSONObject().apply {
-                    put("type", "ws")
-                    put("path", params["path"] ?: "/")
-                    put(
-                        "headers",
-                        JSONObject().apply {
-                            put("Host", params["host"] ?: sni)
-                        },
-                    )
-                },
-            )
-        }
+        ProxyLinkParser.transport(network, params, sni)?.let { outbound.put("transport", it) }
 
         applyMultiplex(outbound, params)
         return outbound
@@ -889,7 +851,7 @@ class HTTPClient : Closeable {
     }
 
     override fun close() {
-        client.close()
+        if (clientDelegate.isInitialized()) client.close()
     }
 
     companion object {

@@ -111,6 +111,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             if (dns != null) {
                 dns.remove("independent_cache")
             }
+            val inbounds = root.optJSONArray("inbounds")
+            if (inbounds != null) {
+                for (i in 0 until inbounds.length()) {
+                    val inbound = inbounds.optJSONObject(i) ?: continue
+                    if (inbound.optString("type") == "tun") {
+                        inbound.put("stack", Settings.tunStack)
+                    }
+                }
+            }
             root.toString()
         } catch (_: Exception) {
             content

@@ -58,7 +58,7 @@ android {
     compileSdk = 37
     compileSdkMinor = 1
 
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "28.2.13676358"
 
     System.getenv("ANDROID_NDK_HOME")?.let { ndkPath = it }
 

@@ -1,22 +1,220 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
+    <!-- App -->
     <string name="app_name" translatable="false">SFAxtnd</string>
-    <string name="title_dashboard">Servers</string>
-    <string name="title_subscriptions">Subscriptions</string>
-    <string name="title_routing">Routes</string>
-    <string name="title_settings">Settings</string>
-    <string name="title_log">Logs</string>
-    <string name="title_groups">Groups</string>
-    <string name="title_configuration">Profiles</string>
-    <string name="title_connections">Connections</string>
-    <string name="status_started">Started</string>
-    <string name="status_starting">Starting</string>
-    <string name="status_stopping">Stopping</string>
-    <string name="status_default">Service not started</string>
-    <string name="expand_all">Expand All</string>
-    <string name="collapse_all">Collapse All</string>
-    <string name="close_connections_confirm">Close all connections?</string>
-    <string name="close">Close</string>
+    <string name="app_version_title">App version</string>
+    <string name="language">Language</string>
+    <string name="system_default">System default</string>
+
+    <!-- Common Actions -->
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="discard">Discard</string>
+    <string name="edit">Edit</string>
+    <string name="close">Close</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="stop">Stop</string>
+    <string name="reset">Reset</string>
+    <string name="destroy">Destroy</string>
+    <string name="clear">Clear</string>
+    <string name="browse">Browse</string>
+    <string name="search">Search</string>
+    <string name="action">Action</string>
+    <string name="action_start">Start</string>
+    <string name="action_deselect">Deselect</string>
+    <string name="action_reload">Reload</string>
+    <string name="action_restart">Restart</string>
+    <string name="expand">Expand</string>
+    <string name="collapse">Collapse</string>
+    <string name="expand_all">Expand All</string>
+    <string name="collapse_all">Collapse All</string>
+    <string name="previous">Previous</string>
+    <string name="next">Next</string>
+    <string name="update">Update</string>
+    <string name="read_more">Read More</string>
+    <string name="no_thanks">No, thanks</string>
+    <string name="options">Options</string>
+    <string name="more_options">More options</string>
+
+    <!-- Common States -->
+    <string name="enabled">Enabled</string>
+    <string name="disabled">Disabled</string>
+    <string name="loading">Loading…</string>
+    <string name="calculating">Calculating...</string>
+    <string name="auto">Auto</string>
+    <string name="success">Success</string>
+    <string name="default_text">Default</string>
+
+    <!-- Navigation Titles -->
+    <string name="title_dashboard">Servers</string>
+    <string name="title_configuration">Profiles</string>
+    <string name="title_log">Logs</string>
+    <string name="title_routing">Routes</string>
+    <string name="title_subscriptions">Subscriptions</string>
+    <string name="title_settings">Settings</string>
+    <string name="title_app_settings">App</string>
+    <string name="title_new_profile">New Profile</string>
+    <string name="title_edit_profile">Edit Profile</string>
+    <string name="title_edit_configuration">Edit Configuration</string>
+    <string name="title_groups">Groups</string>
+    <string name="title_debug">Debug</string>
+    <string name="title_connections">Connections</string>
+    <string name="title_others">Others</string>
+    <string name="title_scan_result">Scan Result</string>
+
+    <!-- Status -->
+    <string name="status_default">Service not started</string>
+    <string name="status_starting">Starting</string>
+    <string name="status_stopping">Stopping</string>
+    <string name="status_started">Started</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_items">Dashboard Items</string>
+    <string name="memory">Memory</string>
+    <string name="goroutines">Goroutines</string>
+    <string name="upload">Upload</string>
+    <string name="download">Download</string>
+    <string name="connections_in">Inbound</string>
+    <string name="connections_out">Outbound</string>
+    <string name="clash_mode">Clash Mode</string>
+    <string name="mode">Mode</string>
+    <string name="system_proxy">System Proxy</string>
+    <string name="url_test">Test</string>
+    <string name="drag_handle_to_reorder">Drag handle to reorder items</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
+    <string name="reset_order">Reset order</string>
+
+    <!-- Connections -->
+    <string name="search_connections">Search connections…</string>
+    <string name="close_connections_confirm">Close all connections?</string>
+    <string name="connection_state_all">All</string>
+    <string name="connection_state_active">Active</string>
+    <string name="connection_state_closed">Closed</string>
+    <string name="connection_sort_date">Date</string>
+    <string name="connection_sort_traffic">Traffic</string>
+    <string name="connection_sort_traffic_total">Total Traffic</string>
+    <string name="connection_close">Close</string>
+    <string name="connection_close_all">Close All</string>
+    <string name="connection_state">State</string>
+    <string name="connection_details">Connection Details</string>
+    <string name="connection_section_basic">Basic Information</string>
+    <string name="connection_section_metadata">Metadata</string>
+    <string name="connection_section_process">Process Information</string>
+    <string name="connection_created_at">Created At</string>
+    <string name="connection_closed_at">Closed At</string>
+    <string name="connection_duration">Duration</string>
+    <string name="connection_uplink">Uplink</string>
+    <string name="connection_downlink">Downlink</string>
+    <string name="connection_inbound">Inbound</string>
+    <string name="connection_inbound_type">Inbound Type</string>
+    <string name="connection_outbound">Outbound</string>
+    <string name="connection_outbound_type">Outbound Type</string>
+    <string name="connection_ip_version">IP Version</string>
+    <string name="connection_network">Network</string>
+    <string name="connection_source">Source</string>
+    <string name="connection_destination">Destination</string>
+    <string name="connection_domain">Domain</string>
+    <string name="connection_protocol">Protocol</string>
+    <string name="connection_user">User</string>
+    <string name="connection_from_outbound">From Outbound</string>
+    <string name="connection_match_rule">Match Rule</string>
+    <string name="connection_chain">Chain</string>
+    <string name="connection_process_id">Process ID</string>
+    <string name="connection_user_id">User ID</string>
+    <string name="connection_user_name">User Name</string>
+    <string name="connection_process_path">Process Path</string>
+    <string name="connection_package_name">Package Name</string>
+
+    <!-- Profiles -->
+    <string name="no_profiles">No profiles configured</string>
+    <string name="add_profile">Add Profile</string>
+    <string name="update_profile">Update profile</string>
+    <string name="import_remote_profile">Import remote profile</string>
+    <string name="import_remote_profile_message">Are you sure to import remote profile %1$s? You will connect to %2$s to download the configuration.</string>
+    <string name="import_from_file_description">Import configuration from a local file</string>
+    <string name="scan_qr_code_description">Scan a configuration QR code</string>
+    <string name="create_new_profile_description">Create a new profile from scratch</string>
+    <string name="icloud_profile_unsupported">iCloud profile is not support on current platform</string>
+    <string name="profile_name">Name</string>
+    <string name="profile_type">Type</string>
+    <string name="profile_source">Source</string>
+    <string name="profile_url" translatable="false">URL</string>
+    <string name="profile_import_file">Import File</string>
+    <string name="profile_create">Create</string>
+    <string name="profile_share_url">Share URL as QR Code</string>
+    <string name="profile_input_required">Required</string>
+    <string name="profile_update">Update</string>
+    <string name="profile_auto_update">Auto Update</string>
+    <string name="profile_auto_update_interval">Auto Update Interval (Minutes)</string>
+    <string name="profile_auto_update_interval_minimum_hint">Minimum value is 15</string>
+    <string name="profile_type_local">Local</string>
+    <string name="profile_type_remote">Remote</string>
+    <string name="profile_type_remote_updated">Remote • %s</string>
+    <string name="profile_source_create_new">Create New</string>
+    <string name="profile_source_import">Import</string>
+    <string name="profile_add_import_file">Import from file</string>
+    <string name="profile_add_scan_qr_code">Scan QR code</string>
+    <string name="profile_add_create_manually">Create Manually</string>
+    <string name="profile_override">Profile Override</string>
+    <string name="basic_information">Basic Information</string>
+    <string name="remote_configuration">Remote Configuration</string>
+    <string name="last_updated_format">Last updated: %s</string>
+    <string name="content">Content</string>
+    <string name="json_viewer">JSON Viewer</string>
+    <string name="json_editor">JSON Editor</string>
+    <string name="view_configuration">View Configuration</string>
+    <string name="save_as_file">Save As File</string>
+    <string name="share_as_file">Share As File</string>
+    <string name="save_content_json">Save Content JSON File</string>
+    <string name="share_content_json">Share Content JSON File</string>
+    <string name="unsaved_changes">Unsaved Changes</string>
+    <string name="unsaved_changes_message">You have unsaved changes. Do you want to discard them?</string>
+    <string name="import_profile_confirm_title">Import Profile</string>
+    <string name="import_profile_confirm_message">Import profile \"%s\"?</string>
+    <string name="import_action">Import</string>
+
+    <!-- Groups -->
+    <string name="group_selected_title">Selected</string>
+
+    <!-- Log -->
+    <string name="log_level">Log Level</string>
+    <string name="filter_label">Filter: %s</string>
+    <string name="clear_filter">Clear</string>
+    <string name="clear_logs">Clear Logs</string>
+    <string name="search_logs_placeholder">Search logs…</string>
+    <string name="logs_copied_to_clipboard">Logs copied to clipboard</string>
+    <string name="no_logs_to_copy">No logs to copy</string>
+    <string name="no_logs_to_share">No logs to share</string>
+    <string name="intent_share_logs">Share Logs</string>
+    <string name="selected_count">%d selected</string>
+    <string name="not_selected">Not selected</string>
+    <string name="save_to_clipboard">To Clipboard</string>
+    <string name="save_to_file">To File</string>
+
+    <!-- Settings -->
+    <string name="service">Service</string>
+    <string name="core">Core</string>
+    <string name="core_version_title">Core Version</string>
+    <string name="core_data_size">Data Size</string>
+    <string name="about">About</string>
+    <string name="source_code">Source Code</string>
+    <string name="sponsor">Sponsor</string>
+    <string name="working_directory">Working Directory</string>
+    <string name="beta_settings">Beta Settings</string>
+    <string name="disable_deprecated_warnings">Disable Deprecated Warnings</string>
+    <string name="cache_size">Cache Size</string>
+    <string name="clear_cache">Clear Cache</string>
+    <string name="notification_settings">Notification</string>
+    <string name="enable_notification">Enable Notification</string>
+    <string name="dynamic_notification">Display realtime speed in notification</string>
+    <string name="disable_notification_description">Due to Android restrictions, you must first grant notification permission, then go to Settings to disable the notification category.</string>
+    <string name="disable_notification_description_legacy">Due to Android restrictions, you must first grant notification permission, then go to App Info to disable notifications.</string>
+    <string name="allow_bypass">Allow Bypass</string>
+    <string name="allow_bypass_description">If enabled, applications can bypass this VPN connection and instead use the underlying network directly.</string>
+    <string name="android_documentation">Android Documentation</string>
+    <string name="auto_redirect">Auto Redirect</string>
+    <string name="auto_redirect_description">ROOT permission required</string>
+    <string name="system_http_proxy">System HTTP Proxy</string>
+    <string name="update_settings">Update Settings</string>
 </resources>

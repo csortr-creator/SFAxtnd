@@ -273,7 +273,7 @@ private fun GroupsCardContent(
     asSheet: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val lazyListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    val lazyListState = rememberSaveable(uiState.profileId, saver = LazyListState.Saver) { LazyListState() }
 
     val scrollModifier =
         if (asSheet) {
@@ -937,7 +937,7 @@ private fun ServerOverview(
                     ) {
                         Icon(Icons.Outlined.Subscriptions, null, modifier = Modifier.size(20.dp))
                         Text(
-                            state.subscriptionName.ifBlank { "Выбрать подписку" },
+                            remote?.displayName ?: state.subscriptionName.ifBlank { "Выбрать подписку" },
                             Modifier.weight(1f).padding(horizontal = 12.dp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

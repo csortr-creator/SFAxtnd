@@ -17,7 +17,7 @@ fun Context.errorDialogBuilder(message: String): MaterialAlertDialogBuilder {
     val summary =
         when {
             message.contains("fingerprint mismatch", true) ->
-                "Сертификат сервера изменился. Проверьте настройки или обновите подписку."
+                "Сертификат сервера не совпадает с ожидаемым. Проверьте настройки или обновите подписку."
             message.contains("Unsupported", true) ||
                 message.contains("cannot be converted", true) ->
                 "Не удалось обработать настройки сервера. Проверьте формат подписки и версию приложения."

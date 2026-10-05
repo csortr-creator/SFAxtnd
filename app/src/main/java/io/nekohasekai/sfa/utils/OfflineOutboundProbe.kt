@@ -4,7 +4,6 @@ import android.net.Network
 import android.os.ParcelFileDescriptor
 import io.nekohasekai.libbox.ExchangeContext
 import io.nekohasekai.libbox.InterfaceUpdateListener
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.LocalDNSTransport
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.DefaultNetworkListener
@@ -17,6 +16,11 @@ import java.net.NetworkInterface
 /** Own monitor and resolver: probing never replaces the VPN service's callbacks. */
 class OfflineProbePlatform : PlatformInterfaceWrapper {
     @Volatile private var network: Network? = null
+
+    // The isolated probe has no services or TUN and does not publish notifications.
+    override fun sendNotification(notification: io.nekohasekai.libbox.Notification) = Unit
+
+    override fun cancelNotification(identifier: String, typeID: Int) = Unit
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         runBlocking(Dispatchers.IO) {

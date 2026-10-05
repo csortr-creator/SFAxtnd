@@ -237,6 +237,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     fun selectGroupItem(groupTag: String, itemTag: String) {
         // Check if this is actually a different selection
         val currentGroup = uiState.value.groups.find { it.tag == groupTag }
+        if (!canUseCommandServer() && _serviceStatus.value != Status.Stopped) return
         if (currentGroup == null || !currentGroup.selectable || currentGroup.items.none { it.tag == itemTag } || currentGroup.selected == itemTag) {
             // Same item selected, no need to do anything
             return
@@ -365,7 +366,9 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                     coroutineContext.ensureActive()
                     sendError(e)
                 } finally {
-                    updateState { copy(testingGroups = testingGroups - testingTag) }
+                    if (uiState.value.profileId == profileId) {
+                        updateState { copy(testingGroups = testingGroups - testingTag) }
+                    }
                 }
             }
         }

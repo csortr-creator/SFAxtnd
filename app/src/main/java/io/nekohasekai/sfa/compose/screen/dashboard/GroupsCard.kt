@@ -126,7 +126,7 @@ fun GroupsCard(
                     IconButton(onClick = { actualViewModel.toggleSortByPing() }) {
                         Icon(
                             imageVector = androidx.compose.material.icons.Icons.Default.Sort,
-                            contentDescription = if (uiState.sortByPing) "Sort by Name" else "Sort by Ping",
+                            contentDescription = if (uiState.sortByPing) "Порядок подписки" else "Сортировать по задержке",
                             tint = if (uiState.sortByPing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }

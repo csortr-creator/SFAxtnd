@@ -1,4 +1,3 @@
-```markdown
 # SFAxtnd
 
 Модифицированный Android-клиент для **sing-box** с расширенной поддержкой подписок и гибкой маршрутизацией.
@@ -58,8 +57,6 @@
 
 ## Структура
 
-```
-
 SFAxtnd/
 ├─ app/src/main/
 │  ├─ java/
@@ -80,7 +77,6 @@ SFAxtnd/
 │  │     └─ ...
 │  └─ res/                      # Ресурсы (строки, иконки)
 └─ build.gradle                 # Зависимости и конфиг сборки
-```
 
 ## Возможности
 
@@ -104,20 +100,18 @@ SFAxtnd/
 - Gradle 8+
 
 ### Сборка локально
-```bash
+bash
 git clone https://github.com/csortr-creator/SFAxtnd.git
 cd SFAxtnd
 git checkout dev
 ./gradlew assembleOtherDebug  # Для основной сборки
 # или
 ./gradlew assembleOtherRelease  # Для релиза
-```
 
 ### Тестирование
-```bash
+bash
 ./gradlew test
 ./gradlew connectedAndroidTest
-```
 
 ## Журнал изменений
 
@@ -153,4 +147,3 @@ Build: `v1.0.170+`
 ---
 
 **Важно:** SFAxtnd — экспериментальный форк для специфичных нужд. Используй на свой риск. Регулярно обновляй для получения последних исправлений безопасности.
-```

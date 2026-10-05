@@ -14,21 +14,19 @@ object UserRoutingConfig {
         return applyToConfig(jsonStr, raw)
     }
 
-    fun applyToConfig(jsonStr: String, userConfigJson: String): String {
-        return try {
-            val root = JSONObject(jsonStr)
-            val raw = userConfigJson.trim()
-            if (raw.isNotBlank()) {
-                val user = JSONObject(raw)
-                applyDns(root, user.optJSONObject("dns"))
-                applyRules(root, user.optJSONArray("rules"))
-                applyGeo(root, user.optJSONObject("geo"))
-            }
-            finalizeRemoteRuleSets(root)
-            root.toString(2)
-        } catch (_: Exception) {
-            jsonStr
+    fun applyToConfig(jsonStr: String, userConfigJson: String): String = try {
+        val root = JSONObject(jsonStr)
+        val raw = userConfigJson.trim()
+        if (raw.isNotBlank()) {
+            val user = JSONObject(raw)
+            applyDns(root, user.optJSONObject("dns"))
+            applyRules(root, user.optJSONArray("rules"))
+            applyGeo(root, user.optJSONObject("geo"))
         }
+        finalizeRemoteRuleSets(root)
+        root.toString(2)
+    } catch (_: Exception) {
+        jsonStr
     }
 
     private fun applyDns(root: JSONObject, dnsUser: JSONObject?) {
@@ -347,8 +345,11 @@ object UserRoutingConfig {
             val arr = JSONArray()
             values.forEach { value ->
                 val asRuleSet = geoToRuleSet(value)
-                if (asRuleSet != null) addRuleSet(asRuleSet)
-                else if (!(key == "ip_cidr" && !value.contains('/'))) arr.put(value)
+                if (asRuleSet != null) {
+                    addRuleSet(asRuleSet)
+                } else if (!(key == "ip_cidr" && !value.contains('/'))) {
+                    arr.put(value)
+                }
             }
             if (arr.length() > 0) {
                 rule.put(key, arr)
@@ -365,18 +366,33 @@ object UserRoutingConfig {
         putStringList("wifi_ssid", item.optString("wifiSsid"))
         putStringList("wifi_bssid", item.optString("wifiBssid"))
         val port = item.optString("port").trim()
-        if (port.isNotEmpty()) { rule.put("port", port); hasMatch = true }
+        if (port.isNotEmpty()) {
+            rule.put("port", port)
+            hasMatch = true
+        }
         val sourcePort = item.optString("sourcePort").trim()
-        if (sourcePort.isNotEmpty()) { rule.put("source_port", sourcePort); hasMatch = true }
+        if (sourcePort.isNotEmpty()) {
+            rule.put("source_port", sourcePort)
+            hasMatch = true
+        }
         val network = item.optString("network").trim()
         if (network.isNotEmpty() && network != "tcp,udp" && !network.equals("TCP и UDP", true)) {
             val nets = splitValues(network.replace("и", ",").lowercase())
-            if (nets.isNotEmpty()) { rule.put("network", nets.joinToString(",")); hasMatch = true }
+            if (nets.isNotEmpty()) {
+                rule.put("network", nets.joinToString(","))
+                hasMatch = true
+            }
         }
         val protocol = item.optString("protocol").trim()
-        if (protocol.isNotEmpty()) { rule.put("protocol", JSONArray().put(protocol)); hasMatch = true }
+        if (protocol.isNotEmpty()) {
+            rule.put("protocol", JSONArray().put(protocol))
+            hasMatch = true
+        }
         val clashMode = item.optString("clashMode").trim()
-        if (clashMode.isNotEmpty()) { rule.put("clash_mode", clashMode); hasMatch = true }
+        if (clashMode.isNotEmpty()) {
+            rule.put("clash_mode", clashMode)
+            hasMatch = true
+        }
         val value = item.optString("value").trim()
         if (!hasMatch && value.isNotEmpty()) {
             when (runCatching { RoutingRule.Type.valueOf(item.optString("type", RoutingRule.Type.DOMAIN.name)) }.getOrDefault(RoutingRule.Type.DOMAIN)) {
@@ -386,8 +402,11 @@ object UserRoutingConfig {
                 RoutingRule.Type.GEOSITE -> addRuleSet(geoToRuleSet(value) ?: ("geosite-" + value.removePrefix("geosite-")))
                 RoutingRule.Type.IP_CIDR -> {
                     val asRuleSet = geoToRuleSet(value)
-                    if (asRuleSet != null) addRuleSet(asRuleSet)
-                    else if (value.contains('/')) rule.put("ip_cidr", JSONArray().put(value))
+                    if (asRuleSet != null) {
+                        addRuleSet(asRuleSet)
+                    } else if (value.contains('/')) {
+                        rule.put("ip_cidr", JSONArray().put(value))
+                    }
                 }
                 RoutingRule.Type.GEOIP -> addRuleSet(geoToRuleSet(value) ?: ("geoip-" + value.removePrefix("geoip-")))
                 RoutingRule.Type.PACKAGE_NAME -> rule.put("package_name", JSONArray().put(value))
@@ -405,8 +424,7 @@ object UserRoutingConfig {
         return rule
     }
 
-    private fun splitValues(raw: String): List<String> =
-        raw.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }
+    private fun splitValues(raw: String): List<String> = raw.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun mapOutbound(raw: String): String = when (raw.lowercase()) {
         RoutingRule.OUTBOUND_DIRECT, "direct" -> "direct"

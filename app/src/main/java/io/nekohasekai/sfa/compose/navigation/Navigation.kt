@@ -25,8 +25,8 @@ import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
 import io.nekohasekai.sfa.compose.screen.settings.AppSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.CoreSettingsScreen
-import io.nekohasekai.sfa.compose.screen.settings.FDroidMirrorScreen
 import io.nekohasekai.sfa.compose.screen.settings.EditRoutingRuleScreen
+import io.nekohasekai.sfa.compose.screen.settings.FDroidMirrorScreen
 import io.nekohasekai.sfa.compose.screen.settings.RoutingSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.ServiceSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.SettingsScreen
@@ -117,7 +117,6 @@ fun NavHost(
                 )
             }
         }
-
 
         composable(Screen.Routing.route) {
             RoutingSettingsScreen(navController = navController)
@@ -242,7 +241,7 @@ fun NavHost(
                 }
             }
         }
-                composable(Screen.Settings.route) {
+        composable(Screen.Settings.route) {
             SettingsScreen(navController = navController)
         }
 

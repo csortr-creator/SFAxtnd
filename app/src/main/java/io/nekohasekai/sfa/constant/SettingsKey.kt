@@ -62,6 +62,8 @@ object SettingsKey {
 
     // Routing / DNS
     const val ROUTING_CONFIG = "routing_config"
+    const val RULE_SET_UPDATE_INTERVAL = "rule_set_update_interval"
+    const val ROUTING_BLOCK_IPV6 = "routing_block_ipv6"
 
     // Cache
     const val STARTED_BY_USER = "started_by_user"

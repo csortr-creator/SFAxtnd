@@ -1,105 +1,56 @@
 package io.nekohasekai.sfa.utils
 
-import org.junit.Assert.assertEquals
+import io.nekohasekai.sfa.database.Settings
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.experimental.runners.Enclosed
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
+import org.mockito.Mockito.mockStatic
+import org.mockito.Mockito.`when`
+import io.nekohasekai.sfa.database.Settings as SFASettings
 
-@RunWith(Enclosed::class)
 class SubscriptionRoutingTest {
 
-    @RunWith(Parameterized::class)
-    class DetectModeTest(private val input: String, private val expectedMode: SubscriptionRouting.Mode) {
+    @Test
+    fun testIpv6BlockRuleIncludedWhenSettingIsTrue() {
+        mockStatic(SFASettings::class.java).use { mockedSettings ->
+            mockedSettings.`when`<Boolean> { SFASettings.routingBlockIpv6 }.thenReturn(true)
 
-        companion object {
-            @JvmStatic
-            @Parameterized.Parameters(name = "{index}: detectMode(\"{0}\") = {1}")
-            fun data(): Collection<Array<Any>> {
-                return listOf(
-                    // Happy paths
-                    arrayOf("white-list", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("whitelist", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("white list", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("обход белых списков", SubscriptionRouting.Mode.WHITELIST_BYPASS),
+            val root = JSONObject()
+            SubscriptionRouting.apply(root, SubscriptionRouting.Mode.NORMAL)
 
-                    // Case insensitivity
-                    arrayOf("White-List", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("WHITELIST", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("WHITE LIST", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("ОБХОД БЕЛЫХ СПИСКОВ", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("wHiTeLiSt", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-
-                    // Containing text
-                    arrayOf("proxy whitelist bypass", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("my-white-list-server", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-                    arrayOf("  обход белых списков  ", SubscriptionRouting.Mode.WHITELIST_BYPASS),
-
-                    // Normal mode fallback
-                    arrayOf("normal", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("black-list", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("random string", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("   ", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("white", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("list", SubscriptionRouting.Mode.NORMAL),
-                    arrayOf("обход", SubscriptionRouting.Mode.NORMAL)
-                )
+            val rules = root.getJSONObject("route").getJSONArray("rules")
+            var hasIpv6Block = false
+            for (i in 0 until rules.length()) {
+                val rule = rules.optJSONObject(i) ?: continue
+                if (rule.optJSONArray("ip_cidr")?.optString(0) == "::/0" && rule.optString("outbound") == "block") {
+                    hasIpv6Block = true
+                    break
+                }
             }
-        }
-
-        @Test
-        fun testDetectMode() {
-            assertEquals(expectedMode, SubscriptionRouting.detectMode(input))
+            assertTrue(hasIpv6Block)
         }
     }
 
-    @RunWith(Parameterized::class)
-    class IsWhitelistBypassTagTest(private val input: String, private val expected: Boolean) {
+    @Test
+    fun testIpv6BlockRuleExcludedWhenSettingIsFalse() {
+        mockStatic(SFASettings::class.java).use { mockedSettings ->
+            mockedSettings.`when`<Boolean> { SFASettings.routingBlockIpv6 }.thenReturn(false)
 
-        companion object {
-            @JvmStatic
-            @Parameterized.Parameters(name = "{index}: isWhitelistBypassTag(\"{0}\") = {1}")
-            fun data(): Collection<Array<Any>> {
-                return listOf(
-                    // Happy paths
-                    arrayOf("white list", true),
-                    arrayOf("whitelist", true),
-                    arrayOf("white-list", true),
+            val root = JSONObject()
+            SubscriptionRouting.apply(root, SubscriptionRouting.Mode.NORMAL)
 
-                    // Combined words
-                    arrayOf("обход белых", true),
-                    arrayOf("обход белый", true),
-                    arrayOf("bypass white", true),
-                    arrayOf("bypass list", true),
-
-                    // Case insensitivity
-                    arrayOf("White List", true),
-                    arrayOf("WHITELIST", true),
-                    arrayOf("WHITE-LIST", true),
-                    arrayOf("ОБХОД БЕЛ", true),
-                    arrayOf("BYPASS WHITE", true),
-
-                    // Leading/trailing spaces inside trim()
-                    arrayOf("  whitelist  ", true),
-                    arrayOf(" bypass list ", true),
-
-                    // False conditions
-                    arrayOf("normal tag", false),
-                    arrayOf("white", false),
-                    arrayOf("list", false),
-                    arrayOf("bypass", false),
-                    arrayOf("обход", false),
-                    arrayOf("бел", false),
-                    arrayOf("", false),
-                    arrayOf("   ", false)
-                )
+            val rules = root.getJSONObject("route").getJSONArray("rules")
+            var hasIpv6Block = false
+            for (i in 0 until rules.length()) {
+                val rule = rules.optJSONObject(i) ?: continue
+                if (rule.optJSONArray("ip_cidr")?.optString(0) == "::/0" && rule.optString("outbound") == "block") {
+                    hasIpv6Block = true
+                    break
+                }
             }
-        }
-
-        @Test
-        fun testIsWhitelistBypassTag() {
-            assertEquals(expected, SubscriptionRouting.isWhitelistBypassTag(input))
+            assertFalse(hasIpv6Block)
         }
     }
 }

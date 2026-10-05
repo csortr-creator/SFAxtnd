@@ -428,13 +428,12 @@ private data class UrlTestPalette(
     val bad: Color,
     val neutral: Color,
 ) {
-    fun forDelay(delay: Int): Color =
-        when {
-            delay <= 0 -> neutral
-            delay < 800 -> good
-            delay < 1500 -> medium
-            else -> bad
-        }
+    fun forDelay(delay: Int): Color = when {
+        delay <= 0 -> neutral
+        delay < 800 -> good
+        delay < 1500 -> medium
+        else -> bad
+    }
 }
 
 @Composable
@@ -624,7 +623,7 @@ private fun GroupDotsGrid(
                     (
                         (maxWidth + dotSpacing) /
                             (dotSize + dotSpacing)
-                    ).toInt(),
+                        ).toInt(),
                 )
 
             val rows =
@@ -882,38 +881,37 @@ private fun ProxyChip(
 @Composable
 private fun rememberBounceBlockingNestedScrollConnection(
     lazyListState: LazyListState,
-): NestedScrollConnection =
-    remember(lazyListState) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                // Only block upward scroll (y < 0) at bottom
-                // to prevent sheet expansion.
-                // Allow downward scroll (y > 0) at top
-                // to let sheet collapse.
-                return if (available.y < 0) {
-                    available
-                } else {
-                    Offset.Zero
-                }
+): NestedScrollConnection = remember(lazyListState) {
+    object : NestedScrollConnection {
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            // Only block upward scroll (y < 0) at bottom
+            // to prevent sheet expansion.
+            // Allow downward scroll (y > 0) at top
+            // to let sheet collapse.
+            return if (available.y < 0) {
+                available
+            } else {
+                Offset.Zero
             }
+        }
 
-            override suspend fun onPostFling(
-                consumed: Velocity,
-                available: Velocity,
-            ): Velocity {
-                // Only block upward fling (y < 0)
-                // to prevent sheet expansion.
-                // Allow downward fling (y > 0)
-                // to let sheet collapse.
-                return if (available.y < 0) {
-                    available
-                } else {
-                    Velocity.Zero
-                }
+        override suspend fun onPostFling(
+            consumed: Velocity,
+            available: Velocity,
+        ): Velocity {
+            // Only block upward fling (y < 0)
+            // to prevent sheet expansion.
+            // Allow downward fling (y > 0)
+            // to let sheet collapse.
+            return if (available.y < 0) {
+                available
+            } else {
+                Velocity.Zero
             }
         }
     }
+}

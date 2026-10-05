@@ -99,20 +99,18 @@ class HTTPClient : Closeable {
         return fallbackHwid
     }
 
-    private fun getApplicationContext(): Context? {
-        return try {
-            val appClass = Class.forName("io.nekohasekai.sfa.Application")
-            val field = appClass.getDeclaredField("application")
-            field.isAccessible = true
-            field.get(null) as? Context
-        } catch (e: Exception) {
-            try {
-                val activityThreadClass = Class.forName("android.app.ActivityThread")
-                val currentAppMethod = activityThreadClass.getMethod("currentApplication")
-                currentAppMethod.invoke(null) as? Context
-            } catch (e2: Exception) {
-                null
-            }
+    private fun getApplicationContext(): Context? = try {
+        val appClass = Class.forName("io.nekohasekai.sfa.Application")
+        val field = appClass.getDeclaredField("application")
+        field.isAccessible = true
+        field.get(null) as? Context
+    } catch (e: Exception) {
+        try {
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentAppMethod = activityThreadClass.getMethod("currentApplication")
+            currentAppMethod.invoke(null) as? Context
+        } catch (e2: Exception) {
+            null
         }
     }
 
@@ -153,137 +151,135 @@ class HTTPClient : Closeable {
         return sanitizeAndMigrateConfig(trimmed, mode)
     }
 
-    private fun sanitizeAndMigrateConfig(jsonStr: String, mode: SubscriptionRouting.Mode): String {
-        return try {
-            val fixedRaw = jsonStr
-                .replace("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
-                .replace("\"geosite-ru\"", "\"geosite-category-ru\"")
+    private fun sanitizeAndMigrateConfig(jsonStr: String, mode: SubscriptionRouting.Mode): String = try {
+        val fixedRaw = jsonStr
+            .replace("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs", "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs")
+            .replace("\"geosite-ru\"", "\"geosite-category-ru\"")
 
-            val root = JSONObject(fixedRaw)
-            val dns = root.optJSONObject("dns")
-            if (dns != null) {
-                dns.remove("independent_cache")
+        val root = JSONObject(fixedRaw)
+        val dns = root.optJSONObject("dns")
+        if (dns != null) {
+            dns.remove("independent_cache")
 
-                if (dns.has("address_strategy")) {
-                    val strat = dns.remove("address_strategy")
-                    if (!dns.has("strategy")) {
-                        dns.put("strategy", strat)
-                    }
+            if (dns.has("address_strategy")) {
+                val strat = dns.remove("address_strategy")
+                if (!dns.has("strategy")) {
+                    dns.put("strategy", strat)
                 }
+            }
 
-                val servers = dns.optJSONArray("servers")
-                if (servers != null) {
-                    val cleanedServers = JSONArray()
-                    for (i in 0 until servers.length()) {
-                        val server = servers.optJSONObject(i) ?: continue
+            val servers = dns.optJSONArray("servers")
+            if (servers != null) {
+                val cleanedServers = JSONArray()
+                for (i in 0 until servers.length()) {
+                    val server = servers.optJSONObject(i) ?: continue
 
-                        server.remove("strategy")
-                        server.remove("address_strategy")
+                    server.remove("strategy")
+                    server.remove("address_strategy")
 
-                        if (server.optString("type") == "rcode") {
-                            continue
-                        }
+                    if (server.optString("type") == "rcode") {
+                        continue
+                    }
 
-                        if (server.optString("detour") == "direct") {
-                            server.remove("detour")
-                        }
+                    if (server.optString("detour") == "direct") {
+                        server.remove("detour")
+                    }
 
-                        if (server.has("address") && !server.has("type")) {
-                            val addr = server.remove("address").toString().trim()
-                            try {
-                                when {
-                                    addr == "local" || addr.startsWith("rcode://") -> server.put("type", "local")
-                                    addr.startsWith("https://") -> {
-                                        server.put("type", "https")
-                                        val cleanAddr = addr.removePrefix("https://")
-                                        val host = cleanAddr.substringBefore("/").substringBefore(":")
-                                        val path = if (cleanAddr.contains("/")) "/" + cleanAddr.substringAfter("/") else "/dns-query"
-                                        server.put("server", host)
-                                        server.put("path", path)
-                                    }
-                                    addr.startsWith("tls://") -> {
-                                        server.put("type", "tls")
-                                        val cleanAddr = addr.removePrefix("tls://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    addr.startsWith("tcp://") -> {
-                                        server.put("type", "tcp")
-                                        val cleanAddr = addr.removePrefix("tcp://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    addr.startsWith("udp://") -> {
-                                        server.put("type", "udp")
-                                        val cleanAddr = addr.removePrefix("udp://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    else -> {
-                                        server.put("type", "udp")
-                                        server.put("server", addr)
-                                    }
+                    if (server.has("address") && !server.has("type")) {
+                        val addr = server.remove("address").toString().trim()
+                        try {
+                            when {
+                                addr == "local" || addr.startsWith("rcode://") -> server.put("type", "local")
+                                addr.startsWith("https://") -> {
+                                    server.put("type", "https")
+                                    val cleanAddr = addr.removePrefix("https://")
+                                    val host = cleanAddr.substringBefore("/").substringBefore(":")
+                                    val path = if (cleanAddr.contains("/")) "/" + cleanAddr.substringAfter("/") else "/dns-query"
+                                    server.put("server", host)
+                                    server.put("path", path)
                                 }
-                            } catch (e: Exception) {
-                                server.put("type", "udp")
-                                server.put("server", addr.substringAfter("://").substringBefore("/"))
+                                addr.startsWith("tls://") -> {
+                                    server.put("type", "tls")
+                                    val cleanAddr = addr.removePrefix("tls://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                addr.startsWith("tcp://") -> {
+                                    server.put("type", "tcp")
+                                    val cleanAddr = addr.removePrefix("tcp://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                addr.startsWith("udp://") -> {
+                                    server.put("type", "udp")
+                                    val cleanAddr = addr.removePrefix("udp://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                else -> {
+                                    server.put("type", "udp")
+                                    server.put("server", addr)
+                                }
                             }
+                        } catch (e: Exception) {
+                            server.put("type", "udp")
+                            server.put("server", addr.substringAfter("://").substringBefore("/"))
                         }
-                        if (server.has("address_resolver")) {
-                            val res = server.remove("address_resolver")
-                            server.put("domain_resolver", res)
-                        }
-                        cleanedServers.put(server)
                     }
-                    dns.put("servers", cleanedServers)
-                }
-            }
-
-            val inbounds = root.optJSONArray("inbounds")
-            if (inbounds != null) {
-                for (i in 0 until inbounds.length()) {
-                    val inbound = inbounds.optJSONObject(i) ?: continue
-                    if (inbound.optString("type") == "tun") {
-                        val addresses = JSONArray()
-                        if (inbound.has("inet4_address")) {
-                            val v = inbound.remove("inet4_address")
-                            if (v is JSONArray) {
-                                for (j in 0 until v.length()) addresses.put(v.get(j))
-                            } else {
-                                addresses.put(v)
-                            }
-                        }
-                        if (inbound.has("inet6_address")) {
-                            val v = inbound.remove("inet6_address")
-                            if (v is JSONArray) {
-                                for (j in 0 until v.length()) addresses.put(v.get(j))
-                            } else {
-                                addresses.put(v)
-                            }
-                        }
-                        if (addresses.length() > 0 && !inbound.has("address")) {
-                            inbound.put("address", addresses)
-                        }
-                        inbound.remove("sniff")
+                    if (server.has("address_resolver")) {
+                        val res = server.remove("address_resolver")
+                        server.put("domain_resolver", res)
                     }
+                    cleanedServers.put(server)
                 }
+                dns.put("servers", cleanedServers)
             }
-
-            val outbounds = root.optJSONArray("outbounds")
-            if (outbounds != null) {
-                val cleanedOutbounds = JSONArray()
-                for (i in 0 until outbounds.length()) {
-                    val ob = outbounds.optJSONObject(i) ?: continue
-                    if (ob.optString("type") != "dns") {
-                        cleanedOutbounds.put(ob)
-                    }
-                }
-                root.put("outbounds", cleanedOutbounds)
-            }
-
-            SubscriptionRouting.apply(root, mode)
-
-            root.toString(2)
-        } catch (e: Exception) {
-            jsonStr
         }
+
+        val inbounds = root.optJSONArray("inbounds")
+        if (inbounds != null) {
+            for (i in 0 until inbounds.length()) {
+                val inbound = inbounds.optJSONObject(i) ?: continue
+                if (inbound.optString("type") == "tun") {
+                    val addresses = JSONArray()
+                    if (inbound.has("inet4_address")) {
+                        val v = inbound.remove("inet4_address")
+                        if (v is JSONArray) {
+                            for (j in 0 until v.length()) addresses.put(v.get(j))
+                        } else {
+                            addresses.put(v)
+                        }
+                    }
+                    if (inbound.has("inet6_address")) {
+                        val v = inbound.remove("inet6_address")
+                        if (v is JSONArray) {
+                            for (j in 0 until v.length()) addresses.put(v.get(j))
+                        } else {
+                            addresses.put(v)
+                        }
+                    }
+                    if (addresses.length() > 0 && !inbound.has("address")) {
+                        inbound.put("address", addresses)
+                    }
+                    inbound.remove("sniff")
+                }
+            }
+        }
+
+        val outbounds = root.optJSONArray("outbounds")
+        if (outbounds != null) {
+            val cleanedOutbounds = JSONArray()
+            for (i in 0 until outbounds.length()) {
+                val ob = outbounds.optJSONObject(i) ?: continue
+                if (ob.optString("type") != "dns") {
+                    cleanedOutbounds.put(ob)
+                }
+            }
+            root.put("outbounds", cleanedOutbounds)
+        }
+
+        SubscriptionRouting.apply(root, mode)
+
+        root.toString(2)
+    } catch (e: Exception) {
+        jsonStr
     }
 
     private fun tryDecodeBase64(text: String): String {
@@ -379,18 +375,24 @@ class HTTPClient : Closeable {
             val tls = JSONObject()
             tls.put("enabled", true)
             tls.put("server_name", sni)
-            tls.put("utls", JSONObject().apply {
-                put("enabled", true)
-                put("fingerprint", fp)
-            })
+            tls.put(
+                "utls",
+                JSONObject().apply {
+                    put("enabled", true)
+                    put("fingerprint", fp)
+                },
+            )
             val pbk = params["pbk"]
             val sid = params["sid"]
             if (!pbk.isNullOrBlank()) {
-                tls.put("reality", JSONObject().apply {
-                    put("enabled", true)
-                    put("public_key", pbk)
-                    if (!sid.isNullOrBlank()) put("short_id", sid)
-                })
+                tls.put(
+                    "reality",
+                    JSONObject().apply {
+                        put("enabled", true)
+                        put("public_key", pbk)
+                        if (!sid.isNullOrBlank()) put("short_id", sid)
+                    },
+                )
             }
             outbound.put("tls", tls)
         } else if (security == "tls") {
@@ -404,16 +406,22 @@ class HTTPClient : Closeable {
         }
 
         if (network == "ws") {
-            outbound.put("transport", JSONObject().apply {
-                put("type", "ws")
-                put("path", path)
-                put("headers", JSONObject().apply { put("Host", hostHeader) })
-            })
+            outbound.put(
+                "transport",
+                JSONObject().apply {
+                    put("type", "ws")
+                    put("path", path)
+                    put("headers", JSONObject().apply { put("Host", hostHeader) })
+                },
+            )
         } else if (network == "grpc") {
-            outbound.put("transport", JSONObject().apply {
-                put("type", "grpc")
-                put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
-            })
+            outbound.put(
+                "transport",
+                JSONObject().apply {
+                    put("type", "grpc")
+                    put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
+                },
+            )
         }
 
         return outbound
@@ -459,25 +467,37 @@ class HTTPClient : Closeable {
         val sni = vmessJson.optString("sni").ifEmpty { vmessJson.optString("host").ifEmpty { host } }
 
         if (tlsFlag.equals("tls", true)) {
-            outbound.put("tls", JSONObject().apply {
-                put("enabled", true)
-                put("server_name", sni)
-            })
+            outbound.put(
+                "tls",
+                JSONObject().apply {
+                    put("enabled", true)
+                    put("server_name", sni)
+                },
+            )
         }
 
         if (network == "ws") {
-            outbound.put("transport", JSONObject().apply {
-                put("type", "ws")
-                put("path", vmessJson.optString("path", "/"))
-                put("headers", JSONObject().apply {
-                    put("Host", vmessJson.optString("host").ifEmpty { sni })
-                })
-            })
+            outbound.put(
+                "transport",
+                JSONObject().apply {
+                    put("type", "ws")
+                    put("path", vmessJson.optString("path", "/"))
+                    put(
+                        "headers",
+                        JSONObject().apply {
+                            put("Host", vmessJson.optString("host").ifEmpty { sni })
+                        },
+                    )
+                },
+            )
         } else if (network == "grpc") {
-            outbound.put("transport", JSONObject().apply {
-                put("type", "grpc")
-                put("service_name", vmessJson.optString("path", ""))
-            })
+            outbound.put(
+                "transport",
+                JSONObject().apply {
+                    put("type", "grpc")
+                    put("service_name", vmessJson.optString("path", ""))
+                },
+            )
         }
 
         return outbound
@@ -511,20 +531,29 @@ class HTTPClient : Closeable {
         outbound.put("password", password)
 
         val sni = params["sni"] ?: params["host"] ?: host
-        outbound.put("tls", JSONObject().apply {
-            put("enabled", true)
-            put("server_name", sni)
-        })
+        outbound.put(
+            "tls",
+            JSONObject().apply {
+                put("enabled", true)
+                put("server_name", sni)
+            },
+        )
 
         val network = params["type"] ?: "tcp"
         if (network == "ws") {
-            outbound.put("transport", JSONObject().apply {
-                put("type", "ws")
-                put("path", params["path"] ?: "/")
-                put("headers", JSONObject().apply {
-                    put("Host", params["host"] ?: sni)
-                })
-            })
+            outbound.put(
+                "transport",
+                JSONObject().apply {
+                    put("type", "ws")
+                    put("path", params["path"] ?: "/")
+                    put(
+                        "headers",
+                        JSONObject().apply {
+                            put("Host", params["host"] ?: sni)
+                        },
+                    )
+                },
+            )
         }
 
         return outbound
@@ -649,56 +678,82 @@ class HTTPClient : Closeable {
 
         val root = JSONObject()
 
-        root.put("log", JSONObject().apply {
-            put("level", "warn")
-            put("timestamp", true)
-        })
+        root.put(
+            "log",
+            JSONObject().apply {
+                put("level", "warn")
+                put("timestamp", true)
+            },
+        )
 
         val dnsObj = JSONObject()
         val dnsServers = JSONArray().apply {
-            put(JSONObject().apply {
-                put("tag", "dns-remote")
-                put("type", "https")
-                put("server", "1.1.1.1")
-                put("path", "/dns-query")
-                put("domain_resolver", "dns-direct")
-                put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
-            })
-            put(JSONObject().apply {
-                put("tag", "dns-direct")
-                put("type", "udp")
-                put("server", "77.88.8.8")
-                put("server_port", 53)
-            })
+            put(
+                JSONObject().apply {
+                    put("tag", "dns-remote")
+                    put("type", "https")
+                    put("server", "1.1.1.1")
+                    put("path", "/dns-query")
+                    put("domain_resolver", "dns-direct")
+                    put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
+                },
+            )
+            put(
+                JSONObject().apply {
+                    put("tag", "dns-direct")
+                    put("type", "udp")
+                    put("server", "77.88.8.8")
+                    put("server_port", 53)
+                },
+            )
         }
         dnsObj.put("servers", dnsServers)
-        dnsObj.put("rules", JSONArray().apply {
-            put(JSONObject().apply {
-                put("rule_set", JSONArray().apply { put("geosite-category-ru") })
-                put("server", "dns-direct")
-            })
-            put(JSONObject().apply {
-                put("domain_suffix", JSONArray().apply {
-                    put(".ru"); put(".su"); put(".xn--p1ai"); put(".by"); put(".kz")
-                })
-                put("server", "dns-direct")
-            })
-        })
+        dnsObj.put(
+            "rules",
+            JSONArray().apply {
+                put(
+                    JSONObject().apply {
+                        put("rule_set", JSONArray().apply { put("geosite-category-ru") })
+                        put("server", "dns-direct")
+                    },
+                )
+                put(
+                    JSONObject().apply {
+                        put(
+                            "domain_suffix",
+                            JSONArray().apply {
+                                put(".ru")
+                                put(".su")
+                                put(".xn--p1ai")
+                                put(".by")
+                                put(".kz")
+                            },
+                        )
+                        put("server", "dns-direct")
+                    },
+                )
+            },
+        )
         dnsObj.put("final", "dns-remote")
         dnsObj.put("strategy", "ipv4_only")
         root.put("dns", dnsObj)
 
-        root.put("inbounds", JSONArray().apply {
-            put(JSONObject().apply {
-                put("type", "tun")
-                put("tag", "tun-in")
-                put("interface_name", "tun0")
-                put("address", JSONArray().apply { put("172.19.0.1/30") })
-                put("auto_route", true)
-                put("strict_route", false)
-                put("stack", "gvisor")
-            })
-        })
+        root.put(
+            "inbounds",
+            JSONArray().apply {
+                put(
+                    JSONObject().apply {
+                        put("type", "tun")
+                        put("tag", "tun-in")
+                        put("interface_name", "tun0")
+                        put("address", JSONArray().apply { put("172.19.0.1/30") })
+                        put("auto_route", true)
+                        put("strict_route", false)
+                        put("stack", "gvisor")
+                    },
+                )
+            },
+        )
 
         val outboundsArr = JSONArray()
 
@@ -707,15 +762,17 @@ class HTTPClient : Closeable {
         }
         if (!hasNormalSelector) {
             val tagsForNormal = normalProxyTags.ifEmpty { whitelistProxyTags }
-            outboundsArr.put(JSONObject().apply {
-                put("type", "selector")
-                put("tag", SubscriptionRouting.NORMAL_SELECTOR_TAG)
-                val outs = JSONArray()
-                tagsForNormal.forEach { outs.put(it) }
-                outs.put("direct")
-                put("outbounds", outs)
-                if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
-            })
+            outboundsArr.put(
+                JSONObject().apply {
+                    put("type", "selector")
+                    put("tag", SubscriptionRouting.NORMAL_SELECTOR_TAG)
+                    val outs = JSONArray()
+                    tagsForNormal.forEach { outs.put(it) }
+                    outs.put("direct")
+                    put("outbounds", outs)
+                    if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
+                },
+            )
         }
 
         val needWhitelistSelector =
@@ -726,15 +783,17 @@ class HTTPClient : Closeable {
         }
         if (needWhitelistSelector && !hasWhitelistSelector) {
             val tagsForWl = whitelistProxyTags.ifEmpty { normalProxyTags }
-            outboundsArr.put(JSONObject().apply {
-                put("type", "selector")
-                put("tag", SubscriptionRouting.WHITELIST_SELECTOR_TAG)
-                val outs = JSONArray()
-                tagsForWl.forEach { outs.put(it) }
-                outs.put("direct")
-                put("outbounds", outs)
-                if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
-            })
+            outboundsArr.put(
+                JSONObject().apply {
+                    put("type", "selector")
+                    put("tag", SubscriptionRouting.WHITELIST_SELECTOR_TAG)
+                    val outs = JSONArray()
+                    tagsForWl.forEach { outs.put(it) }
+                    outs.put("direct")
+                    put("outbounds", outs)
+                    if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
+                },
+            )
         }
 
         for (node in validNodes) {
@@ -742,16 +801,20 @@ class HTTPClient : Closeable {
         }
 
         if (validNodes.none { it.optString("tag") == "direct" }) {
-            outboundsArr.put(JSONObject().apply {
-                put("type", "direct")
-                put("tag", "direct")
-            })
+            outboundsArr.put(
+                JSONObject().apply {
+                    put("type", "direct")
+                    put("tag", "direct")
+                },
+            )
         }
         if (validNodes.none { it.optString("tag") == "block" }) {
-            outboundsArr.put(JSONObject().apply {
-                put("type", "block")
-                put("tag", "block")
-            })
+            outboundsArr.put(
+                JSONObject().apply {
+                    put("type", "block")
+                    put("tag", "block")
+                },
+            )
         }
 
         root.put("outbounds", outboundsArr)
@@ -759,7 +822,6 @@ class HTTPClient : Closeable {
         SubscriptionRouting.apply(root, mode)
         return root.toString(2)
     }
-
 
     override fun close() {
         client.close()

@@ -40,6 +40,9 @@ object Settings {
 
     val dataStore = RoomPreferenceDataStore(instance.keyValuePairDao())
 
+    var ruleSetUpdateInterval by dataStore.long(SettingsKey.RULE_SET_UPDATE_INTERVAL) { 24 * 60 * 60 * 1000L } // 24 hours
+    var routingBlockIpv6 by dataStore.boolean(SettingsKey.ROUTING_BLOCK_IPV6) { true }
+
     var selectedProfile by dataStore.long(SettingsKey.SELECTED_PROFILE) { -1L }
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)

@@ -42,8 +42,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.update.UpdateState
@@ -188,7 +188,7 @@ fun SettingsScreen(navController: NavController) {
                 )
             }
         }
-                // About Section
+        // About Section
         Text(
             text = stringResource(R.string.about),
             style = MaterialTheme.typography.labelLarge,

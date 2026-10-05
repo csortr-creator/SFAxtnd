@@ -209,9 +209,7 @@ class RootServer : RootService() {
         // Binder only marshals a handful of exception types; a Go error or a
         // RemoteException escaping here reaches the app as a bare failure
         // without the message, so everything is converted to IllegalStateException.
-        override fun startAutoRedirect(options: ByteArray?, handler: IAutoRedirectHandler?): IAutoRedirectSession {
-            throw IllegalStateException("auto-redirect is not available with sing-box stable core")
-        }
+        override fun startAutoRedirect(options: ByteArray?, handler: IAutoRedirectHandler?): IAutoRedirectSession = throw IllegalStateException("auto-redirect is not available with sing-box stable core")
 
         override fun lookupSFTPServer(): String {
             val termuxPrefix = File(UserResolver.TERMUX_PREFIX)

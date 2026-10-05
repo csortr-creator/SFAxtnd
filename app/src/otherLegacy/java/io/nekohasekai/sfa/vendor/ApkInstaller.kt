@@ -13,13 +13,11 @@ enum class InstallMethod {
 
 object ApkInstaller {
 
-    fun getConfiguredMethod(): InstallMethod {
-        return if (Settings.silentInstallEnabled) {
-            val method = Settings.silentInstallMethod
-            if (method == "SHIZUKU") InstallMethod.ROOT else InstallMethod.valueOf(method)
-        } else {
-            InstallMethod.PACKAGE_INSTALLER
-        }
+    fun getConfiguredMethod(): InstallMethod = if (Settings.silentInstallEnabled) {
+        val method = Settings.silentInstallMethod
+        if (method == "SHIZUKU") InstallMethod.ROOT else InstallMethod.valueOf(method)
+    } else {
+        InstallMethod.PACKAGE_INSTALLER
     }
 
     suspend fun install(context: Context, apkFile: File, method: InstallMethod = getConfiguredMethod()) {

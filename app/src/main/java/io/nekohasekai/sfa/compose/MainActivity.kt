@@ -782,32 +782,7 @@ class MainActivity :
             dashboardViewModel.updateServiceStatus(currentServiceStatus)
         }
 
-        if (dashboardUiState.showDeprecatedDialog && dashboardUiState.deprecatedNotes.isNotEmpty()) {
-            val note = dashboardUiState.deprecatedNotes.first()
-            AlertDialog(
-                onDismissRequest = { },
-                title = { Text(stringResource(R.string.error_deprecated_warning)) },
-                text = { Text(note.message) },
-                confirmButton = {
-                    TextButton(onClick = { dashboardViewModel.dismissDeprecatedNote() }) {
-                        Text(stringResource(R.string.ok))
-                    }
-                },
-                dismissButton =
-                if (!note.migrationLink.isNullOrBlank()) {
-                    {
-                        TextButton(onClick = {
-                            dashboardViewModel.sendGlobalEvent(UiEvent.OpenUrl(note.migrationLink))
-                            dashboardViewModel.dismissDeprecatedNote()
-                        }) {
-                            Text(stringResource(R.string.error_deprecated_documentation))
-                        }
-                    }
-                } else {
-                    null
-                },
-            )
-        }
+
 
         val isSettingsSubScreen = currentRoute?.startsWith("settings/") == true
         val isToolsSubScreen = currentRoute?.startsWith("tools/") == true

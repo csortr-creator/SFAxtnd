@@ -13,6 +13,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
 }
@@ -152,11 +153,6 @@ android {
         aidl = true
         compose = true
         buildConfig = true
-    }
-
-    // Kotlin 1.9.x: Compose via compiler extension (kotlin.plugin.compose requires Kotlin 2.0+)
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {

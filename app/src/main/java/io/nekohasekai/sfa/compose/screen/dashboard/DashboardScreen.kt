@@ -165,7 +165,6 @@ fun DashboardScreen(
                     selectedProfileId = uiState.selectedProfileId,
                     isLoading = uiState.isLoading,
                     showAddProfileSheet = uiState.showAddProfileSheet,
-                    showProfilePickerSheet = uiState.showProfilePickerSheet,
                     updatingProfileId = uiState.updatingProfileId,
                     updatedProfileId = uiState.updatedProfileId,
                     onProfileSelected = viewModel::selectProfile,
@@ -177,8 +176,6 @@ fun DashboardScreen(
                     onProfileMove = viewModel::moveProfile,
                     onShowAddProfileSheet = viewModel::showAddProfileSheet,
                     onHideAddProfileSheet = viewModel::hideAddProfileSheet,
-                    onShowProfilePickerSheet = viewModel::showProfilePickerSheet,
-                    onHideProfilePickerSheet = viewModel::hideProfilePickerSheet,
                     onOpenNewProfile = onOpenNewProfile,
                     commandClient = viewModel.commandClient,
                 )

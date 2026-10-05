@@ -229,10 +229,11 @@ class DashboardViewModel :
                         )
                     }
                     withContext(Dispatchers.Main) {
+                        // Keep notes for Settings; never force full-screen dialog.
                         updateState {
                             copy(
                                 deprecatedNotes = notesList,
-                                showDeprecatedDialog = notesList.isNotEmpty(),
+                                showDeprecatedDialog = false,
                             )
                         }
                     }

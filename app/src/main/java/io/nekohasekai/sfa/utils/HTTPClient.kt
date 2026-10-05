@@ -317,6 +317,87 @@ class HTTPClient : Closeable {
         }
     }
 
+
+    /**
+     * Auto-apply multiplex (smux/yamux/h2mux) from share-link query or node JSON.
+     * Supported: mux=1|true, muxProtocol, muxConcurrency, max_connections, min_streams, padding.
+     * If outbound already has "multiplex", left unchanged.
+     */
+    private fun applyMultiplex(outbound: JSONObject, params: Map<String, String>? = null, source: JSONObject? = null) {
+        if (outbound.has("multiplex")) return
+
+        source?.optJSONObject("multiplex")?.let {
+            outbound.put("multiplex", JSONObject(it.toString()))
+            return
+        }
+
+        val p = mutableMapOf<String, String>()
+        params?.forEach { (k, v) -> p[k.lowercase()] = v }
+        if (source != null) {
+            val keys = source.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val kl = k.lowercase()
+                if (kl in setOf(
+                        "mux", "muxprotocol", "muxconcurrency", "max_streams", "maxstreams",
+                        "max_connections", "maxconnections", "min_streams", "minstreams",
+                        "muxpadding", "padding",
+                    )
+                ) {
+                    val v = source.opt(k)?.toString() ?: continue
+                    if (v.isNotBlank()) p.putIfAbsent(kl, v)
+                }
+            }
+        }
+
+        val muxRaw = p["mux"] ?: return
+        val enabled = when (muxRaw.trim().lowercase()) {
+            "1", "true", "yes", "on" -> true
+            "0", "false", "no", "off" -> false
+            else -> muxRaw.toIntOrNull()?.let { it > 0 } ?: false
+        }
+        if (!enabled) return
+
+        val protocol = (p["muxprotocol"] ?: "smux").lowercase().let {
+            when (it) {
+                "smux", "yamux", "h2mux" -> it
+                else -> "smux"
+            }
+        }
+
+        val multiplex = JSONObject()
+        multiplex.put("enabled", true)
+        multiplex.put("protocol", protocol)
+
+        fun intParam(vararg names: String): Int? {
+            for (n in names) {
+                val v = p[n] ?: continue
+                v.toIntOrNull()?.let { return it }
+            }
+            return null
+        }
+
+        val maxStreams = intParam("muxconcurrency", "max_streams", "maxstreams")
+        val maxConn = intParam("max_connections", "maxconnections")
+        val minStreams = intParam("min_streams", "minstreams")
+
+        when {
+            maxStreams != null && maxStreams > 0 -> multiplex.put("max_streams", maxStreams)
+            else -> {
+                multiplex.put("max_connections", maxConn ?: 4)
+                multiplex.put("min_streams", minStreams ?: 4)
+            }
+        }
+
+        val paddingRaw = p["muxpadding"] ?: p["padding"]
+        if (paddingRaw != null) {
+            val pad = paddingRaw.trim().lowercase() in setOf("1", "true", "yes", "on")
+            multiplex.put("padding", pad)
+        }
+
+        outbound.put("multiplex", multiplex)
+    }
+
     private fun parseUriLines(text: String): List<JSONObject> {
         val nodes = mutableListOf<JSONObject>()
         for (line in text.lines()) {
@@ -424,6 +505,7 @@ class HTTPClient : Closeable {
             )
         }
 
+        applyMultiplex(outbound, params)
         return outbound
     }
 
@@ -500,6 +582,7 @@ class HTTPClient : Closeable {
             )
         }
 
+        applyMultiplex(outbound, source = vmessJson)
         return outbound
     }
 
@@ -556,6 +639,7 @@ class HTTPClient : Closeable {
             )
         }
 
+        applyMultiplex(outbound, params)
         return outbound
     }
 
@@ -617,6 +701,7 @@ class HTTPClient : Closeable {
         outbound.put("server_port", port)
         outbound.put("method", method)
         outbound.put("password", password)
+        applyMultiplex(outbound)
         return outbound
     }
 
@@ -651,6 +736,9 @@ class HTTPClient : Closeable {
         val whitelistProxyTags = mutableListOf<String>()
 
         for (node in validNodes) {
+            if (!node.has("multiplex")) {
+                applyMultiplex(node, source = node)
+            }
             val rawTag = node.optString("tag").ifEmpty {
                 node.optString("server").ifEmpty { "Proxy" }
             }

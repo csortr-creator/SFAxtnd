@@ -27,11 +27,6 @@ data class GroupsUiState(
     val testingGroups: Set<String> = emptySet(),
     val showCloseConnectionsSnackbar: Boolean = false,
     val sortByPing: Boolean = true,
-),
-    val isLoading: Boolean = false,
-    val expandedGroups: Set<String> = emptySet(),
-    val testingGroups: Set<String> = emptySet(),
-    val showCloseConnectionsSnackbar: Boolean = false,
 )
 
 sealed class GroupsEvent : ScreenEvent {
@@ -169,6 +164,10 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                 }
             }
         }
+    }
+
+    fun toggleSortByPing() {
+        updateState { copy(sortByPing = !sortByPing) }
     }
 
     fun selectGroupItem(groupTag: String, itemTag: String) {

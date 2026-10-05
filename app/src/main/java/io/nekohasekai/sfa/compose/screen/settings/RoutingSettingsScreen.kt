@@ -100,6 +100,9 @@ fun RoutingSettingsScreen(
     var geoGeositeUrl by remember { mutableStateOf("") }
     var geoGeoipUrl by remember { mutableStateOf("") }
     var blockIpv6 by remember { mutableStateOf(Settings.routingBlockIpv6) }
+    var tunStack by remember { mutableStateOf(Settings.tunStack) }
+    var tunStackMenuOpen by remember { mutableStateOf(false) }
+    var tunStack by remember { mutableStateOf(Settings.tunStack) }
     var updateInterval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
     var intervalMenuOpen by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
@@ -123,6 +126,7 @@ fun RoutingSettingsScreen(
         nextGeoGeositeUrl: String = geoGeositeUrl,
         nextGeoGeoipUrl: String = geoGeoipUrl,
         nextBlockIpv6: Boolean = blockIpv6,
+        nextTunStack: String = tunStack,
         nextUpdateInterval: Long = updateInterval,
         nextRules: List<RoutingRule> = rules,
     ) {
@@ -137,6 +141,8 @@ fun RoutingSettingsScreen(
         geoGeoipUrl = nextGeoGeoipUrl
         blockIpv6 = nextBlockIpv6
         Settings.routingBlockIpv6 = nextBlockIpv6
+        tunStack = nextTunStack
+        Settings.tunStack = nextTunStack
         updateInterval = nextUpdateInterval
         Settings.ruleSetUpdateInterval = nextUpdateInterval
         rules = nextRules
@@ -199,6 +205,40 @@ fun RoutingSettingsScreen(
             supportingContent = { Text("Запретить весь IPv6 трафик (может решить проблемы с DNS/доступом)", style = MaterialTheme.typography.bodySmall) },
             trailingContent = { Switch(checked = blockIpv6, onCheckedChange = { persist(nextBlockIpv6 = it) }) },
             modifier = Modifier.clickable { persist(nextBlockIpv6 = !blockIpv6) },
+        )
+        ListItem(
+            headlineContent = { Text("Стек TUN") },
+            supportingContent = {
+                Text(
+                    when (tunStack) {
+                        "system" -> "system — системный стек (рекомендуется)"
+                        "mixed" -> "mixed — смешанный"
+                        else -> "gvisor — userspace gVisor"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            trailingContent = {
+                Box {
+                    IconButton(onClick = { tunStackMenuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = null)
+                    }
+                    DropdownMenu(expanded = tunStackMenuOpen, onDismissRequest = { tunStackMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("system") }, onClick = {
+                            persist(nextTunStack = "system")
+                            tunStackMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("gvisor") }, onClick = {
+                            persist(nextTunStack = "gvisor")
+                            tunStackMenuOpen = false
+                        })
+                        DropdownMenuItem(text = { Text("mixed") }, onClick = {
+                            persist(nextTunStack = "mixed")
+                            tunStackMenuOpen = false
+                        })
+                    }
+                }
+            },
         )
         ListItem(
             headlineContent = { Text("Интервал обновления Rule-set") },

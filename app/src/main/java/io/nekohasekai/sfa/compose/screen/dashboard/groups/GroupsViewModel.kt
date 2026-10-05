@@ -19,6 +19,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.nekohasekai.sfa.database.ProfileManager
+import io.nekohasekai.sfa.database.Settings
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 
 data class GroupsUiState(
     val groups: List<Group> = emptyList(),
@@ -106,23 +111,22 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         if (RemoteControlManager.remoteServer.value != null) {
             return
         }
-        if (status != Status.Started) {
-            updateState {
-                copy(
-                    groups = emptyList(),
-                    isLoading = false,
-                )
+        // Keep last groups (and ping results) when VPN is not running.
+        // If we have nothing yet, try offline parse from selected profile.
+        if (status != Status.Started && uiState.value.groups.isEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                loadGroupsFromSelectedProfile()
             }
         }
     }
 
     fun updateServiceStatus(status: Status) {
-        if (status == lastServiceStatus) {
-            return
-        }
+        val statusChanged = status != lastServiceStatus
         lastServiceStatus = status
         viewModelScope.launch {
-            _serviceStatus.emit(status)
+            if (statusChanged) {
+                _serviceStatus.emit(status)
+            }
             handleServiceStatusChange(status)
         }
     }
@@ -261,12 +265,11 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     }
 
     override fun onDisconnected() {
+        // Do not clear groups — keep last known list and ping results offline.
         viewModelScope.launch(Dispatchers.Main) {
-            updateState {
-                copy(
-                    groups = emptyList(),
-                    isLoading = false,
-                )
+            updateState { copy(isLoading = false) }
+            if (uiState.value.groups.isEmpty()) {
+                launch(Dispatchers.IO) { loadGroupsFromSelectedProfile() }
             }
         }
     }
@@ -274,11 +277,27 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
         viewModelScope.launch(Dispatchers.Default) {
             val currentGroups = uiState.value.groups
+            val previousPing = currentGroups
+                .flatMap { g -> g.items.map { it.tag to it } }
+                .toMap()
             val currentByTag = currentGroups.associateBy { it.tag }
             val mergedGroups = newGroups.map { goGroup ->
                 val converted = Group(goGroup)
                 val existing = currentByTag[converted.tag]
-                if (existing == converted) existing else converted
+                val items = converted.items.map { item ->
+                    if (item.urlTestDelay > 0 || item.urlTestTime > 0L) {
+                        item
+                    } else {
+                        val prev = previousPing[item.tag]
+                        if (prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)) {
+                            item.copy(urlTestDelay = prev.urlTestDelay, urlTestTime = prev.urlTestTime)
+                        } else {
+                            item
+                        }
+                    }
+                }
+                val withPing = converted.copy(items = items)
+                if (existing == withPing) existing else withPing
             }
 
             withContext(Dispatchers.Main) {
@@ -294,6 +313,91 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                         isLoading = false,
                     )
                 }
+            }
+        }
+    }
+
+    /** Build selector/urltest groups from selected profile JSON (works offline, before VPN start). */
+    private suspend fun loadGroupsFromSelectedProfile() {
+        runCatching {
+            val profileId = Settings.selectedProfile
+            if (profileId == -1L) return
+            val profile = ProfileManager.get(profileId) ?: return
+            val path = profile.typed.path
+            if (path.isBlank()) return
+            val file = File(path)
+            if (!file.exists()) return
+            val content = file.readText()
+            val groups = parseGroupsFromConfig(content)
+            if (groups.isEmpty()) return
+            withContext(Dispatchers.Main) {
+                if (uiState.value.groups.isEmpty()) {
+                    updateState {
+                        copy(
+                            groups = groups,
+                            expandedGroups = groups.filter { it.isExpand }.map { it.tag }.toSet()
+                                .ifEmpty { groups.map { it.tag }.toSet() },
+                            isLoading = false,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        fun parseGroupsFromConfig(jsonStr: String): List<Group> {
+            return try {
+                val root = JSONObject(jsonStr.trim())
+                val outbounds = root.optJSONArray("outbounds") ?: return emptyList()
+                val byTag = mutableMapOf<String, JSONObject>()
+                for (i in 0 until outbounds.length()) {
+                    val ob = outbounds.optJSONObject(i) ?: continue
+                    val tag = ob.optString("tag")
+                    if (tag.isNotBlank()) byTag[tag] = ob
+                }
+                val groups = mutableListOf<Group>()
+                for (i in 0 until outbounds.length()) {
+                    val ob = outbounds.optJSONObject(i) ?: continue
+                    val type = ob.optString("type")
+                    if (type != "selector" && type != "urltest") continue
+                    val tag = ob.optString("tag").ifBlank { type }
+                    val members = ob.optJSONArray("outbounds") ?: JSONArray()
+                    val selected = ob.optString("default").ifBlank {
+                        if (members.length() > 0) members.optString(0) else ""
+                    }
+                    val items = mutableListOf<GroupItem>()
+                    for (j in 0 until members.length()) {
+                        val memberTag = members.optString(j)
+                        if (memberTag.isBlank()) continue
+                        val member = byTag[memberTag]
+                        val memberType = member?.optString("type") ?: "unknown"
+                        items.add(
+                            GroupItem(
+                                tag = memberTag,
+                                type = memberType,
+                                displayType = memberType.uppercase(),
+                                urlTestTime = 0L,
+                                urlTestDelay = 0,
+                            ),
+                        )
+                    }
+                    if (items.isEmpty()) continue
+                    groups.add(
+                        Group(
+                            tag = tag,
+                            type = type,
+                            displayType = type.replaceFirstChar { it.uppercase() },
+                            selectable = true,
+                            selected = selected,
+                            isExpand = true,
+                            items = items,
+                        ),
+                    )
+                }
+                groups
+            } catch (_: Exception) {
+                emptyList()
             }
         }
     }

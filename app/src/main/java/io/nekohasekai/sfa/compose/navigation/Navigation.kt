@@ -3,6 +3,8 @@ package io.nekohasekai.sfa.compose.navigation
 import android.net.Uri
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -80,6 +82,10 @@ fun NavHost(
     androidx.navigation.compose.NavHost(
         navController = navController,
         startDestination = Screen.Dashboard.route,
+        enterTransition = { fadeIn(tween(220)) },
+        exitTransition = { fadeOut(tween(140)) },
+        popEnterTransition = { fadeIn(tween(220)) },
+        popExitTransition = { fadeOut(tween(140)) },
         modifier = modifier,
     ) {
         composable(Screen.Dashboard.route) {

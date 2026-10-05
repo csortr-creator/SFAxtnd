@@ -1,5 +1,12 @@
 package io.nekohasekai.sfa.compose.screen.dashboard
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudQueue
+import io.nekohasekai.sfa.utils.SubscriptionRouting
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -339,6 +346,10 @@ private fun GroupsCardContent(
                         { headerModifier ->
                             GroupHeader(
                                 group = group,
+                                title = if (uiState.subscriptionName.isNotBlank() &&
+                                    (group.tag == SubscriptionRouting.NORMAL_SELECTOR_TAG || group == uiState.groups.firstOrNull())) {
+                                    uiState.subscriptionName
+                                } else group.tag,
                                 isExpanded = isExpanded,
                                 isTesting =
                                 uiState.testingGroups.contains(group.tag),
@@ -479,6 +490,7 @@ private fun rememberUrlTestPalette(): UrlTestPalette {
 @Composable
 private fun GroupHeader(
     group: Group,
+    title: String,
     isExpanded: Boolean,
     isTesting: Boolean,
     onToggleExpanded: () -> Unit,
@@ -510,9 +522,9 @@ private fun GroupHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = group.tag,
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -524,7 +536,7 @@ private fun GroupHeader(
                 )
 
                 Text(
-                    text = group.displayType,
+                    text = if (group.type == "urltest") "Авто" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -540,7 +552,7 @@ private fun GroupHeader(
                 Text(
                     text = "${group.items.size}",
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
                     Modifier.padding(
@@ -553,7 +565,7 @@ private fun GroupHeader(
             IconButton(
                 onClick = onUrlTest,
                 enabled = !isTesting,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 if (isTesting) {
                     CircularProgressIndicator(
@@ -773,7 +785,10 @@ private fun ProxyChip(
         mutableStateOf(false)
     }
 
-    val chipShape = RoundedCornerShape(12.dp)
+    val chipShape = MaterialTheme.shapes.medium
+    val container by animateColorAsState(
+        if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+        animationSpec = tween(200), label = "serverSelection")
 
     Box(modifier = modifier) {
         Surface(
@@ -781,6 +796,7 @@ private fun ProxyChip(
             Modifier
                 .fillMaxWidth()
                 .clip(chipShape)
+                .semantics { selected = isSelected }
                 .combinedClickable(
                     onClick = {
                         if (isSelectable) {
@@ -792,12 +808,9 @@ private fun ProxyChip(
                     },
                 ),
             shape = chipShape,
-            color =
-            if (isSelected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
+            color = container,
+            border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
         ) {
             Column(
                 modifier =
@@ -811,7 +824,7 @@ private fun ProxyChip(
                 Text(
                     text = item.tag,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     color =
                     if (isSelected) {
                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -844,12 +857,15 @@ private fun ProxyChip(
                         },
                     )
 
-                    if (item.urlTestDelay > 0) {
+                    if (item.urlTestTime > 0L && item.urlTestDelay == 0) {
+                        Text("Недоступен", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error)
+                    } else if (item.urlTestDelay > 0) {
                         Text(
-                            text = "${item.urlTestDelay}ms",
+                            text = "${item.urlTestDelay} мс",
                             style =
                             MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Medium,
                             color =
                             palette.forDelay(
                                 item.urlTestDelay,

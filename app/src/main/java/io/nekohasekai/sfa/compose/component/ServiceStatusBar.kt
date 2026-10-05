@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,8 +69,8 @@ fun ServiceStatusBar(
                 modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Status text
@@ -86,8 +88,9 @@ fun ServiceStatusBar(
                 Row(
                     modifier =
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clip(MaterialTheme.shapes.medium)
+                        .heightIn(min = 48.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .clickable(onClick = onConnectionsClick)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -97,14 +100,14 @@ fun ServiceStatusBar(
                         text = connectionsCount.toString(),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Outlined.Cable,
                         contentDescription = stringResource(R.string.title_connections),
                         modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
@@ -113,8 +116,9 @@ fun ServiceStatusBar(
                     Row(
                         modifier =
                         Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .clip(MaterialTheme.shapes.medium)
+                            .heightIn(min = 48.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .clickable(onClick = onGroupsClick)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -124,14 +128,14 @@ fun ServiceStatusBar(
                             text = groupsCount.toString(),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = Icons.Default.Folder,
                             contentDescription = stringResource(R.string.title_groups),
                             modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -140,7 +144,8 @@ fun ServiceStatusBar(
                 Row(
                     modifier =
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(MaterialTheme.shapes.medium)
+                        .heightIn(min = 48.dp)
                         .background(MaterialTheme.colorScheme.primaryContainer)
                         .clickable(onClick = onStopClick)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -167,7 +172,9 @@ fun ServiceStatusBar(
 private fun StatusItem(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.labelLarge,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier,

@@ -2,6 +2,10 @@ package io.nekohasekai.sfa.compose.navigation
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Dashboard
@@ -17,12 +21,12 @@ sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: I
     object Subscriptions : Screen(
         route = "subscriptions",
         titleRes = R.string.title_subscriptions,
-        icon = Icons.Default.Subscriptions,
+        icon = Icons.Outlined.Subscriptions,
     )
     object Dashboard : Screen(
         route = "dashboard",
         titleRes = R.string.title_dashboard,
-        icon = Icons.Default.Dashboard,
+        icon = Icons.Outlined.Dns,
     )
 
     object Log : Screen(
@@ -52,13 +56,13 @@ sealed class Screen(val route: String, @StringRes val titleRes: Int, val icon: I
     object Routing : Screen(
         route = "routing",
         titleRes = R.string.title_routing,
-        icon = Icons.Default.AccountTree,
+        icon = Icons.Outlined.Route,
     )
 
     object Settings : Screen(
         route = "settings",
         titleRes = R.string.title_settings,
-        icon = Icons.Default.Settings,
+        icon = Icons.Outlined.Settings,
     )
 }
 

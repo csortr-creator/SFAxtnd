@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 abstract class BaseViewModel<State, Event> : ViewModel() {
@@ -25,7 +26,7 @@ abstract class BaseViewModel<State, Event> : ViewModel() {
         get() = _uiState.value
 
     protected fun updateState(reducer: State.() -> State) {
-        _uiState.value = _uiState.value.reducer()
+        _uiState.update { it.reducer() }
     }
 
     /**

@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.utils
 
-import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.models.DnsConfig
 import io.nekohasekai.sfa.models.GeoFileSources
 import io.nekohasekai.sfa.models.RoutingRule
@@ -8,11 +7,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object UserRoutingConfig {
-
-    fun applyToConfig(jsonStr: String): String {
-        val raw = runCatching { Settings.routingConfigJson }.getOrNull().orEmpty()
-        return applyToConfig(jsonStr, raw)
-    }
 
     fun applyToConfig(jsonStr: String, userConfigJson: String): String = try {
         val root = JSONObject(jsonStr)
@@ -216,6 +210,7 @@ object UserRoutingConfig {
             val item = rulesUser.optJSONObject(i) ?: continue
             if (!item.optBoolean("enabled", true)) continue
             val rule = buildSingBoxRule(item) ?: continue
+            if (item.optString("outbound", "proxy") == "proxy") rule.put("outbound", findProxyOutboundTag(root))
             if (rule.optString("outbound") == "block") needBlock = true
             merged.put(rule)
             val rs = rule.optJSONArray("rule_set")
@@ -229,8 +224,20 @@ object UserRoutingConfig {
                 buildDnsRuleFromRoute(item, root)?.let { dnsRulesExtra.put(it) }
             }
         }
-        for (i in 0 until existing.length()) merged.put(existing.get(i))
-        route.put("rules", merged)
+        val whitelistActive = usedRuleSetTags.any { it in RoutingPresets.remoteRuleSets }
+        val combined = JSONArray()
+        // DNS interception and sniffing must run before a Whitelist catch-all route.
+        for (i in 0 until existing.length()) {
+            val rule = existing.optJSONObject(i) ?: continue
+            if (rule.optString("action") in setOf("sniff", "hijack-dns")) combined.put(rule)
+        }
+        for (i in 0 until merged.length()) combined.put(merged.get(i))
+        if (whitelistActive) combined.put(JSONObject().put("outbound", findProxyOutboundTag(root)))
+        for (i in 0 until existing.length()) {
+            val rule = existing.optJSONObject(i) ?: continue
+            if (rule.optString("action") !in setOf("sniff", "hijack-dns")) combined.put(rule)
+        }
+        route.put("rules", combined)
         ensureRuleSetEntries(route, usedRuleSetTags)
         if (needBlock) ensureBlockOutbound(root)
         if (dnsRulesExtra.length() > 0) mergeDnsRules(root, dnsRulesExtra)
@@ -246,17 +253,18 @@ object UserRoutingConfig {
         val geoipBase = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set"
         for (tag in tags) {
             if (tag in existing) continue
+            val customUrl = RoutingPresets.remoteRuleSets[tag]
             val base = when {
                 tag.startsWith("geosite") -> geositeBase
                 tag.startsWith("geoip") -> geoipBase
-                else -> continue
+                else -> if (customUrl == null) continue else ""
             }
             ruleSet.put(
                 JSONObject()
                     .put("type", "remote")
                     .put("tag", tag)
                     .put("format", "binary")
-                    .put("url", "$base/$tag.srs")
+                    .put("url", customUrl ?: "$base/$tag.srs")
                     .put("download_detour", "direct"),
             )
             existing.add(tag)
@@ -300,6 +308,14 @@ object UserRoutingConfig {
             for (i in 0 until servers.length()) {
                 val tag = servers.optJSONObject(i)?.optString("tag")?.trim()
                 if (!tag.isNullOrEmpty()) tags.add(tag)
+            }
+        }
+        if (outbound == "direct") {
+            for (i in 0 until (servers?.length() ?: 0)) {
+                val server = servers?.optJSONObject(i) ?: continue
+                if (server.optString("detour") == "direct" || server.optString("type") == "local") {
+                    return server.optString("tag")
+                }
             }
         }
         val prefer = when (outbound) {
@@ -429,7 +445,7 @@ object UserRoutingConfig {
     private fun mapOutbound(raw: String): String = when (raw.lowercase()) {
         RoutingRule.OUTBOUND_DIRECT, "direct" -> "direct"
         RoutingRule.OUTBOUND_BLOCK, "block", "reject" -> "block"
-        RoutingRule.OUTBOUND_PROXY, "proxy" -> SubscriptionRouting.NORMAL_SELECTOR_TAG
+        RoutingRule.OUTBOUND_PROXY, "proxy" -> "proxy"
         else -> raw.ifBlank { "direct" }
     }
 

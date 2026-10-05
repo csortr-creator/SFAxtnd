@@ -13,6 +13,12 @@ dependencies {
 sourceSets.main {
     kotlin.srcDir("../app/src/main/java")
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/OutboundProfileState.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/UserRoutingConfig.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/RoutingPresets.kt")
+    kotlin.include("io/nekohasekai/sfa/models/DnsConfig.kt")
+    kotlin.include("io/nekohasekai/sfa/models/GeoFileSource.kt")
+    kotlin.include("io/nekohasekai/sfa/models/RoutingRule.kt")
 }
 
 tasks.test { useJUnit() }

@@ -65,6 +65,12 @@ data class RoutingRule(
             if (value.isNotBlank() && domain.isBlank()) add(type.name.lowercase())
         }
         val match = parts.joinToString(" · ").ifBlank { "—" }
-        return "$match → $outbound"
+        val destination = when (outbound) {
+            OUTBOUND_DIRECT -> "Напрямую"
+            OUTBOUND_BLOCK -> "Блокировать"
+            OUTBOUND_PROXY -> "Через сервер"
+            else -> outbound
+        }
+        return "$match · $destination"
     }
 }

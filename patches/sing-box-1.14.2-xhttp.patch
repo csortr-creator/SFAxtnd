@@ -8,6 +8,237 @@ index c3089a6..1811df5 100644
  	V2RayTransportTypeHTTPUpgrade = "httpupgrade"
 +	V2RayTransportTypeXHTTP       = "xhttp"
  )
+diff --git a/experimental/libbox/outbound_probe.go b/experimental/libbox/outbound_probe.go
+new file mode 100644
+index 0000000..2e2b309
+--- /dev/null
++++ b/experimental/libbox/outbound_probe.go
+@@ -0,0 +1,90 @@
++package libbox
++
++import (
++	"context"
++	"sync"
++	"time"
++
++	box "github.com/sagernet/sing-box"
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/urltest"
++	"github.com/sagernet/sing-box/option"
++	E "github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/service"
++)
++
++// OutboundProbe runs real protocol URL tests without a TUN, command socket,
++// API listeners, cache files or profile routing rules. Close cancels all tests.
++type OutboundProbe struct {
++	ctx      context.Context
++	cancel   context.CancelFunc
++	instance *box.Box
++	once     sync.Once
++}
++
++func NewOutboundProbe(configContent string, platformInterface PlatformInterface) (*OutboundProbe, error) {
++	ctx := baseContext(platformInterface)
++	ctx, cancel := context.WithCancel(ctx)
++	options, err := parseConfig(ctx, configContent)
++	if err != nil {
++		cancel()
++		return nil, err
++	}
++	// Caller supplies an outbound-only config; enforce isolation at the native boundary.
++	options.Inbounds = nil
++	options.Endpoints = nil
++	options.Services = nil
++	options.Experimental = nil
++	options.NTP = nil
++	if options.Route == nil {
++		options.Route = &option.RouteOptions{}
++	}
++	options.Route.Rules = nil
++	options.Route.RuleSet = nil
++	options.Log = &option.LogOptions{Disabled: true}
++	if platformInterface != nil {
++		service.MustRegister[adapter.PlatformInterface](ctx, &platformInterfaceWrapper{iif: platformInterface, useProcFS: platformInterface.UseProcFS()})
++	}
++	return startOutboundProbe(ctx, cancel, options)
++}
++
++func startOutboundProbe(ctx context.Context, cancel context.CancelFunc, options option.Options) (*OutboundProbe, error) {
++	instance, err := box.New(box.Options{Context: ctx, Options: options})
++	if err != nil {
++		cancel()
++		return nil, err
++	}
++	if err = instance.Start(); err != nil {
++		cancel()
++		instance.Close()
++		return nil, err
++	}
++	return &OutboundProbe{ctx: ctx, cancel: cancel, instance: instance}, nil
++}
++
++func (p *OutboundProbe) URLTest(outboundTag string) (int32, error) {
++	return p.urlTest(outboundTag, "")
++}
++
++func (p *OutboundProbe) urlTest(outboundTag, testURL string) (int32, error) {
++	outbound, loaded := p.instance.Outbound().Outbound(outboundTag)
++	if !loaded {
++		return 0, E.New("outbound not found: ", outboundTag)
++	}
++	ctx, cancel := context.WithTimeout(p.ctx, 12*time.Second)
++	defer cancel()
++	delay, err := urltest.URLTest(ctx, testURL, outbound)
++	if err != nil {
++		return 0, err
++	}
++	if delay == 0 {
++		delay = 1
++	}
++	return int32(delay), nil
++}
++
++func (p *OutboundProbe) Close() error {
++	var err error
++	p.once.Do(func() { p.cancel(); err = p.instance.Close() })
++	return err
++}
+diff --git a/experimental/libbox/outbound_probe_test.go b/experimental/libbox/outbound_probe_test.go
+new file mode 100644
+index 0000000..a5ff568
+--- /dev/null
++++ b/experimental/libbox/outbound_probe_test.go
+@@ -0,0 +1,117 @@
++package libbox
++
++import (
++	"context"
++	"fmt"
++	"github.com/sagernet/sing-box/protocol/group"
++	"net/http"
++	"net/http/httptest"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	tun "github.com/sagernet/sing-tun"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/sagernet/sing/service"
++)
++
++type probeTestPlatform struct{ platformInterfaceStub }
++
++func (*probeTestPlatform) CreateDefaultInterfaceMonitor(logger logger.Logger) tun.DefaultInterfaceMonitor {
++	return &probeTestMonitor{}
++}
++
++type probeTestMonitor struct{ interfaceMonitorStub }
++
++func (*probeTestMonitor) Start() error { return nil }
++func (*probeTestMonitor) Close() error { return nil }
++
++func testProbe(t *testing.T, content string) *OutboundProbe {
++	t.Helper()
++	ctx, cancel := context.WithCancel(baseContext(nil))
++	ctx = service.ContextWith[adapter.PlatformInterface](ctx, &probeTestPlatform{})
++	options, err := parseConfig(ctx, content)
++	if err != nil {
++		cancel()
++		t.Fatal(err)
++	}
++	probe, err := startOutboundProbe(ctx, cancel, options)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { probe.Close() })
++	return probe
++}
++
++func TestOutboundProbeUsesSelectedProtocolAndCloses(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
++	defer server.Close()
++	probe := testProbe(t, `{"outbounds":[{"type":"direct","tag":"direct"}]}`)
++	delay, err := probe.urlTest("direct", server.URL)
++	if err != nil || delay < 1 {
++		t.Fatalf("URLTest = %d, %v", delay, err)
++	}
++	if _, err = probe.URLTest("missing"); err == nil {
++		t.Fatal("missing outbound must fail")
++	}
++	probe.Close()
++	probe.Close()
++	if _, err = probe.urlTest("direct", server.URL); err == nil {
++		t.Fatal("closed session must fail")
++	}
++}
++
++func TestOutboundProbeCancellationInterruptsHTTP(t *testing.T) {
++	entered := make(chan struct{})
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		close(entered)
++		<-r.Context().Done()
++	}))
++	defer server.Close()
++	probe := testProbe(t, `{"outbounds":[{"type":"direct","tag":"direct"}]}`)
++	done := make(chan error, 1)
++	go func() { _, err := probe.urlTest("direct", server.URL); done <- err }()
++	select {
++	case <-entered:
++	case <-time.After(3 * time.Second):
++		t.Fatal("HTTP probe never started")
++	}
++	probe.Close()
++	select {
++	case err := <-done:
++		if err == nil {
++			t.Fatal("cancelled probe succeeded")
++		}
++	case <-time.After(3 * time.Second):
++		t.Fatal("probe was not cancelled")
++	}
++}
++
++func TestOfflineSelectorChoiceOverridesCachedSelection(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "cache.db")
++	config := func(force bool) string {
++		return fmt.Sprintf(`{
++ "outbounds":[{"type":"direct","tag":"a"},{"type":"direct","tag":"b"},
++ {"type":"selector","tag":"pick","outbounds":["a","b"],"default":"a","force_default":%t}],
++ "experimental":{"cache_file":{"enabled":true,"path":%q}}
++ }`, force, path)
++	}
++	first := testProbe(t, config(false))
++	outbound, _ := first.instance.Outbound().Outbound("pick")
++	if !outbound.(*group.Selector).SelectOutbound("b") {
++		t.Fatal("could not choose b")
++	}
++	first.Close()
++	cached := testProbe(t, config(false))
++	outbound, _ = cached.instance.Outbound().Outbound("pick")
++	if outbound.(*group.Selector).Now() != "b" {
++		t.Fatal("cache fixture did not persist b")
++	}
++	cached.Close()
++	offline := testProbe(t, config(true))
++	outbound, _ = offline.instance.Outbound().Outbound("pick")
++	if outbound.(*group.Selector).Now() != "a" {
++		t.Fatal("offline choice lost to cached b")
++	}
++}
+diff --git a/option/group.go b/option/group.go
+index bc0c07e..9585f51 100644
+--- a/option/group.go
++++ b/option/group.go
+@@ -3,6 +3,7 @@ package option
+ import "github.com/sagernet/sing/common/json/badoption"
+ 
+ type SelectorOutboundOptions struct {
++	ForceDefault              bool     `json:"force_default,omitempty"`
+ 	Outbounds                 []string `json:"outbounds" reference:"outbound"`
+ 	Default                   string   `json:"default,omitempty" reference:"outbound"`
+ 	InterruptExistConnections bool     `json:"interrupt_exist_connections,omitempty"`
 diff --git a/option/v2ray_transport.go b/option/v2ray_transport.go
 index 8788151..2858193 100644
 --- a/option/v2ray_transport.go
@@ -119,6 +350,35 @@ index 8788151..2858193 100644
 +	XMUX                 V2RayXHTTPXmuxOptions       `json:"xmux,omitempty"`
 +	DownloadSettings     *V2RayXHTTPDownloadSettings `json:"download_settings,omitempty"`
 +}
+diff --git a/protocol/group/selector.go b/protocol/group/selector.go
+index 3d1a8bf..3ace1cd 100644
+--- a/protocol/group/selector.go
++++ b/protocol/group/selector.go
+@@ -36,6 +36,7 @@ type Selector struct {
+ 	connection                   adapter.ConnectionManager
+ 	logger                       logger.ContextLogger
+ 	tags                         []string
++	forceDefault                 bool
+ 	defaultTag                   string
+ 	outbounds                    map[string]adapter.Outbound
+ 	selected                     common.TypedValue[adapter.Outbound]
+@@ -53,6 +54,7 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
+ 		logger:                       logger,
+ 		tags:                         options.Outbounds,
+ 		defaultTag:                   options.Default,
++		forceDefault:                 options.ForceDefault,
+ 		outbounds:                    make(map[string]adapter.Outbound),
+ 		history:                      service.PtrFromContext[urltest.HistoryStorage](ctx),
+ 		interruptGroup:               interrupt.NewGroup(),
+@@ -81,7 +83,7 @@ func (s *Selector) Start() error {
+ 		s.outbounds[tag] = detour
+ 	}
+ 
+-	if s.Tag() != "" {
++	if s.Tag() != "" && !s.forceDefault {
+ 		cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
+ 		if cacheFile != nil {
+ 			selected := cacheFile.LoadSelected(s.Tag())
 diff --git a/transport/v2ray/transport.go b/transport/v2ray/transport.go
 index ab52f55..f775a49 100644
 --- a/transport/v2ray/transport.go

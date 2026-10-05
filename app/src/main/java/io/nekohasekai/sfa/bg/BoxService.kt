@@ -148,12 +148,16 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
 
-            val content = sanitizeRuntimeConfig(File(profile.typed.path).readText())
+            val selected = org.json.JSONObject(Settings.outboundSelections)
+                .optJSONObject(selectedProfileId.toString())?.toString().orEmpty()
+            val content = sanitizeRuntimeConfig(io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
+                File(profile.typed.path).readText(), selected,
+            ))
             if (content.isBlank()) {
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
             }
-            val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content), Settings.ruleSetUpdateInterval)
+            val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content, Settings.routingConfigJson), Settings.ruleSetUpdateInterval)
 
             lastProfileName = profile.name
             withContext(Dispatchers.Main) {
@@ -238,12 +242,16 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             return
         }
 
-        val content = sanitizeRuntimeConfig(File(profile.typed.path).readText())
+        val selected = org.json.JSONObject(Settings.outboundSelections)
+                .optJSONObject(selectedProfileId.toString())?.toString().orEmpty()
+            val content = sanitizeRuntimeConfig(io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
+                File(profile.typed.path).readText(), selected,
+            ))
         if (content.isBlank()) {
             stopAndAlert(Alert.EmptyConfiguration)
             return
         }
-        val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content), Settings.ruleSetUpdateInterval)
+        val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content, Settings.routingConfigJson), Settings.ruleSetUpdateInterval)
         lastProfileName = profile.name
         try {
             commandServer.startOrReloadService(

@@ -170,7 +170,7 @@ jobs:
           unzip -q /tmp/xray.zip -d /tmp/xray
           cd sing-box-core
           XHTTP_XRAY_BINARY=/tmp/xray/xray go test -race -timeout 5m \
-            -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./transport/v2rayxhttp ./transport/v2ray ./option
+            -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./transport/v2rayxhttp ./transport/v2ray ./option ./experimental/libbox
 
       - name: Test proxy share-link import
         shell: bash

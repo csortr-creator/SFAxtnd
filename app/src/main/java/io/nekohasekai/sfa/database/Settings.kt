@@ -45,6 +45,8 @@ object Settings {
     /** TUN network stack: system | gvisor | mixed */
     var tunStack by dataStore.string(SettingsKey.TUN_STACK) { "system" }
 
+    var outboundSelections by dataStore.string("outbound_selections") { "{}" }
+
     var selectedProfile by dataStore.long(SettingsKey.SELECTED_PROFILE) { -1L }
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)

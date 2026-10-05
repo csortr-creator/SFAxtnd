@@ -12,7 +12,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
@@ -141,7 +140,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // Required by android-tree-sitter
         isCoreLibraryDesugaringEnabled = true
     }
 
@@ -154,6 +152,11 @@ android {
         aidl = true
         compose = true
         buildConfig = true
+    }
+
+    // Kotlin 1.9.x: Compose via compiler extension (kotlin.plugin.compose requires Kotlin 2.0+)
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {
@@ -183,12 +186,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
-    // libbox
     "playImplementation"(files("libs/libbox.aar"))
     "otherImplementation"(files("libs/libbox.aar"))
     "otherLegacyImplementation"(files("libs/libbox-legacy.aar"))
 
-    // API level specific versions
     val lifecycleVersion24 = "2.11.0"
     val roomVersion24 = "2.8.4"
     val workVersion24 = "2.11.2"
@@ -207,7 +208,6 @@ dependencies {
     val coreVersion21 = "1.17.0"
     val materialVersion21 = "1.13.0"
 
-    // Common dependencies (no API level difference)
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("androidx.navigation:navigation-fragment-ktx:2.9.8")
@@ -222,7 +222,6 @@ dependencies {
     }
     implementation("com.google.guava:guava:33.6.0-android")
 
-    // API 24+ dependencies (play/other)
     "playImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion24")
     "playImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion24")
     "playImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion24")
@@ -252,7 +251,6 @@ dependencies {
     "otherImplementation"("com.google.android.material:material:$materialVersion24")
     "kspOther"("androidx.room:room-compiler:$roomVersion24")
 
-    // API 21 dependencies (otherLegacy)
     "otherLegacyImplementation"("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion21")
     "otherLegacyImplementation"("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion21")
     "otherLegacyImplementation"("androidx.lifecycle:lifecycle-process:$lifecycleVersion21")
@@ -267,7 +265,6 @@ dependencies {
     "otherLegacyImplementation"("com.google.android.material:material:$materialVersion21")
     "kspOtherLegacy"("androidx.room:room-compiler:$roomVersion21")
 
-    // Configuration editor: sora-editor (tree-sitter) for API 24+, EditorKit kept for legacy
     val soraVersion = "0.23.6"
     val treeSitterVersion = "4.3.2"
     "playImplementation"("io.github.Rosemoe.sora-editor:editor:$soraVersion")
@@ -281,18 +278,15 @@ dependencies {
     "otherLegacyImplementation"("com.blacksquircle.ui:editorkit:2.2.0")
     "otherLegacyImplementation"("com.blacksquircle.ui:language-json:2.2.0")
 
-    // Play Store specific
     "playImplementation"("com.google.android.play:app-update-ktx:2.1.0")
     "playImplementation"("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
 
-    // Shizuku (play and other flavors, API 24+ only)
     val shizukuVersion = "13.1.5"
     "playImplementation"("dev.rikka.shizuku:api:$shizukuVersion")
     "playImplementation"("dev.rikka.shizuku:provider:$shizukuVersion")
     "otherImplementation"("dev.rikka.shizuku:api:$shizukuVersion")
     "otherImplementation"("dev.rikka.shizuku:provider:$shizukuVersion")
 
-    // libsu for ROOT package query (all flavors)
     val libsuVersion = "6.0.0"
     "playImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
     "playImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
@@ -301,7 +295,6 @@ dependencies {
     "otherLegacyImplementation"("com.github.topjohnwu.libsu:core:$libsuVersion")
     "otherLegacyImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
 
-    // Compose dependencies - API 24+ (play/other)
     val composeBom24 = platform("androidx.compose:compose-bom:2026.06.01")
     val activityVersion24 = "1.13.0"
     val lifecycleComposeVersion24 = "2.11.0"
@@ -328,7 +321,6 @@ dependencies {
     "otherImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion24")
     "otherImplementation"("androidx.compose.runtime:runtime-livedata")
 
-    // Compose dependencies - API 21 (otherLegacy)
     val composeBom21 = platform("androidx.compose:compose-bom:2025.01.00")
     val activityVersion21 = "1.11.0"
     val lifecycleComposeVersion21 = "2.9.4"
@@ -344,7 +336,6 @@ dependencies {
     "otherLegacyImplementation"("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleComposeVersion21")
     "otherLegacyImplementation"("androidx.compose.runtime:runtime-livedata")
 
-    // Debug/Test dependencies
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     "androidTestPlayImplementation"(composeBom24)
@@ -352,13 +343,9 @@ dependencies {
     "androidTestOtherLegacyImplementation"(composeBom21)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
-    // Common Compose-related libraries
     implementation("sh.calvin.reorderable:reorderable:3.1.0")
     implementation("com.github.jeziellago:compose-markdown:0.7.2")
     implementation("org.kodein.emoji:emoji-kt:2.5.0")
-
-    // Terminal emulator
-
 }
 
 val playCredentialsJSON = rootProject.file("service-account-credentials.json")
@@ -368,7 +355,7 @@ if (playCredentialsJSON.exists()) {
         defaultToAppBundles.set(true)
         val version = getVersionProps("VERSION_NAME")
         track.set(
-            if (version.contains("alpha") || version.contains("beta")/* || version.contains("rc")*/) {
+            if (version.contains("alpha") || version.contains("beta")) {
                 "beta"
             } else {
                 "production"

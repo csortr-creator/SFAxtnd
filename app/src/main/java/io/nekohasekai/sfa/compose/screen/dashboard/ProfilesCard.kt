@@ -89,7 +89,6 @@ fun ProfilesCard(
     selectedProfileId: Long,
     isLoading: Boolean,
     showAddProfileSheet: Boolean,
-    showProfilePickerSheet: Boolean,
     updatingProfileId: Long? = null,
     updatedProfileId: Long? = null,
     onProfileSelected: (Long) -> Unit,
@@ -101,8 +100,6 @@ fun ProfilesCard(
     onProfileMove: (Int, Int) -> Unit,
     onShowAddProfileSheet: () -> Unit,
     onHideAddProfileSheet: () -> Unit,
-    onShowProfilePickerSheet: () -> Unit,
-    onHideProfilePickerSheet: () -> Unit,
     onOpenNewProfile: (NewProfileArgs) -> Unit,
 ) {
     val context = LocalContext.current
@@ -429,17 +426,6 @@ fun ProfilesCard(
         }
     }
 
-    if (showProfilePickerSheet) {
-        ProfilePickerSheet(
-            profiles = profiles,
-            selectedProfileId = selectedProfileId,
-            onProfileSelected = { profile -> onProfileSelected(profile.id) },
-            onProfileEdit = onProfileEdit,
-            onProfileDelete = onProfileDelete,
-            onProfileMove = onProfileMove,
-            onDismiss = onHideProfilePickerSheet,
-        )
-    }
 
     if (showAddProfileSheet) {
         ModalBottomSheet(
@@ -705,61 +691,6 @@ private suspend fun createProfileContent(profile: Profile): ByteArray {
     return content.encode()
 }
 
-@Composable
-private fun ProfileInfoRow(profile: Profile?) {
-    if (profile == null) return
-
-    val context = LocalContext.current
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                imageVector = if (profile.typed.type == TypedProfile.Type.Remote) {
-                    Icons.Default.Cloud
-                } else {
-                    Icons.Outlined.Description
-                },
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = if (profile.typed.type == TypedProfile.Type.Remote) {
-                    stringResource(R.string.profile_type_remote)
-                } else {
-                    stringResource(R.string.profile_type_local)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        if (profile.typed.type == TypedProfile.Type.Remote) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AccessTime,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = RelativeTimeFormatter.format(context, profile.typed.lastUpdated),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ProfileActionRow(

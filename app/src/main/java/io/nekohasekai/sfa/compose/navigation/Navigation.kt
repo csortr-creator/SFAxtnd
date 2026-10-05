@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -43,26 +45,47 @@ import io.nekohasekai.sfa.compose.screen.tools.TailscaleStatusViewModel
 import io.nekohasekai.sfa.compose.screen.usbip.USBIPStatusViewModel
 import io.nekohasekai.sfa.constant.Status
 
-private val slideInFromRight: AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.EnterTransition = {
-    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(300))
-}
+private val slideInFromRight:
+    AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.EnterTransition =
+    {
+        slideIntoContainer(
+            AnimatedContentTransitionScope.SlideDirection.Left,
+            animationSpec = tween(300),
+        )
+    }
 
-private val slideOutToRight: AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.ExitTransition = {
-    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(300))
-}
+private val slideOutToRight:
+    AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.ExitTransition =
+    {
+        slideOutOfContainer(
+            AnimatedContentTransitionScope.SlideDirection.Right,
+            animationSpec = tween(300),
+        )
+    }
 
-private val slideInFromLeft: AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.EnterTransition = {
-    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(300))
-}
+private val slideInFromLeft:
+    AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.EnterTransition =
+    {
+        slideIntoContainer(
+            AnimatedContentTransitionScope.SlideDirection.Right,
+            animationSpec = tween(300),
+        )
+    }
 
-private val slideOutToLeft: AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.ExitTransition = {
-    slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(300))
-}
+private val slideOutToLeft:
+    AnimatedContentTransitionScope<*>.() -> androidx.compose.animation.ExitTransition =
+    {
+        slideOutOfContainer(
+            AnimatedContentTransitionScope.SlideDirection.Left,
+            animationSpec = tween(300),
+        )
+    }
 
 @Composable
 fun NavHost(
     navController: NavHostController,
     serviceStatus: Status = Status.Stopped,
+    onToggleConnection: () -> Unit = {},
     showStartFab: Boolean = false,
     showStatusBar: Boolean = false,
     newProfileArgs: NewProfileArgs = NewProfileArgs(),
@@ -89,17 +112,24 @@ fun NavHost(
         modifier = modifier,
     ) {
         composable(Screen.Dashboard.route) {
+            val dashboard = dashboardViewModel?.uiState?.collectAsState()?.value
             if (groupsViewModel != null) {
                 GroupsCard(
                     serviceStatus = serviceStatus,
                     viewModel = groupsViewModel,
                     showTopBar = true,
+                    profiles = dashboard?.profiles.orEmpty(),
+                    onProfileSelected = { dashboardViewModel?.selectProfile(it) },
+                    onToggleConnection = onToggleConnection,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 GroupsCard(
                     serviceStatus = serviceStatus,
                     showTopBar = true,
+                    profiles = dashboard?.profiles.orEmpty(),
+                    onProfileSelected = { dashboardViewModel?.selectProfile(it) },
+                    onToggleConnection = onToggleConnection,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -122,9 +152,7 @@ fun NavHost(
             }
         }
 
-        composable(Screen.Routing.route) {
-            RoutingSettingsScreen(navController = navController)
-        }
+        composable(Screen.Routing.route) { RoutingSettingsScreen(navController = navController) }
 
         composable(Screen.Subscriptions.route) {
             if (dashboardViewModel != null) {
@@ -188,9 +216,7 @@ fun NavHost(
         }
 
         composable(ProfileRoutes.NewProfile) {
-            DisposableEffect(Unit) {
-                onDispose { onClearNewProfileArgs() }
-            }
+            DisposableEffect(Unit) { onDispose { onClearNewProfileArgs() } }
             NewProfileScreen(
                 importName = newProfileArgs.importName,
                 importUrl = newProfileArgs.importUrl,
@@ -202,9 +228,7 @@ fun NavHost(
                 onProfileCreated = { profileId ->
                     onClearNewProfileArgs()
                     navController.navigate(ProfileRoutes.editProfile(profileId)) {
-                        popUpTo(ProfileRoutes.NewProfile) {
-                            inclusive = true
-                        }
+                        popUpTo(ProfileRoutes.NewProfile) { inclusive = true }
                     }
                 },
             )
@@ -212,11 +236,7 @@ fun NavHost(
 
         composable(
             route = ProfileRoutes.EditProfile,
-            arguments = listOf(
-                navArgument("profileId") {
-                    type = NavType.LongType
-                },
-            ),
+            arguments = listOf(navArgument("profileId") { type = NavType.LongType }),
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getLong("profileId") ?: -1L
             EditProfileRoute(
@@ -247,9 +267,7 @@ fun NavHost(
                 }
             }
         }
-        composable(Screen.Settings.route) {
-            SettingsScreen(navController = navController)
-        }
+        composable(Screen.Settings.route) { SettingsScreen(navController = navController) }
 
         // Settings subscreens with slide animations
         composable(
@@ -303,6 +321,19 @@ fun NavHost(
         }
 
         composable(
+            route = "settings/routing/section/{section}",
+            enterTransition = slideInFromRight,
+            exitTransition = slideOutToLeft,
+            popEnterTransition = slideInFromLeft,
+            popExitTransition = slideOutToRight,
+        ) { entry ->
+            RoutingSettingsScreen(
+                navController,
+                section = entry.arguments?.getString("section") ?: "overview",
+            )
+        }
+
+        composable(
             route = "settings/routing/rule/{index}",
             enterTransition = slideInFromRight,
             exitTransition = slideOutToLeft,
@@ -344,7 +375,10 @@ fun NavHost(
             popExitTransition = slideOutToRight,
         ) { backStackEntry ->
             val isDarkStr = backStackEntry.arguments?.getString("isDark") ?: "false"
-            TailscaleGhosttyConfigEditorScreen(navController = navController, isDark = isDarkStr == "true")
+            TailscaleGhosttyConfigEditorScreen(
+                navController = navController,
+                isDark = isDarkStr == "true",
+            )
         }
 
         composable(

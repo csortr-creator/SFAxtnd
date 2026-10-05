@@ -1,60 +1,45 @@
 package io.nekohasekai.sfa.compose.screen.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.automirrored.outlined.TextSnippet
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.Badge
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalUriHandler
-
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.BuildConfig
+import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.compose.component.PreferenceSection
+import io.nekohasekai.sfa.compose.component.RoutingSectionLink
 import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
@@ -72,24 +57,18 @@ fun SettingsScreen(navController: NavController) {
             title = { Text(stringResource(R.string.title_settings)) },
             actions = {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Menu"
-                    )
+                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Menu")
                 }
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
                         text = { Text("Информация о приложении") },
                         onClick = {
                             showMenu = false
                             showAboutDialog = true
-                        }
+                        },
                     )
                 }
-            }
+            },
         )
     }
 
@@ -98,18 +77,14 @@ fun SettingsScreen(navController: NavController) {
             onDismissRequest = { showAboutDialog = false },
             title = { Text("SFAxtnd") },
             text = { Text("Версия ${BuildConfig.VERSION_NAME}\nКлиент sing-box для Android") },
-            confirmButton = {
-                TextButton(onClick = { showAboutDialog = false }) {
-                    Text("OK")
-                }
-            },
+            confirmButton = { TextButton(onClick = { showAboutDialog = false }) { Text("OK") } },
             dismissButton = {
-                TextButton(onClick = {
-                    uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd")
-                }) {
+                TextButton(
+                    onClick = { uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd") }
+                ) {
                     Text("GitHub")
                 }
-            }
+            },
         )
     }
 
@@ -121,255 +96,74 @@ fun SettingsScreen(navController: NavController) {
 
     Column(
         modifier =
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .verticalScroll(rememberScrollState())
-            .padding(
-                top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
-            ),
+            Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                    bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
+                )
     ) {
-        // General Settings Group
-        Card(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        ) {
-            Column {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.title_app_settings),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        if (hasUpdate) {
-                            Badge(containerColor = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                        .clickable { navController.navigate("settings/app") },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
-
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.core),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clickable { navController.navigate("settings/core") },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.service),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Tune,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clickable { navController.navigate("settings/service") },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.title_log),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.TextSnippet,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
-                        .clickable { navController.navigate(Screen.Log.route) },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
+        PreferenceSection("Подключение", Icons.Outlined.Shield) {
+            RoutingSectionLink(
+                "Сервис VPN",
+                "Запуск, режим работы и системные настройки",
+                Icons.Outlined.Tune,
+            ) {
+                navController.navigate("settings/service")
+            }
+            RoutingSectionLink("Ядро", "Параметры sing-box", Icons.Outlined.Settings) {
+                navController.navigate("settings/core")
             }
         }
-        // About Section
-        Text(
-            text = stringResource(R.string.about),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-        )
-
-        Card(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-        ) {
-            Column {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.error_deprecated_documentation),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Description,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                        .clickable {
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                            intent.data = android.net.Uri.parse("https://sing-box.sagernet.org/")
-                            context.startActivity(intent)
-                        },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
-
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.source_code),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Code,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clickable {
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                            intent.data =
-                                android.net.Uri.parse("https://github.com/csortr-creator/SFAxtnd/releases")
-                            context.startActivity(intent)
-                        },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
-
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            stringResource(R.string.sponsor),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            imageVector = Icons.Outlined.Favorite,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
-                        .clickable {
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                            intent.data = android.net.Uri.parse("https://sekai.icu/sponsors/")
-                            context.startActivity(intent)
-                        },
-                    colors =
-                    ListItemDefaults.colors(
-                        containerColor = Color.Transparent,
-                    ),
-                )
+        PreferenceSection("Приложение", Icons.Outlined.Palette) {
+            RoutingSectionLink(
+                "Оформление и настройки",
+                if (hasUpdate) "Доступно обновление" else "Тема, язык и обновления",
+                Icons.Outlined.Palette,
+            ) {
+                navController.navigate("settings/app")
             }
         }
-
+        PreferenceSection("Диагностика", Icons.Outlined.BugReport) {
+            RoutingSectionLink(
+                "Журнал событий",
+                "Подробности работы и ошибок подключения",
+                Icons.Outlined.ReceiptLong,
+            ) {
+                navController.navigate(Screen.Log.route)
+            }
+        }
+        PreferenceSection("О приложении", Icons.Outlined.Info) {
+            RoutingSectionLink(
+                "SFAxtnd",
+                "Версия ${BuildConfig.VERSION_NAME}",
+                Icons.Outlined.Info,
+            ) {
+                showAboutDialog = true
+            }
+            RoutingSectionLink(
+                "Релизы",
+                "Обновления SFAxtnd на GitHub",
+                Icons.Outlined.SystemUpdate,
+            ) {
+                uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd/releases")
+            }
+            RoutingSectionLink(
+                "Документация",
+                "Возможности и параметры sing-box",
+                Icons.Outlined.MenuBook,
+            ) {
+                uriHandler.openUri("https://sing-box.sagernet.org/")
+            }
+            RoutingSectionLink(
+                "Поддержать sing-box",
+                "Разработчики сетевого ядра",
+                Icons.Outlined.FavoriteBorder,
+            ) {
+                uriHandler.openUri("https://sekai.icu/sponsors/")
+            }
+        }
         Spacer(modifier = Modifier.height(16.dp))
     }
 }

@@ -2,18 +2,11 @@ package io.nekohasekai.sfa.compose.screen.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
-import androidx.compose.ui.graphics.Color
-import io.nekohasekai.sfa.compose.component.PreferenceSection
-import io.nekohasekai.sfa.utils.RoutingPresets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,14 +21,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -43,12 +36,13 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,11 +50,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.compose.component.PreferenceSection
+import io.nekohasekai.sfa.compose.component.RoutingSectionLink
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.database.Settings
@@ -68,6 +68,7 @@ import io.nekohasekai.sfa.models.DnsConfig
 import io.nekohasekai.sfa.models.DnsServer
 import io.nekohasekai.sfa.models.GeoFileSources
 import io.nekohasekai.sfa.models.RoutingRule
+import io.nekohasekai.sfa.utils.RoutingPresets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,14 +77,25 @@ import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun RoutingSettingsScreen(
-    navController: NavController,
-) {
+fun RoutingSettingsScreen(navController: NavController, section: String = "overview") {
     OverrideTopBar {
         TopAppBar(
-            title = { Text("Маршруты") },
+            title = {
+                Text(
+                    when (section) {
+                        "rules" -> "Правила маршрутизации"
+                        "dns" -> "DNS"
+                        "connection" -> "Параметры подключения"
+                        "sources" -> "Наборы правил"
+                        else -> "Маршруты"
+                    }
+                )
+            },
             navigationIcon = {
-                if (navController.previousBackStackEntry != null) {
+                if (
+                    section != "overview" ||
+                        navController.currentDestination?.route == "settings/routing"
+                ) {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -154,7 +166,8 @@ fun RoutingSettingsScreen(
         updateInterval = nextUpdateInterval
         Settings.ruleSetUpdateInterval = nextUpdateInterval
         rules = nextRules
-        Settings.routingConfigJson = encodeRoutingConfig(
+        Settings.routingConfigJson =
+            encodeRoutingConfig(
                 nextStrategy,
                 nextCache,
                 nextReverse,
@@ -167,23 +180,46 @@ fun RoutingSettingsScreen(
             )
     }
 
-    LaunchedEffect(Unit) {
-        val raw = withContext(Dispatchers.IO) { Settings.routingConfigJson }
-        val parsed = decodeRoutingConfig(raw)
-        strategy = parsed.strategy
-        cacheEnabled = parsed.cacheEnabled
-        independentCache = parsed.independentCache
-        reverseMapping = parsed.reverseMapping
-        finalServer = parsed.finalServer
-        servers = parsed.servers
-        geoSourceId = parsed.geoSourceId
-        geoGeositeUrl = parsed.geoGeositeUrl
-        geoGeoipUrl = parsed.geoGeoipUrl
-        rules = parsed.rules
-        loaded = true
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, section) {
+        var reloadJob: kotlinx.coroutines.Job? = null
+        fun reload() {
+            reloadJob?.cancel()
+            reloadJob =
+                scope.launch {
+                    val raw = withContext(Dispatchers.IO) { Settings.routingConfigJson }
+                    val parsed = decodeRoutingConfig(raw)
+                    strategy = parsed.strategy
+                    cacheEnabled = parsed.cacheEnabled
+                    independentCache = parsed.independentCache
+                    reverseMapping = parsed.reverseMapping
+                    finalServer = parsed.finalServer
+                    servers = parsed.servers
+                    geoSourceId = parsed.geoSourceId
+                    geoGeositeUrl = parsed.geoGeositeUrl
+                    geoGeoipUrl = parsed.geoGeoipUrl
+                    rules = parsed.rules
+                    blockIpv6 = Settings.routingBlockIpv6
+                    tunStack = Settings.tunStack
+                    updateInterval = Settings.ruleSetUpdateInterval
+                    loaded = true
+                }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) reload()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        reload()
+        onDispose {
+            reloadJob?.cancel()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     if (!loaded) {
+        Box(Modifier.fillMaxSize().padding(scaffoldPadding), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator()
+        }
         return
     }
 
@@ -198,194 +234,583 @@ fun RoutingSettingsScreen(
 
     val itemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
     Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
-            .verticalScroll(rememberScrollState())
-            .padding(top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 24.dp),
+        modifier =
+            Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                    bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
+                )
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Outlined.Route, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                Column {
-                    Text("Как направлять трафик", style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    Text("Выберите пресет или добавьте свои правила. Изменения применятся при следующем подключении.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer)
+        if (section == "overview") {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(
+                        Icons.Outlined.Route,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Column {
+                        Text(
+                            "Как направлять трафик",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Text(
+                            "Выберите пресет или добавьте свои правила. Изменения применятся при следующем подключении.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
                 }
             }
         }
-        PreferenceSection("Пресеты", Icons.Outlined.AutoAwesome, "Готовые настройки в одно касание") {
-            ListItem(
-                headlineContent = { Text("Whitelist · Россия") },
-                supportingContent = { Text("Разрешённые домены и IP напрямую, остальной трафик через сервер. Списки hydraponique.") },
-                leadingContent = { Icon(Icons.Outlined.VerifiedUser, null, tint = MaterialTheme.colorScheme.primary) },
-                trailingContent = {
-                    if (rules.any { it.enabled && it.ruleSet == RoutingPresets.WHITELIST_DOMAINS })
-                        Icon(Icons.Default.Check, "Пресет включён", tint = MaterialTheme.colorScheme.primary)
-                },
-                colors = itemColors,
-                modifier = Modifier.clickable { persist(nextRules = RoutingPresets.whitelist(rules)) },
-            )
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            Text("Маршрутизация", style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = rules.any { it.name == "ru-ip" && it.enabled }, onClick = {
-                    val keep = rules.filter { it.name !in setOf("ru-sites", "ru-ip") && it.ruleSet !in RoutingPresets.remoteRuleSets }
-                    persist(nextGeoSourceId = GeoFileSources.SAGERNET.id, nextRules = keep + listOf(
-                        RoutingRule(name = "ru-sites", domainSuffix = ".ru", outbound = RoutingRule.OUTBOUND_DIRECT),
-                        RoutingRule(name = "ru-ip", ruleSet = "geoip-ru", outbound = RoutingRule.OUTBOUND_DIRECT)))
-                }, label = { Text("Россия напрямую") }, leadingIcon = { Icon(Icons.Outlined.Public, null) })
-                FilterChip(selected = rules.any { it.name == "ads" && it.enabled }, onClick = {
-                    persist(nextRules = rules.filter { it.name != "ads" } + RoutingRule(
-                        name = "ads", ruleSet = "geosite-category-ads-all", outbound = RoutingRule.OUTBOUND_BLOCK))
-                }, label = { Text("Без рекламы") }, leadingIcon = { Icon(Icons.Outlined.Block, null) })
-                TextButton(onClick = { persist(nextRules = emptyList()) }) { Text("Сброс правил") }
-            }
-            Text("DNS", style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = finalServer == "cld" && servers.any { it.tag == "ynd" }, onClick = {
-                    persist(nextStrategy = DnsConfig.Strategy.IPV4_ONLY, nextCache = true, nextReverse = true,
-                        nextFinal = "cld", nextServers = listOf(DnsServer("cld", "https://1.1.1.1/dns-query", "proxy"),
-                            DnsServer("ynd", "77.88.8.8", "direct")))
-                }, label = { Text("Cloudflare + Яндекс") })
-                FilterChip(selected = finalServer == "cld" && servers.size == 1, onClick = {
-                    persist(nextStrategy = DnsConfig.Strategy.IPV4_ONLY, nextCache = true, nextReverse = false,
-                        nextFinal = "cld", nextServers = listOf(DnsServer("cld", "https://1.1.1.1/dns-query", "proxy")))
-                }, label = { Text("Cloudflare") })
-                TextButton(onClick = { persist(nextStrategy = DnsConfig.Strategy.AUTO, nextCache = true,
-                    nextReverse = false, nextFinal = "", nextServers = emptyList()) }) { Text("Сброс DNS") }
-            }
-        }
-
-        PreferenceSection("Правила", Icons.Outlined.AltRoute, "Включено ${rules.count { it.enabled }} из ${rules.size}",
-            action = { IconButton(onClick = { navController.navigate("settings/routing/rule/-1") }) {
-                Icon(Icons.Default.Add, "Добавить правило")
-            } }) {
-            if (rules.isEmpty()) EmptyStateBox("Для остальных сайтов используются маршруты подписки", "Добавить правило") {
-                navController.navigate("settings/routing/rule/-1")
-            }
-            rules.forEachIndexed { index, rule ->
-                var menuOpen by remember(rule.displayTitle(), index) { mutableStateOf(false) }
+        if (section == "overview") {
+            PreferenceSection(
+                "Пресеты",
+                Icons.Outlined.AutoAwesome,
+                "Готовые настройки в одно касание",
+            ) {
                 ListItem(
-                    headlineContent = { Text(rule.displayTitle(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(rule.displaySubtitle(), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = { Icon(when (rule.outbound) {
-                        "direct" -> Icons.Outlined.Public
-                        "block" -> Icons.Outlined.Block
-                        else -> Icons.Outlined.Shield
-                    }, null, tint = if (rule.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
+                    headlineContent = { Text("Whitelist · Россия") },
+                    supportingContent = {
+                        Text("Разрешённые домены и IP напрямую, остальной трафик через сервер.")
+                    },
+                    leadingContent = {
+                        Icon(
+                            Icons.Outlined.VerifiedUser,
+                            null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    },
                     trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Switch(checked = rule.enabled, onCheckedChange = { on ->
-                                persist(nextRules = rules.toMutableList().also { it[index] = rule.copy(enabled = on) })
-                            })
-                            Box {
-                                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Действия с правилом") }
-                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                    DropdownMenuItem(text = { Text("Изменить") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                                        onClick = { menuOpen = false; navController.navigate("settings/routing/rule/$index") })
-                                    DropdownMenuItem(text = { Text("Удалить") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) },
-                                        onClick = { menuOpen = false; persist(nextRules = rules.toMutableList().also { it.removeAt(index) }) })
-                                }
+                        if (
+                            rules.any {
+                                it.enabled && it.ruleSet == RoutingPresets.WHITELIST_DOMAINS
                             }
-                        }
+                        )
+                            Icon(
+                                Icons.Default.Check,
+                                "Пресет включён",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                     },
                     colors = itemColors,
-                    modifier = Modifier.clickable { navController.navigate("settings/routing/rule/$index") },
+                    modifier =
+                        Modifier.clickable { persist(nextRules = RoutingPresets.whitelist(rules)) },
                 )
-                if (index < rules.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant)
-            }
-        }
-
-        PreferenceSection("DNS", Icons.Outlined.Dns,
-            "${strategyLabel(strategy)} · " + if (servers.isEmpty()) "Из подписки" else "Серверов: ${servers.size}",
-            collapsible = true, initiallyExpanded = false) {
-            ListItem(headlineContent = { Text("Стратегия адресов") }, supportingContent = { Text(strategyLabel(strategy)) },
-                trailingContent = { Icon(Icons.Outlined.ExpandMore, null) }, colors = itemColors,
-                modifier = Modifier.clickable { strategyMenuOpen = true })
-            DropdownMenu(expanded = strategyMenuOpen, onDismissRequest = { strategyMenuOpen = false }) {
-                DnsConfig.Strategy.entries.forEach { item -> DropdownMenuItem(text = { Text(strategyLabel(item)) },
-                    onClick = { strategyMenuOpen = false; persist(nextStrategy = item) }) }
-            }
-            ListItem(headlineContent = { Text("Кэш запросов") }, supportingContent = { Text("Повторные запросы разрешаются быстрее") },
-                trailingContent = { Switch(checked = cacheEnabled, onCheckedChange = { persist(nextCache = it) }) }, colors = itemColors)
-            ListItem(headlineContent = { Text("Обратное сопоставление") }, supportingContent = { Text("Связывать адреса с доменами для правил") },
-                trailingContent = { Switch(checked = reverseMapping, onCheckedChange = { persist(nextReverse = it) }) }, colors = itemColors)
-            var finalMenu by remember { mutableStateOf(false) }
-            ListItem(headlineContent = { Text("Сервер по умолчанию") },
-                supportingContent = { Text(finalServer.ifBlank { "Из подписки" }) }, colors = itemColors,
-                trailingContent = { Icon(Icons.Outlined.ExpandMore, null) }, modifier = Modifier.clickable { finalMenu = true })
-            DropdownMenu(expanded = finalMenu, onDismissRequest = { finalMenu = false }) {
-                DropdownMenuItem(text = { Text("Из подписки") }, onClick = { finalMenu = false; persist(nextFinal = "") })
-                servers.forEach { server -> DropdownMenuItem(text = { Text(server.tag) },
-                    onClick = { finalMenu = false; persist(nextFinal = server.tag) }) }
-            }
-            SectionHeaderWithAction("DNS-серверы") { openServer() }
-            if (servers.isEmpty()) Text("Используются серверы подписки", style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            servers.forEachIndexed { index, server ->
-                ListItem(headlineContent = { Text(server.tag) }, supportingContent = {
-                    Text(server.address + "\n" + if (server.detour == "direct") "Напрямую" else "Через сервер",
-                        maxLines = 3, overflow = TextOverflow.Ellipsis)
-                }, leadingContent = { Icon(Icons.Outlined.Dns, null) }, trailingContent = {
-                    IconButton(onClick = {
-                        val next = servers.toMutableList().also { it.removeAt(index) }
-                        persist(nextServers = next, nextFinal = if (finalServer == server.tag) "" else finalServer)
-                    }) { Icon(Icons.Outlined.Delete, "Удалить DNS-сервер", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }, colors = itemColors, modifier = Modifier.clickable { openServer(index) })
-            }
-        }
-
-        PreferenceSection("Подключение", Icons.Outlined.Tune, "IPv6, сетевой стек и обновления",
-            collapsible = true, initiallyExpanded = false) {
-            ListItem(headlineContent = { Text("Блокировать IPv6") }, supportingContent = { Text("Использовать только IPv4") },
-                trailingContent = { Switch(checked = blockIpv6, onCheckedChange = { persist(nextBlockIpv6 = it) }) }, colors = itemColors)
-            ListItem(headlineContent = { Text("Сетевой стек") }, supportingContent = { Text(tunStack) },
-                trailingContent = { Icon(Icons.Outlined.ExpandMore, null) }, colors = itemColors,
-                modifier = Modifier.clickable { tunStackMenuOpen = true })
-            DropdownMenu(expanded = tunStackMenuOpen, onDismissRequest = { tunStackMenuOpen = false }) {
-                listOf("system", "gvisor", "mixed").forEach { item -> DropdownMenuItem(text = { Text(item) },
-                    onClick = { tunStackMenuOpen = false; persist(nextTunStack = item) }) }
-            }
-            ListItem(headlineContent = { Text("Обновлять списки правил") }, supportingContent = { Text(intervalLabel(updateInterval)) },
-                trailingContent = { Icon(Icons.Outlined.ExpandMore, null) }, colors = itemColors,
-                modifier = Modifier.clickable { intervalMenuOpen = true })
-            DropdownMenu(expanded = intervalMenuOpen, onDismissRequest = { intervalMenuOpen = false }) {
-                listOf(0L, 3600000L, 86400000L, 604800000L, -1L).forEach { interval ->
-                    DropdownMenuItem(text = { Text(intervalLabel(interval)) },
-                        onClick = { intervalMenuOpen = false; persist(nextUpdateInterval = interval) })
+                HorizontalDivider(
+                    Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                Text(
+                    "Маршрутизация",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = rules.any { it.name == "ru-ip" && it.enabled },
+                        onClick = {
+                            val keep =
+                                rules.filter {
+                                    it.name !in setOf("ru-sites", "ru-ip") &&
+                                        it.ruleSet !in RoutingPresets.remoteRuleSets
+                                }
+                            persist(
+                                nextGeoSourceId = GeoFileSources.SAGERNET.id,
+                                nextRules =
+                                    keep +
+                                        listOf(
+                                            RoutingRule(
+                                                name = "ru-sites",
+                                                domainSuffix = ".ru",
+                                                outbound = RoutingRule.OUTBOUND_DIRECT,
+                                            ),
+                                            RoutingRule(
+                                                name = "ru-ip",
+                                                ruleSet = "geoip-ru",
+                                                outbound = RoutingRule.OUTBOUND_DIRECT,
+                                            ),
+                                        ),
+                            )
+                        },
+                        label = { Text("Россия напрямую") },
+                        leadingIcon = { Icon(Icons.Outlined.Public, null) },
+                    )
+                    FilterChip(
+                        selected = rules.any { it.name == "ads" && it.enabled },
+                        onClick = {
+                            persist(
+                                nextRules =
+                                    rules.filter { it.name != "ads" } +
+                                        RoutingRule(
+                                            name = "ads",
+                                            ruleSet = "geosite-category-ads-all",
+                                            outbound = RoutingRule.OUTBOUND_BLOCK,
+                                        )
+                            )
+                        },
+                        label = { Text("Без рекламы") },
+                        leadingIcon = { Icon(Icons.Outlined.Block, null) },
+                    )
+                    TextButton(onClick = { persist(nextRules = emptyList()) }) {
+                        Text("Сброс правил")
+                    }
                 }
             }
         }
-        PreferenceSection("Источники геоданных", Icons.Outlined.Public, "Дополнительные списки доменов и IP",
-            collapsible = true, initiallyExpanded = false) {
-            ListItem(headlineContent = { Text("Из подписки") }, leadingContent = {
-                RadioButton(selected = geoSourceId.isBlank(), onClick = { persist(nextGeoSourceId = "") })
-            }, colors = itemColors, modifier = Modifier.clickable { persist(nextGeoSourceId = "") })
-            GeoFileSources.ALL.forEach { source ->
-                ListItem(headlineContent = { Text(source.name) }, supportingContent = { Text(source.description) },
-                    leadingContent = { RadioButton(selected = geoSourceId == source.id, onClick = { persist(nextGeoSourceId = source.id) }) },
-                    colors = itemColors, modifier = Modifier.clickable { persist(nextGeoSourceId = source.id) })
+        if (section == "overview") {
+            PreferenceSection("Настройки маршрутов", Icons.Outlined.Tune) {
+                RoutingSectionLink(
+                    "Правила",
+                    "Включено ${rules.count { it.enabled }} из ${rules.size}",
+                    Icons.Outlined.AltRoute,
+                ) {
+                    navController.navigate("settings/routing/section/rules")
+                }
+                RoutingSectionLink(
+                    "DNS",
+                    if (servers.isEmpty()) "Из подписки" else "Серверов: ${servers.size}",
+                    Icons.Outlined.Dns,
+                ) {
+                    navController.navigate("settings/routing/section/dns")
+                }
+                RoutingSectionLink(
+                    "Наборы правил",
+                    GeoFileSources.ALL.firstOrNull { it.id == geoSourceId }?.name ?: "Из подписки",
+                    Icons.Outlined.Public,
+                ) {
+                    navController.navigate("settings/routing/section/sources")
+                }
+                RoutingSectionLink(
+                    "Подключение",
+                    if (blockIpv6) "Только IPv4 · $tunStack" else "IPv4 и IPv6 · $tunStack",
+                    Icons.Outlined.Tune,
+                ) {
+                    navController.navigate("settings/routing/section/connection")
+                }
             }
-            TextButton(onClick = { geoAdvanced = !geoAdvanced }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                Text(if (geoAdvanced) "Скрыть свои источники" else "Указать свои источники")
+        }
+
+        if (section == "rules") {
+            PreferenceSection(
+                "Правила",
+                Icons.Outlined.AltRoute,
+                "Включено ${rules.count { it.enabled }} из ${rules.size}",
+                action = {
+                    IconButton(onClick = { navController.navigate("settings/routing/rule/-1") }) {
+                        Icon(Icons.Default.Add, "Добавить правило")
+                    }
+                },
+            ) {
+                if (rules.isEmpty())
+                    EmptyStateBox(
+                        "Для остальных сайтов используются маршруты подписки",
+                        "Добавить правило",
+                    ) {
+                        navController.navigate("settings/routing/rule/-1")
+                    }
+                rules.forEachIndexed { index, rule ->
+                    var menuOpen by remember(rule.displayTitle(), index) { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                rule.displayTitle(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                rule.displaySubtitle(),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                when (rule.outbound) {
+                                    "direct" -> Icons.Outlined.Public
+                                    "block" -> Icons.Outlined.Block
+                                    else -> Icons.Outlined.Shield
+                                },
+                                null,
+                                tint =
+                                    if (rule.enabled) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = rule.enabled,
+                                    onCheckedChange = { on ->
+                                        persist(
+                                            nextRules =
+                                                rules.toMutableList().also {
+                                                    it[index] = rule.copy(enabled = on)
+                                                }
+                                        )
+                                    },
+                                )
+                                Box {
+                                    IconButton(onClick = { menuOpen = true }) {
+                                        Icon(Icons.Default.MoreVert, "Действия с правилом")
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Изменить") },
+                                            leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                                            onClick = {
+                                                menuOpen = false
+                                                navController.navigate(
+                                                    "settings/routing/rule/$index"
+                                                )
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Удалить") },
+                                            leadingIcon = { Icon(Icons.Outlined.Delete, null) },
+                                            onClick = {
+                                                menuOpen = false
+                                                persist(
+                                                    nextRules =
+                                                        rules.toMutableList().also {
+                                                            it.removeAt(index)
+                                                        }
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        colors = itemColors,
+                        modifier =
+                            Modifier.clickable {
+                                navController.navigate("settings/routing/rule/$index")
+                            },
+                    )
+                    if (index < rules.lastIndex)
+                        HorizontalDivider(
+                            Modifier.padding(start = 56.dp, end = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                }
             }
-            androidx.compose.animation.AnimatedVisibility(geoAdvanced) {
-                Column {
-                    OutlinedTextField(value = geoGeositeUrl, onValueChange = { persist(nextGeoGeositeUrl = it) },
-                        label = { Text("Базовый URL доменов") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
-                    OutlinedTextField(value = geoGeoipUrl, onValueChange = { persist(nextGeoGeoipUrl = it) },
-                        label = { Text("Базовый URL IP-адресов") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+        }
+        if (section == "dns") {
+            PreferenceSection("Пресеты DNS", Icons.Outlined.AutoAwesome) {
+                Text(
+                    "DNS",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = finalServer == "cld" && servers.any { it.tag == "ynd" },
+                        onClick = {
+                            persist(
+                                nextStrategy = DnsConfig.Strategy.IPV4_ONLY,
+                                nextCache = true,
+                                nextReverse = true,
+                                nextFinal = "cld",
+                                nextServers =
+                                    listOf(
+                                        DnsServer("cld", "https://1.1.1.1/dns-query", "proxy"),
+                                        DnsServer("ynd", "77.88.8.8", "direct"),
+                                    ),
+                            )
+                        },
+                        label = { Text("Cloudflare + Яндекс") },
+                    )
+                    FilterChip(
+                        selected = finalServer == "cld" && servers.size == 1,
+                        onClick = {
+                            persist(
+                                nextStrategy = DnsConfig.Strategy.IPV4_ONLY,
+                                nextCache = true,
+                                nextReverse = false,
+                                nextFinal = "cld",
+                                nextServers =
+                                    listOf(DnsServer("cld", "https://1.1.1.1/dns-query", "proxy")),
+                            )
+                        },
+                        label = { Text("Cloudflare") },
+                    )
+                    TextButton(
+                        onClick = {
+                            persist(
+                                nextStrategy = DnsConfig.Strategy.AUTO,
+                                nextCache = true,
+                                nextReverse = false,
+                                nextFinal = "",
+                                nextServers = emptyList(),
+                            )
+                        }
+                    ) {
+                        Text("Сброс DNS")
+                    }
+                }
+            }
+
+            PreferenceSection(
+                "DNS",
+                Icons.Outlined.Dns,
+                "${strategyLabel(strategy)} · " +
+                    if (servers.isEmpty()) "Из подписки" else "Серверов: ${servers.size}",
+                collapsible = false,
+            ) {
+                ListItem(
+                    headlineContent = { Text("Стратегия адресов") },
+                    supportingContent = { Text(strategyLabel(strategy)) },
+                    trailingContent = { Icon(Icons.Outlined.ExpandMore, null) },
+                    colors = itemColors,
+                    modifier = Modifier.clickable { strategyMenuOpen = true },
+                )
+                DropdownMenu(
+                    expanded = strategyMenuOpen,
+                    onDismissRequest = { strategyMenuOpen = false },
+                ) {
+                    DnsConfig.Strategy.entries.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(strategyLabel(item)) },
+                            onClick = {
+                                strategyMenuOpen = false
+                                persist(nextStrategy = item)
+                            },
+                        )
+                    }
+                }
+                ListItem(
+                    headlineContent = { Text("Кэш запросов") },
+                    supportingContent = { Text("Повторные запросы разрешаются быстрее") },
+                    trailingContent = {
+                        Switch(
+                            checked = cacheEnabled,
+                            onCheckedChange = { persist(nextCache = it) },
+                        )
+                    },
+                    colors = itemColors,
+                )
+                ListItem(
+                    headlineContent = { Text("Обратное сопоставление") },
+                    supportingContent = { Text("Связывать адреса с доменами для правил") },
+                    trailingContent = {
+                        Switch(
+                            checked = reverseMapping,
+                            onCheckedChange = { persist(nextReverse = it) },
+                        )
+                    },
+                    colors = itemColors,
+                )
+                var finalMenu by remember { mutableStateOf(false) }
+                ListItem(
+                    headlineContent = { Text("Сервер по умолчанию") },
+                    supportingContent = { Text(finalServer.ifBlank { "Из подписки" }) },
+                    colors = itemColors,
+                    trailingContent = { Icon(Icons.Outlined.ExpandMore, null) },
+                    modifier = Modifier.clickable { finalMenu = true },
+                )
+                DropdownMenu(expanded = finalMenu, onDismissRequest = { finalMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Из подписки") },
+                        onClick = {
+                            finalMenu = false
+                            persist(nextFinal = "")
+                        },
+                    )
+                    servers.forEach { server ->
+                        DropdownMenuItem(
+                            text = { Text(server.tag) },
+                            onClick = {
+                                finalMenu = false
+                                persist(nextFinal = server.tag)
+                            },
+                        )
+                    }
+                }
+                SectionHeaderWithAction("DNS-серверы") { openServer() }
+                if (servers.isEmpty())
+                    Text(
+                        "Используются серверы подписки",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                servers.forEachIndexed { index, server ->
+                    ListItem(
+                        headlineContent = { Text(server.tag) },
+                        supportingContent = {
+                            Text(
+                                server.address +
+                                    "\n" +
+                                    if (server.detour == "direct") "Напрямую" else "Через сервер",
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingContent = { Icon(Icons.Outlined.Dns, null) },
+                        trailingContent = {
+                            IconButton(
+                                onClick = {
+                                    val next = servers.toMutableList().also { it.removeAt(index) }
+                                    persist(
+                                        nextServers = next,
+                                        nextFinal =
+                                            if (finalServer == server.tag) "" else finalServer,
+                                    )
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    "Удалить DNS-сервер",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        colors = itemColors,
+                        modifier = Modifier.clickable { openServer(index) },
+                    )
+                }
+            }
+        }
+        if (section == "connection") {
+            PreferenceSection(
+                "Подключение",
+                Icons.Outlined.Tune,
+                "IPv6, сетевой стек и обновления",
+                collapsible = false,
+            ) {
+                ListItem(
+                    headlineContent = { Text("Блокировать IPv6") },
+                    supportingContent = { Text("Использовать только IPv4") },
+                    trailingContent = {
+                        Switch(
+                            checked = blockIpv6,
+                            onCheckedChange = { persist(nextBlockIpv6 = it) },
+                        )
+                    },
+                    colors = itemColors,
+                )
+                ListItem(
+                    headlineContent = { Text("Сетевой стек") },
+                    supportingContent = { Text(tunStack) },
+                    trailingContent = { Icon(Icons.Outlined.ExpandMore, null) },
+                    colors = itemColors,
+                    modifier = Modifier.clickable { tunStackMenuOpen = true },
+                )
+                DropdownMenu(
+                    expanded = tunStackMenuOpen,
+                    onDismissRequest = { tunStackMenuOpen = false },
+                ) {
+                    listOf("system", "gvisor", "mixed").forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item) },
+                            onClick = {
+                                tunStackMenuOpen = false
+                                persist(nextTunStack = item)
+                            },
+                        )
+                    }
+                }
+                ListItem(
+                    headlineContent = { Text("Обновлять списки правил") },
+                    supportingContent = { Text(intervalLabel(updateInterval)) },
+                    trailingContent = { Icon(Icons.Outlined.ExpandMore, null) },
+                    colors = itemColors,
+                    modifier = Modifier.clickable { intervalMenuOpen = true },
+                )
+                DropdownMenu(
+                    expanded = intervalMenuOpen,
+                    onDismissRequest = { intervalMenuOpen = false },
+                ) {
+                    listOf(0L, 3600000L, 86400000L, 604800000L, -1L).forEach { interval ->
+                        DropdownMenuItem(
+                            text = { Text(intervalLabel(interval)) },
+                            onClick = {
+                                intervalMenuOpen = false
+                                persist(nextUpdateInterval = interval)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (section == "sources") {
+            PreferenceSection(
+                "Источники геоданных",
+                Icons.Outlined.Public,
+                "Дополнительные списки доменов и IP",
+                collapsible = false,
+            ) {
+                ListItem(
+                    headlineContent = { Text("Из подписки") },
+                    leadingContent = {
+                        RadioButton(
+                            selected = geoSourceId.isBlank(),
+                            onClick = { persist(nextGeoSourceId = "") },
+                        )
+                    },
+                    colors = itemColors,
+                    modifier = Modifier.clickable { persist(nextGeoSourceId = "") },
+                )
+                GeoFileSources.ALL.forEach { source ->
+                    ListItem(
+                        headlineContent = { Text(source.name) },
+                        supportingContent = { Text(source.description) },
+                        leadingContent = {
+                            RadioButton(
+                                selected = geoSourceId == source.id,
+                                onClick = { persist(nextGeoSourceId = source.id) },
+                            )
+                        },
+                        colors = itemColors,
+                        modifier = Modifier.clickable { persist(nextGeoSourceId = source.id) },
+                    )
+                }
+                TextButton(
+                    onClick = { geoAdvanced = !geoAdvanced },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) {
+                    Text(if (geoAdvanced) "Скрыть свои источники" else "Указать свои источники")
+                }
+                androidx.compose.animation.AnimatedVisibility(geoAdvanced) {
+                    Column {
+                        OutlinedTextField(
+                            value = geoGeositeUrl,
+                            onValueChange = { persist(nextGeoGeositeUrl = it) },
+                            label = { Text("Базовый URL доменов") },
+                            singleLine = true,
+                            modifier =
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                        OutlinedTextField(
+                            value = geoGeoipUrl,
+                            onValueChange = { persist(nextGeoGeoipUrl = it) },
+                            label = { Text("Базовый URL IP-адресов") },
+                            singleLine = true,
+                            modifier =
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
                 }
             }
         }
@@ -442,11 +867,7 @@ fun RoutingSettingsScreen(
                     Text("Сохранить")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showAddServer = false }) {
-                    Text("Отмена")
-                }
-            },
+            dismissButton = { TextButton(onClick = { showAddServer = false }) { Text("Отмена") } },
         )
     }
 }
@@ -464,9 +885,8 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun SectionHeaderWithAction(title: String, onActionClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
+        modifier =
+            Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -484,9 +904,7 @@ private fun SectionHeaderWithAction(title: String, onActionClick: () -> Unit) {
 @Composable
 private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -511,22 +929,24 @@ private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit)
     }
 }
 
-private fun intervalLabel(intervalMs: Long): String = when (intervalMs) {
-    0L -> "Каждый запуск"
-    60 * 60 * 1000L -> "Раз в час"
-    24 * 60 * 60 * 1000L -> "Раз в день"
-    7 * 24 * 60 * 60 * 1000L -> "Раз в неделю"
-    -1L -> "Никогда (только при отсутствии)"
-    else -> "Пользовательский (${intervalMs / 1000} сек)"
-}
+private fun intervalLabel(intervalMs: Long): String =
+    when (intervalMs) {
+        0L -> "Каждый запуск"
+        60 * 60 * 1000L -> "Раз в час"
+        24 * 60 * 60 * 1000L -> "Раз в день"
+        7 * 24 * 60 * 60 * 1000L -> "Раз в неделю"
+        -1L -> "Никогда (только при отсутствии)"
+        else -> "Пользовательский (${intervalMs / 1000} сек)"
+    }
 
-private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
-    DnsConfig.Strategy.AUTO -> "Auto"
-    DnsConfig.Strategy.PREFER_IPV4 -> "Prefer IPv4"
-    DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
-    DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
-    DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
-}
+private fun strategyLabel(strategy: DnsConfig.Strategy): String =
+    when (strategy) {
+        DnsConfig.Strategy.AUTO -> "Auto"
+        DnsConfig.Strategy.PREFER_IPV4 -> "Prefer IPv4"
+        DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
+        DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
+        DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
+    }
 
 private data class RoutingConfigState(
     val strategy: DnsConfig.Strategy = DnsConfig.Strategy.AUTO,
@@ -557,11 +977,14 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
         var servers: List<DnsServer> = emptyList()
 
         if (dns != null) {
-            strategy = try {
-                DnsConfig.Strategy.valueOf(dns.optString("strategy", DnsConfig.Strategy.AUTO.name))
-            } catch (_: Exception) {
-                DnsConfig.Strategy.AUTO
-            }
+            strategy =
+                try {
+                    DnsConfig.Strategy.valueOf(
+                        dns.optString("strategy", DnsConfig.Strategy.AUTO.name)
+                    )
+                } catch (_: Exception) {
+                    DnsConfig.Strategy.AUTO
+                }
             cacheEnabled = dns.optBoolean("cacheEnabled", true)
             independentCache = dns.optBoolean("independentCache", false)
             reverseMapping = dns.optBoolean("reverseMapping", false)
@@ -583,42 +1006,60 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
             if (rulesJson != null) {
                 for (i in 0 until rulesJson.length()) {
                     val obj = rulesJson.optJSONObject(i) ?: continue
-                    val type = try {
-                        RoutingRule.Type.valueOf(obj.optString("type", RoutingRule.Type.DOMAIN.name))
-                    } catch (_: Exception) {
-                        RoutingRule.Type.DOMAIN
-                    }
+                    val type =
+                        try {
+                            RoutingRule.Type.valueOf(
+                                obj.optString("type", RoutingRule.Type.DOMAIN.name)
+                            )
+                        } catch (_: Exception) {
+                            RoutingRule.Type.DOMAIN
+                        }
                     val value = obj.optString("value")
-                    val outbound = obj.optString("outbound", RoutingRule.OUTBOUND_PROXY)
-                        .ifBlank { RoutingRule.OUTBOUND_PROXY }
-                    val rule = RoutingRule(
-                        name = obj.optString("name"),
-                        domain = obj.optString("domain"),
-                        domainSuffix = obj.optString("domainSuffix"),
-                        domainKeyword = obj.optString("domainKeyword"),
-                        ipCidr = obj.optString("ipCidr"),
-                        port = obj.optString("port"),
-                        sourceIpCidr = obj.optString("sourceIpCidr"),
-                        sourcePort = obj.optString("sourcePort"),
-                        packageName = obj.optString("packageName"),
-                        ruleSet = obj.optString("ruleSet"),
-                        network = obj.optString("network"),
-                        protocol = obj.optString("protocol"),
-                        wifiSsid = obj.optString("wifiSsid"),
-                        wifiBssid = obj.optString("wifiBssid"),
-                        clashMode = obj.optString("clashMode"),
-                        outbound = outbound,
-                        dnsRule = obj.optBoolean("dnsRule", false),
-                        type = type,
-                        value = value,
-                        enabled = obj.optBoolean("enabled", true),
-                    )
-                    val hasMatch = listOf(
-                        rule.domain, rule.domainSuffix, rule.domainKeyword,
-                        rule.ipCidr, rule.port, rule.sourceIpCidr, rule.sourcePort,
-                        rule.packageName, rule.ruleSet, rule.protocol,
-                        rule.wifiSsid, rule.wifiBssid, rule.clashMode, rule.value,
-                    ).any { it.isNotBlank() }
+                    val outbound =
+                        obj.optString("outbound", RoutingRule.OUTBOUND_PROXY).ifBlank {
+                            RoutingRule.OUTBOUND_PROXY
+                        }
+                    val rule =
+                        RoutingRule(
+                            name = obj.optString("name"),
+                            domain = obj.optString("domain"),
+                            domainSuffix = obj.optString("domainSuffix"),
+                            domainKeyword = obj.optString("domainKeyword"),
+                            ipCidr = obj.optString("ipCidr"),
+                            port = obj.optString("port"),
+                            sourceIpCidr = obj.optString("sourceIpCidr"),
+                            sourcePort = obj.optString("sourcePort"),
+                            packageName = obj.optString("packageName"),
+                            ruleSet = obj.optString("ruleSet"),
+                            network = obj.optString("network"),
+                            protocol = obj.optString("protocol"),
+                            wifiSsid = obj.optString("wifiSsid"),
+                            wifiBssid = obj.optString("wifiBssid"),
+                            clashMode = obj.optString("clashMode"),
+                            outbound = outbound,
+                            dnsRule = obj.optBoolean("dnsRule", false),
+                            type = type,
+                            value = value,
+                            enabled = obj.optBoolean("enabled", true),
+                        )
+                    val hasMatch =
+                        listOf(
+                                rule.domain,
+                                rule.domainSuffix,
+                                rule.domainKeyword,
+                                rule.ipCidr,
+                                rule.port,
+                                rule.sourceIpCidr,
+                                rule.sourcePort,
+                                rule.packageName,
+                                rule.ruleSet,
+                                rule.protocol,
+                                rule.wifiSsid,
+                                rule.wifiBssid,
+                                rule.clashMode,
+                                rule.value,
+                            )
+                            .any { it.isNotBlank() }
                     if (hasMatch) add(rule)
                 }
             }
@@ -652,16 +1093,15 @@ private fun encodeRoutingConfig(
     geoGeoipUrl: String,
     rules: List<RoutingRule>,
 ): String {
-    val dns = JSONObject()
-        .put("strategy", strategy.name)
-        .put("cacheEnabled", cacheEnabled)
-        .put("reverseMapping", reverseMapping)
-        .put("finalServer", finalServer)
+    val dns =
+        JSONObject()
+            .put("strategy", strategy.name)
+            .put("cacheEnabled", cacheEnabled)
+            .put("reverseMapping", reverseMapping)
+            .put("finalServer", finalServer)
     val serversJson = JSONArray()
     servers.forEach { server ->
-        val obj = JSONObject()
-            .put("tag", server.tag)
-            .put("address", server.address)
+        val obj = JSONObject().put("tag", server.tag).put("address", server.address)
         if (!server.detour.isNullOrBlank()) {
             obj.put("detour", server.detour)
         }
@@ -671,27 +1111,28 @@ private fun encodeRoutingConfig(
 
     val rulesJson = JSONArray()
     rules.forEach { rule ->
-        val obj = JSONObject()
-            .put("name", rule.name)
-            .put("domain", rule.domain)
-            .put("domainSuffix", rule.domainSuffix)
-            .put("domainKeyword", rule.domainKeyword)
-            .put("ipCidr", rule.ipCidr)
-            .put("port", rule.port)
-            .put("sourceIpCidr", rule.sourceIpCidr)
-            .put("sourcePort", rule.sourcePort)
-            .put("packageName", rule.packageName)
-            .put("ruleSet", rule.ruleSet)
-            .put("network", rule.network)
-            .put("protocol", rule.protocol)
-            .put("wifiSsid", rule.wifiSsid)
-            .put("wifiBssid", rule.wifiBssid)
-            .put("clashMode", rule.clashMode)
-            .put("outbound", rule.outbound)
-            .put("dnsRule", rule.dnsRule)
-            .put("type", rule.type.name)
-            .put("value", rule.value)
-            .put("enabled", rule.enabled)
+        val obj =
+            JSONObject()
+                .put("name", rule.name)
+                .put("domain", rule.domain)
+                .put("domainSuffix", rule.domainSuffix)
+                .put("domainKeyword", rule.domainKeyword)
+                .put("ipCidr", rule.ipCidr)
+                .put("port", rule.port)
+                .put("sourceIpCidr", rule.sourceIpCidr)
+                .put("sourcePort", rule.sourcePort)
+                .put("packageName", rule.packageName)
+                .put("ruleSet", rule.ruleSet)
+                .put("network", rule.network)
+                .put("protocol", rule.protocol)
+                .put("wifiSsid", rule.wifiSsid)
+                .put("wifiBssid", rule.wifiBssid)
+                .put("clashMode", rule.clashMode)
+                .put("outbound", rule.outbound)
+                .put("dnsRule", rule.dnsRule)
+                .put("type", rule.type.name)
+                .put("value", rule.value)
+                .put("enabled", rule.enabled)
         rulesJson.put(obj)
     }
 

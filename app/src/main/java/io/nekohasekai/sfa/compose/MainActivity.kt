@@ -802,6 +802,7 @@ class MainActivity :
             }
         val isConnectionsRoute = currentRootRoute == Screen.Connections.route
         val isGroupsRoute = currentRootRoute == Screen.Groups.route
+        val isServersRoute = currentRootRoute == Screen.Dashboard.route
         val isLogRoute = currentRootRoute == Screen.Log.route
 
         val isSubScreen = isSettingsSubScreen || isToolsSubScreen || isConnectionsDetail || isProfileRoute
@@ -1010,12 +1011,14 @@ class MainActivity :
                     val serviceRunning =
                         currentServiceStatus == Status.Started || currentServiceStatus == Status.Starting
                     val showStatusBar = isRemote || serviceRunning || currentServiceStatus == Status.Stopping
-                    val showStartFab = !isRemote && !serviceRunning && dashboardUiState.selectedProfileId != -1L
+                    val showStartFab = !isServersRoute && !isRemote && !serviceRunning && dashboardUiState.selectedProfileId != -1L
                     val bottomOverlayPadding = paddingValues.calculateBottomPadding()
 
                     NavHost(
                         navController = navController,
                         serviceStatus = currentServiceStatus,
+                        onToggleConnection = { if (isRemote) RemoteControlManager.exitRemoteControl()
+                            else if (currentServiceStatus == Status.Stopped) startService() else dashboardViewModel.toggleService() },
                         showStartFab = showStartFab,
                         showStatusBar = showStatusBar,
                         newProfileArgs = newProfileArgs,
@@ -1049,7 +1052,7 @@ class MainActivity :
                             )
                         } else {
                             ServiceStatusBar(
-                                visible = showStatusBar && !isSubScreen,
+                                visible = showStatusBar && !isSubScreen && !isServersRoute,
                                 serviceStatus = currentServiceStatus,
                                 startTime = dashboardUiState.serviceStartTime,
                                 groupsCount = dashboardUiState.groupsCount,
@@ -1063,7 +1066,7 @@ class MainActivity :
                         }
                     }
 
-                    val showPadFab = useNavigationRail && !isSubScreen && (showStartFab || showStatusBar)
+                    val showPadFab = useNavigationRail && !isSubScreen && !isServersRoute && (showStartFab || showStatusBar)
                     if (useNavigationRail) {
                         androidx.compose.animation.AnimatedVisibility(
                             visible = showPadFab,

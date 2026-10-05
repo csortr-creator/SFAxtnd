@@ -140,6 +140,7 @@ class HTTPClient : Closeable {
                     return buildSingBoxConfig(nodes, mode)
                 }
             } catch (e: Exception) {
+                android.util.Log.w("HTTPClient", "Failed to parse URI node", e)
             }
         }
 
@@ -301,6 +302,7 @@ class HTTPClient : Closeable {
                     return decodedStr
                 }
             } catch (e: Exception) {
+                android.util.Log.w("HTTPClient", "Failed to parse URI node", e)
             }
         }
         return trimmed
@@ -322,14 +324,19 @@ class HTTPClient : Closeable {
         for (line in text.lines()) {
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("//")) continue
-            val node = when {
-                trimmed.startsWith("vless://") -> parseVless(trimmed)
-                trimmed.startsWith("vmess://") -> parseVmess(trimmed)
-                trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
-                trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
-                else -> null
+            try {
+                val node = when {
+                    trimmed.startsWith("vless://") -> parseVless(trimmed)
+                    trimmed.startsWith("vmess://") -> parseVmess(trimmed)
+                    trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
+                    trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
+                    trimmed.startsWith("hysteria2://") || trimmed.startsWith("hy2://") -> parseHysteria2(trimmed)
+                    else -> null
+                }
+                if (node != null) nodes.add(node)
+            } catch (e: Exception) {
+                android.util.Log.w("HTTPClient", "Failed to parse URI node", e)
             }
-            if (node != null) nodes.add(node)
         }
         return nodes
     }

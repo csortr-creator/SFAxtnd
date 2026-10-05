@@ -34,10 +34,6 @@ import io.nekohasekai.sfa.compose.screen.settings.TailscaleFontPickerScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleGhosttyConfigEditorScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleTerminalConfigScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleThemePickerScreen
-import io.nekohasekai.sfa.compose.screen.tools.OpenConnectStatusViewModel
-import io.nekohasekai.sfa.compose.screen.tools.OpenVPNStatusViewModel
-import io.nekohasekai.sfa.compose.screen.tools.TailscaleSSHSharedViewModel
-import io.nekohasekai.sfa.compose.screen.tools.TailscaleStatusViewModel
 import io.nekohasekai.sfa.compose.screen.usbip.USBIPStatusViewModel
 import io.nekohasekai.sfa.constant.Status
 
@@ -70,11 +66,6 @@ fun NavHost(
     logViewModel: LogViewModel? = null,
     groupsViewModel: GroupsViewModel? = null,
     connectionsViewModel: ConnectionsViewModel? = null,
-    tailscaleStatusViewModel: TailscaleStatusViewModel? = null,
-    tailscaleSSHSharedViewModel: TailscaleSSHSharedViewModel? = null,
-    usbIPStatusViewModel: USBIPStatusViewModel? = null,
-    openConnectStatusViewModel: OpenConnectStatusViewModel? = null,
-    openVPNStatusViewModel: OpenVPNStatusViewModel? = null,
     modifier: Modifier = Modifier,
 ) {
     androidx.navigation.compose.NavHost(

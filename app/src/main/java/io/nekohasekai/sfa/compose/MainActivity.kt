@@ -261,9 +261,6 @@ class MainActivity :
         if (intent == null) {
             return
         }
-        if (intent.categories?.contains("de.robv.android.xposed.category.MODULE_SETTINGS") == true) {
-            pendingNavigationRoute.value = "settings/privilege"
-        }
         val uri = intent.data ?: return
         if (uri.scheme == "sing-box") {
             val target = if (uri.isOpaque) Uri.parse("sing-box://" + uri.schemeSpecificPart) else uri
@@ -810,7 +807,6 @@ class MainActivity :
         }
 
         val isSettingsSubScreen = currentRoute?.startsWith("settings/") == true
-        val isToolsSubScreen = currentRoute?.startsWith("tools/") == true
         val isConnectionsDetail = currentRoute?.startsWith("connections/detail") == true
         val isProfileRoute = currentRoute?.startsWith("profile/") == true
         val isRoutingScreen =
@@ -819,7 +815,6 @@ class MainActivity :
             when {
                 isRoutingScreen -> Screen.Routing.route
                 isSettingsSubScreen -> Screen.Settings.route
-                isToolsSubScreen -> Screen.Tools.route
                 currentRoute?.startsWith(Screen.Connections.route) == true -> Screen.Connections.route
                 currentRoute?.startsWith(Screen.Log.route) == true -> Screen.Log.route
                 isProfileRoute -> Screen.Dashboard.route
@@ -829,7 +824,7 @@ class MainActivity :
         val isGroupsRoute = currentRootRoute == Screen.Groups.route
         val isLogRoute = currentRootRoute == Screen.Log.route
 
-        val isSubScreen = isSettingsSubScreen || isToolsSubScreen || isConnectionsDetail || isProfileRoute
+        val isSubScreen = isSettingsSubScreen || isConnectionsDetail || isProfileRoute
         // Get LogViewModel instance if we're on the Log screen
         val logViewModel: LogViewModel? =
             if (isLogRoute) {
@@ -854,37 +849,6 @@ class MainActivity :
 
         val connectionsViewModel: ConnectionsViewModel? =
             if (isConnectionsRoute) {
-                viewModel()
-            } else {
-                null
-            }
-
-        val tailscaleSSHSharedViewModel: TailscaleSSHSharedViewModel = viewModel()
-
-        val isToolsRoute = currentRootRoute == Screen.Tools.route
-
-        val tailscaleStatusViewModel: TailscaleStatusViewModel = viewModel()
-        val tailscaleState by tailscaleStatusViewModel.uiState.collectAsState()
-        val taildropUnreadCount = tailscaleState.endpoints.sumOf { it.unreadFileCount }
-        val taildropSendSessions by TaildropSendManager.sessions.collectAsState()
-        val taildropFailedCount = taildropSendSessions.count { it.errorMessage != null }
-
-        val usbIPStatusViewModel: USBIPStatusViewModel? =
-            if (isToolsRoute) {
-                viewModel()
-            } else {
-                null
-            }
-
-        val openConnectStatusViewModel: OpenConnectStatusViewModel? =
-            if (isToolsRoute) {
-                viewModel()
-            } else {
-                null
-            }
-
-        val openVPNStatusViewModel: OpenVPNStatusViewModel? =
-            if (isToolsRoute) {
                 viewModel()
             } else {
                 null
@@ -941,7 +905,6 @@ class MainActivity :
                 }
                 add(Screen.Routing)
                 add(Screen.Log)
-                add(Screen.Tools)
                 add(Screen.Settings)
             }
 
@@ -951,7 +914,6 @@ class MainActivity :
                 add(Screen.Subscriptions.route)
                 add(Screen.Routing.route)
                 add(Screen.Log.route)
-                add(Screen.Tools.route)
                 add(Screen.Settings.route)
                 if (useNavigationRail && showGroupsInNav) {
                     add(Screen.Groups.route)
@@ -1050,11 +1012,6 @@ class MainActivity :
                         logViewModel = logViewModel,
                         groupsViewModel = groupsViewModel,
                         connectionsViewModel = connectionsViewModel,
-                        tailscaleStatusViewModel = tailscaleStatusViewModel,
-                        tailscaleSSHSharedViewModel = tailscaleSSHSharedViewModel,
-                        usbIPStatusViewModel = usbIPStatusViewModel,
-                        openConnectStatusViewModel = openConnectStatusViewModel,
-                        openVPNStatusViewModel = openVPNStatusViewModel,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (!useNavigationRail) {
@@ -1265,14 +1222,6 @@ class MainActivity :
                                             BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.primary) }) {
                                                 Icon(screen.icon, contentDescription = null)
                                             }
-                                        } else if (screen == Screen.Tools && taildropFailedCount > 0) {
-                                            BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("!") } }) {
-                                                Icon(screen.icon, contentDescription = null)
-                                            }
-                                        } else if (screen == Screen.Tools && toolsUnreadCount > 0) {
-                                            BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("$toolsUnreadCount") } }) {
-                                                Icon(screen.icon, contentDescription = null)
-                                            }
                                         } else {
                                             Icon(screen.icon, contentDescription = null)
                                         }
@@ -1320,14 +1269,6 @@ class MainActivity :
                                         icon = {
                                             if (screen == Screen.Settings && hasUpdate) {
                                                 BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.primary) }) {
-                                                    Icon(screen.icon, contentDescription = null)
-                                                }
-                                            } else if (screen == Screen.Tools && taildropFailedCount > 0) {
-                                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("!") } }) {
-                                                    Icon(screen.icon, contentDescription = null)
-                                                }
-                                            } else if (screen == Screen.Tools && toolsUnreadCount > 0) {
-                                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("$toolsUnreadCount") } }) {
                                                     Icon(screen.icon, contentDescription = null)
                                                 }
                                             } else {

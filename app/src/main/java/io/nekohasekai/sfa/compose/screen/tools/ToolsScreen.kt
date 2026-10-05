@@ -54,8 +54,6 @@ import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.CrashReportManager
 import io.nekohasekai.sfa.bg.OOMReportManager
 import io.nekohasekai.sfa.bg.PowerReportManager
-import io.nekohasekai.sfa.compose.component.RemoteControlMenuItems
-import io.nekohasekai.sfa.compose.component.rememberRemoteServers
 import io.nekohasekai.sfa.compose.screen.usbip.USBIPStatusViewModel
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
@@ -76,8 +74,6 @@ fun ToolsScreen(
     openVPNViewModel: OpenVPNStatusViewModel,
     showStatusBar: Boolean = false,
 ) {
-    val remoteServers by rememberRemoteServers()
-
     OverrideTopBar {
         TopAppBar(
             title = { Text(stringResource(R.string.title_tools)) },
@@ -95,11 +91,6 @@ fun ToolsScreen(
                             expanded = showOthersMenu,
                             onDismissRequest = { showOthersMenu = false },
                         ) {
-                            RemoteControlMenuItems(
-                                servers = remoteServers,
-                                onAction = { showOthersMenu = false },
-                                leadingDivider = false,
-                            )
                         }
                     }
                 }

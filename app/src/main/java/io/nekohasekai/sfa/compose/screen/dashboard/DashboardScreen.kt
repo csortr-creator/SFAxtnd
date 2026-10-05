@@ -36,8 +36,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.compose.component.RemoteControlMenuItems
-import io.nekohasekai.sfa.compose.component.rememberRemoteServers
 import io.nekohasekai.sfa.compose.navigation.NewProfileArgs
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
@@ -60,7 +58,6 @@ fun DashboardScreen(
     val remoteServer by RemoteControlManager.remoteServer.collectAsState()
     val remoteConnected by RemoteControlManager.isConnected.collectAsState()
     val isRemote = remoteServer != null
-    val remoteServers by rememberRemoteServers()
     var showOthersMenu by remember { mutableStateOf(false) }
 
     OverrideTopBar {
@@ -91,10 +88,6 @@ fun DashboardScreen(
                                 showOthersMenu = false
                                 viewModel.toggleCardSettingsDialog()
                             },
-                        )
-                        RemoteControlMenuItems(
-                            servers = remoteServers,
-                            onAction = { showOthersMenu = false },
                         )
                     }
                 }

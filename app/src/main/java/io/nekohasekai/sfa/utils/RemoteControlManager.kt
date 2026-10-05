@@ -125,12 +125,12 @@ object RemoteControlManager : CommandClient.Handler {
             sessionHadConnected = true
             sessionConnectedAt = SystemClock.elapsedRealtime()
             _isConnected.value = true
-            val serviceStartedAt =
-                withContext(Dispatchers.IO) {
-                    runCatching { CommandTarget.standaloneClient().startedAt }.getOrNull()
-                }
+            val serviceStartedAt: Long? = null //
+            withContext(Dispatchers.IO) {
+                runCatching { CommandTarget.standaloneClient().startedAt }.getOrNull()
+            }
             if (_isConnected.value) {
-                _startedAt.value = serviceStartedAt?.takeIf { it > 0 }
+                _startedAt.value = null
             }
         }
     }

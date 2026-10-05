@@ -33,6 +33,12 @@ class ProxyLinkParserTest {
         assertFalse(node.has("up_mbps"))
     }
 
+    @Test fun hysteriaEchUsesThePemFormatExpectedByTheCore() {
+        val tls = ProxyLinkParser.hysteria("hy2://secret@example.org?ech=AQID").getJSONObject("tls")
+        val pem = tls.getJSONObject("ech").getJSONArray("config").getString(0)
+        assertEquals("-----BEGIN ECH CONFIGS-----\nAQID\n-----END ECH CONFIGS-----", pem)
+    }
+
     @Test fun hysteria1KeepsItsOwnProtocolFields() {
         val node = ProxyLinkParser.hysteria("hysteria://example.org:443?auth=p%2Bss&peer=tls.example.org&upmbps=20&downmbps=80&obfs=xplus&obfsParam=obfs-secret&alpn=hysteria")
         assertEquals("hysteria", node.getString("type"))
@@ -81,6 +87,14 @@ class ProxyLinkParserTest {
         assertEquals(8, transport.getJSONObject("xmux").getJSONObject("max_concurrency").getInt("from"))
         assertEquals(30, transport.getJSONObject("xmux").getInt("h_keep_alive_period"))
         assertFalse(transport.has("extra"))
+    }
+
+    @Test fun xraySessionFieldNamesMapToNativeMetadataPlacement() {
+        val extra = """{"sessionPlacement":"header","sessionKey":"X-Session","seqPlacement":"query","seqKey":"seq"}"""
+        val transport = ProxyLinkParser.transport("xhttp", mapOf("extra" to extra), "example.org")!!
+        assertEquals("header", transport.getString("session_id_placement"))
+        assertEquals("X-Session", transport.getString("session_id_key"))
+        assertEquals("query", transport.getString("seq_placement"))
     }
 
     @Test fun xhttpIndependentDownloadKeepsTlsAndEndpoint() {

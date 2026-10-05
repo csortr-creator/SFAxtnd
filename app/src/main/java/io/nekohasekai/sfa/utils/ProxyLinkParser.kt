@@ -141,6 +141,7 @@ internal object ProxyLinkParser {
         "xPaddingHeader" to "x_padding_header", "xPaddingPlacement" to "x_padding_placement",
         "xPaddingMethod" to "x_padding_method", "uplinkHTTPMethod" to "uplink_http_method",
         "sessionIDPlacement" to "session_id_placement", "sessionIDKey" to "session_id_key",
+        "sessionPlacement" to "session_id_placement", "sessionKey" to "session_id_key",
         "sessionIDTable" to "session_id_table", "seqPlacement" to "seq_placement", "seqKey" to "seq_key",
         "uplinkDataPlacement" to "uplink_data_placement", "uplinkDataKey" to "uplink_data_key",
         "noGRPCHeader" to "no_grpc_header", "noSSEHeader" to "no_sse_header",

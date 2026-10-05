@@ -1369,7 +1369,7 @@ index 0000000..f875621
 +}
 diff --git a/transport/v2rayxhttp/interop_test.go b/transport/v2rayxhttp/interop_test.go
 new file mode 100644
-index 0000000..8397a19
+index 0000000..1a8f704
 --- /dev/null
 +++ b/transport/v2rayxhttp/interop_test.go
 @@ -0,0 +1,751 @@
@@ -2081,8 +2081,8 @@ index 0000000..8397a19
 +			xhttpSettings[key] = value
 +		}
 +	}
-+	set("sessionIDPlacement", options.SessionIDPlacement)
-+	set("sessionIDKey", options.SessionIDKey)
++	set("sessionPlacement", options.SessionIDPlacement)
++	set("sessionKey", options.SessionIDKey)
 +	set("seqPlacement", options.SeqPlacement)
 +	set("seqKey", options.SeqKey)
 +	set("uplinkDataPlacement", options.UplinkDataPlacement)

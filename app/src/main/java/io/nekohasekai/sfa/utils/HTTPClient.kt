@@ -399,7 +399,12 @@ class HTTPClient : Closeable {
     internal fun parseUriLines(text: String): List<JSONObject> {
         val nodes = mutableListOf<JSONObject>()
         for (line in text.lines()) {
-            val trimmed = line.trim()
+            val input = line.trim()
+            val trimmed = if (input.contains("://")) {
+                input.substringBefore("://").lowercase() + "://" + input.substringAfter("://")
+            } else {
+                input
+            }
             if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("//")) continue
             val node = when {
                 trimmed.startsWith("vless://") -> parseVless(trimmed)

@@ -9,7 +9,8 @@ The upstream code remains covered by sing-box's GPL-3.0-or-later license.
 This is a development transport backport, not a claim that the stable
 v1.14.2 release supports XHTTP. The patch preserves the stable core's
 dependencies and schema implementation, adds the XHTTP schema variant,
-and adds a Hysteria v1/v2 local connection regression test. Update or
+adds a Hysteria v1/v2 local connection regression test, and uses Xray's
+`sessionPlacement`/`sessionKey` names in the compatibility fixtures. Update or
 remove this patch when upgrading to a core with native XHTTP support.
 
 CI applies the patch before building libbox and tests HTTP/1.1, HTTP/2,

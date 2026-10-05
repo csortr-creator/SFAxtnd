@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.sfa.utils.ProfileContentDecoder
+import io.nekohasekai.sfa.utils.ProxyLinkParser
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.UpdateProfileWork
@@ -262,6 +263,9 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                                 sourceURL.startsWith("http://") || sourceURL.startsWith("https://") -> {
                                     HTTPClient().use { it.getString(sourceURL) }
                                 }
+                                ProxyLinkParser.isShareLink(sourceURL) -> {
+                                    ProfileContentDecoder.decode(sourceURL.toByteArray(Charsets.UTF_8)).config
+                                }
                                 else -> throw Exception("Unsupported source: $sourceURL")
                             }
                         } ?: "{}"
@@ -269,9 +273,14 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
 
-        // Validate config
-        Libbox.checkConfig(configContent)
-        configFile.writeText(configContent)
+        // Files may contain share links just like QR/clipboard imports.
+        val resolvedConfig = if (ProxyLinkParser.isShareLink(configContent)) {
+            ProfileContentDecoder.decode(configContent.toByteArray(Charsets.UTF_8)).config
+        } else {
+            configContent
+        }
+        Libbox.checkConfig(resolvedConfig)
+        configFile.writeText(resolvedConfig)
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)

@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import io.nekohasekai.sfa.utils.ProfileContentDecoder
+import io.nekohasekai.sfa.utils.ProxyLinkParser
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.qrs.QRSDecoder
 import io.nekohasekai.sfa.qrs.readIntLE
@@ -380,6 +381,12 @@ class QRScanViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun processQRCode(value: String): Boolean {
         try {
+            if (ProxyLinkParser.isShareLink(value)) {
+                val data = value.toByteArray(Charsets.UTF_8)
+                ProfileContentDecoder.decode(data)
+                _uiState.update { it.copy(result = QRScanResult.QRSData(data)) }
+                return true
+            }
             val uri = Uri.parse(value)
             if (uri.scheme != "sing-box" || uri.host != "import-remote-profile") {
                 _uiState.update { it.copy(errorMessage = "Not a valid sing-box remote profile URI") }

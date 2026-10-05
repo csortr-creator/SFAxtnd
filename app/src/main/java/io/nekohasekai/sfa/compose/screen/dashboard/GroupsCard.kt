@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.UnfoldLess
@@ -111,8 +112,15 @@ fun GroupsCard(
         val allCollapsed = uiState.expandedGroups.isEmpty()
         OverrideTopBar {
             TopAppBar(
-                title = { Text(stringResource(R.string.title_groups)) },
+                title = { Text(stringResource(R.string.title_dashboard)) },
                 actions = {
+                    IconButton(onClick = { actualViewModel.toggleSortByPing() }) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Sort,
+                            contentDescription = if (uiState.sortByPing) "Sort by Name" else "Sort by Ping",
+                            tint = if (uiState.sortByPing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     if (uiState.groups.isNotEmpty()) {
                         IconButton(onClick = { actualViewModel.toggleAllGroups() }) {
                             Icon(
@@ -362,7 +370,11 @@ private fun GroupsCardContent(
                     }
 
                     if (isExpanded) {
-                        val rowItems = group.items.chunked(2)
+                        val itemsToSort = group.items.toMutableList()
+                        if (uiState.sortByPing) {
+                            itemsToSort.sortWith(compareBy<io.nekohasekai.sfa.compose.model.GroupItem> { it.urlTestDelay == 0 }.thenBy { it.urlTestDelay })
+                        }
+                        val rowItems = itemsToSort.chunked(2)
 
                         rowItems.forEachIndexed { rowIndex, row ->
                             item(

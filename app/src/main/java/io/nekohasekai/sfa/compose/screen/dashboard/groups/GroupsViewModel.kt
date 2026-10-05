@@ -26,6 +26,12 @@ data class GroupsUiState(
     val expandedGroups: Set<String> = emptySet(),
     val testingGroups: Set<String> = emptySet(),
     val showCloseConnectionsSnackbar: Boolean = false,
+    val sortByPing: Boolean = true,
+),
+    val isLoading: Boolean = false,
+    val expandedGroups: Set<String> = emptySet(),
+    val testingGroups: Set<String> = emptySet(),
+    val showCloseConnectionsSnackbar: Boolean = false,
 )
 
 sealed class GroupsEvent : ScreenEvent {

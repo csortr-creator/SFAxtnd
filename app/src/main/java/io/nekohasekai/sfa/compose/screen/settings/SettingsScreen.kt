@@ -31,6 +31,17 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalUriHandler
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,9 +62,53 @@ import io.nekohasekai.sfa.update.UpdateState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavController) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeprecationDialog by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+
     OverrideTopBar {
         TopAppBar(
             title = { Text(stringResource(R.string.title_settings)) },
+            actions = {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Menu"
+                    )
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Информация о приложении") },
+                        onClick = {
+                            showMenu = false
+                            showDeprecationDialog = true
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    if (showDeprecationDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeprecationDialog = false },
+            title = { Text("Устаревание (Deprecated)") },
+            text = { Text("Использование `independent_cache` DNS option устарело в sing-box 1.14.0, и эта возможность будет удалена в sing-box 1.16.0. Ознакомьтесь с руководством по миграции.") },
+            confirmButton = {
+                TextButton(onClick = { showDeprecationDialog = false }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    uriHandler.openUri("https://sing-box.sagernet.org/migration/")
+                }) {
+                    Text("Документация")
+                }
+            }
         )
     }
 

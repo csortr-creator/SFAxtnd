@@ -83,20 +83,18 @@ fun NavHost(
         modifier = modifier,
     ) {
         composable(Screen.Dashboard.route) {
-            if (dashboardViewModel != null) {
-                DashboardScreen(
+            if (groupsViewModel != null) {
+                GroupsCard(
                     serviceStatus = serviceStatus,
-                    showStartFab = showStartFab,
-                    showStatusBar = showStatusBar,
-                    onOpenNewProfile = onOpenNewProfile,
-                    viewModel = dashboardViewModel,
+                    viewModel = groupsViewModel,
+                    showTopBar = true,
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                DashboardScreen(
+                GroupsCard(
                     serviceStatus = serviceStatus,
-                    showStartFab = showStartFab,
-                    showStatusBar = showStatusBar,
-                    onOpenNewProfile = onOpenNewProfile,
+                    showTopBar = true,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -123,18 +121,20 @@ fun NavHost(
         }
 
         composable(Screen.Subscriptions.route) {
-            if (groupsViewModel != null) {
-                GroupsCard(
+            if (dashboardViewModel != null) {
+                DashboardScreen(
                     serviceStatus = serviceStatus,
-                    viewModel = groupsViewModel,
-                    showTopBar = true,
-                    modifier = Modifier.fillMaxSize(),
+                    showStartFab = showStartFab,
+                    showStatusBar = showStatusBar,
+                    onOpenNewProfile = onOpenNewProfile,
+                    viewModel = dashboardViewModel,
                 )
             } else {
-                GroupsCard(
+                DashboardScreen(
                     serviceStatus = serviceStatus,
-                    showTopBar = true,
-                    modifier = Modifier.fillMaxSize(),
+                    showStartFab = showStartFab,
+                    showStatusBar = showStatusBar,
+                    onOpenNewProfile = onOpenNewProfile,
                 )
             }
         }

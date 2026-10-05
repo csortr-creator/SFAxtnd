@@ -42,6 +42,8 @@ object Settings {
 
     var ruleSetUpdateInterval by dataStore.long(SettingsKey.RULE_SET_UPDATE_INTERVAL) { 24 * 60 * 60 * 1000L } // 24 hours
     var routingBlockIpv6 by dataStore.boolean(SettingsKey.ROUTING_BLOCK_IPV6) { true }
+    /** TUN network stack: system | gvisor | mixed */
+    var tunStack by dataStore.string(SettingsKey.TUN_STACK) { "system" }
 
     var selectedProfile by dataStore.long(SettingsKey.SELECTED_PROFILE) { -1L }
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }

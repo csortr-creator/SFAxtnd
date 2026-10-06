@@ -340,13 +340,7 @@ jobs:
         with:
           tag_name: "v${{ env.APP_VERSION }}"
           name: "SFAxtnd v${{ env.APP_VERSION }}"
-          body: |
-            ### SFAxtnd v${{ env.APP_VERSION }}
-
-            - Commit: `${{ github.sha }}`
-            - Build number: `${{ github.run_number }}`
-            - Sing-box libbox compiled automatically
-            - Android APK built automatically
+          body_path: RELEASE_NOTES.md
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -25,6 +25,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -159,10 +160,11 @@ jobs:
           ./patch.sh
 
       - name: Test XHTTP wire compatibility
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euxo pipefail
-          curl --fail --location --retry 3 \
+          curl --fail --location --connect-timeout 30 --max-time 120 --retry 3 \
             https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip \
             -o /tmp/xray.zip
           echo '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  /tmp/xray.zip' | sha256sum --check

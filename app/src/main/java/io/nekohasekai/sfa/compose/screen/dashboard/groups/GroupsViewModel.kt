@@ -73,7 +73,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     companion object {
         private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
     }
-    @Volatile private var loadedFingerprints: Pair<Long, Map<String, String>> = -1L to emptyMap()
+    @Volatile private var loadedFingerprints: Triple<Long, Map<String, String>, Long> = Triple(-1L, emptyMap(), 0L)
 
     private fun rememberLatency(profileId: Long, tag: String, fingerprint: String?, delay: Int, time: Long) {
         if (fingerprint == null) return
@@ -411,7 +411,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
         viewModelScope.launch(Dispatchers.Default) {
             val profileId = uiState.value.profileId
-            val fingerprints = loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
+            val pingContext = loadedFingerprints
+            val fingerprints = if (pingContext.first == profileId) pingContext.second else emptyMap()
             val local = RemoteControlManager.remoteServer.value == null
             val currentGroups = uiState.value.groups
             val previousPing = currentGroups
@@ -419,7 +420,11 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                 .toMap()
             val currentByTag = currentGroups.associateBy { it.tag }
             val mergedGroups = newGroups.map { goGroup ->
-                val converted = Group(goGroup)
+                val incoming = Group(goGroup)
+                val converted = if (!local) incoming else incoming.copy(items = incoming.items.map { item ->
+                    // The command stream can briefly replay the previous subscription after reload.
+                    if (item.urlTestTime < pingContext.third) item.copy(urlTestTime = 0L, urlTestDelay = 0) else item
+                })
                 val existing = currentByTag[converted.tag]
                 val items = converted.items.map { item ->
                     if (item.urlTestDelay > 0 || item.urlTestTime > 0L) {
@@ -475,7 +480,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         val sameProfile = uiState.value.profileId == profileId && loadedContent == content
         loadedContent = content
         val fingerprints = content?.let { runCatching { ProfileLatencyCache.fingerprints(it) }.getOrDefault(emptyMap()) }.orEmpty()
-        loadedFingerprints = profileId to fingerprints
+        val sinceSeconds = if (sameProfile) loadedFingerprints.third else System.currentTimeMillis() / 1000
+        loadedFingerprints = Triple(profileId, fingerprints, sinceSeconds)
         synchronized(latencyCache) {
             latencyCache.retain(profileId, fingerprints)
             Settings.outboundLatencyCache = latencyCache.encode()

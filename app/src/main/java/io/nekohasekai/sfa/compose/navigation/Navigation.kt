@@ -121,6 +121,10 @@ fun NavHost(
                     profiles = dashboard?.profiles.orEmpty(),
                     onProfileSelected = { dashboardViewModel?.selectProfile(it) },
                     onToggleConnection = onToggleConnection,
+                    serviceStartTime = dashboard?.serviceStartTime,
+                    downlink = dashboard?.downlink ?: "0 B/s",
+                    uplink = dashboard?.uplink ?: "0 B/s",
+                    trafficAvailable = dashboard?.trafficVisible == true,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -130,6 +134,10 @@ fun NavHost(
                     profiles = dashboard?.profiles.orEmpty(),
                     onProfileSelected = { dashboardViewModel?.selectProfile(it) },
                     onToggleConnection = onToggleConnection,
+                    serviceStartTime = dashboard?.serviceStartTime,
+                    downlink = dashboard?.downlink ?: "0 B/s",
+                    uplink = dashboard?.uplink ?: "0 B/s",
+                    trafficAvailable = dashboard?.trafficVisible == true,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

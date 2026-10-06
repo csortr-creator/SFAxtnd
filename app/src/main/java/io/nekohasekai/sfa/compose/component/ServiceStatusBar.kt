@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,7 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Cable
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,9 +42,6 @@ fun ServiceStatusBar(
     visible: Boolean,
     serviceStatus: Status,
     startTime: Long?,
-    downlink: String = "0 B/s",
-    uplink: String = "0 B/s",
-    trafficAvailable: Boolean = false,
     groupsCount: Int,
     hasGroups: Boolean,
     onGroupsClick: () -> Unit,
@@ -76,21 +74,35 @@ fun ServiceStatusBar(
                     },
                     Modifier.weight(1f),
                 )
-                FilledTonalIconButton(onClick = onConnectionsClick) {
-                    Icon(Icons.Outlined.Cable, "Соединения: $connectionsCount")
+                FilledTonalButton(
+                    onClick = onConnectionsClick,
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                ) {
+                    Text(connectionsCount.toString())
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Outlined.Cable, "Соединения", Modifier.size(18.dp))
                 }
                 if (hasGroups)
-                    FilledTonalIconButton(onClick = onGroupsClick) {
-                        Icon(Icons.Default.Folder, "Группы серверов: $groupsCount")
+                    FilledTonalButton(
+                        onClick = onGroupsClick,
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                    ) {
+                        Text(groupsCount.toString())
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.Folder, "Группы серверов", Modifier.size(18.dp))
                     }
-                FilledTonalIconButton(
+                FilledTonalButton(
                     onClick = onStopClick,
                     enabled = serviceStatus == Status.Started,
+                    contentPadding = PaddingValues(horizontal = 10.dp),
                 ) {
-                    Icon(Icons.Default.Stop, "Отключить VPN")
+                    if (startTime != null) {
+                        UptimeText(startTime)
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Icon(Icons.Default.Stop, "Отключить VPN", Modifier.size(18.dp))
                 }
             }
-            ConnectionInfoPill(startTime, downlink, uplink, trafficAvailable)
         }
     }
 }

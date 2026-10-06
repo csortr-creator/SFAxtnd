@@ -106,6 +106,10 @@ fun GroupsCard(
     profiles: List<Profile> = emptyList(),
     onProfileSelected: (Long) -> Unit = {},
     onToggleConnection: () -> Unit = {},
+    serviceStartTime: Long? = null,
+    downlink: String = "0 B/s",
+    uplink: String = "0 B/s",
+    trafficAvailable: Boolean = false,
     listHeaderContent: (@Composable () -> Unit)? = null,
     asSheet: Boolean = false,
     modifier: Modifier = Modifier,
@@ -242,6 +246,10 @@ fun GroupsCard(
                             { query = it },
                             protocol,
                             { protocol = it },
+                            serviceStartTime,
+                            downlink,
+                            uplink,
+                            trafficAvailable,
                         )
                     })
                 else null,
@@ -889,6 +897,10 @@ private fun ServerOverview(
     onQuery: (String) -> Unit,
     protocol: String,
     onProtocol: (String) -> Unit,
+    serviceStartTime: Long?,
+    downlink: String,
+    uplink: String,
+    trafficAvailable: Boolean,
 ) {
     val remote by RemoteControlManager.remoteServer.collectAsState()
     var picker by remember { mutableStateOf(false) }
@@ -963,6 +975,14 @@ private fun ServerOverview(
                         )
                     }
                 }
+            }
+            if (status == Status.Started && remote == null) {
+                io.nekohasekai.sfa.compose.component.ConnectionInfoPill(
+                    serviceStartTime,
+                    downlink,
+                    uplink,
+                    trafficAvailable,
+                )
             }
             if (status != Status.Started || remote != null)
                 Button(

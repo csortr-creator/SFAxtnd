@@ -19,7 +19,19 @@
  	s.serviceAccess.RLock()
  	if s.serviceStatus.Status != ServiceStatus_STARTED {
  		s.serviceAccess.RUnlock()
-@@ -720,25 +725,28 @@
+@@ -711,6 +716,11 @@
+ 	}
+ 	boxService := s.instance
+ 	s.serviceAccess.RUnlock()
++	// Stop probing if either the RPC client or the running VPN session closes.
++	ctx, cancel := context.WithCancel(ctx)
++	stop := context.AfterFunc(boxService.ctx, cancel)
++	defer stop()
++	defer cancel()
+ 	outboundTag := request.OutboundTag
+ 	outbound, isLoaded := boxService.outboundManager.Outbound(outboundTag)
+ 	if !isLoaded {
+@@ -720,25 +730,28 @@
  	urlTest, isURLTest := outbound.(*group.URLTest)
  	outboundGroup, isOutboundGroup := outbound.(adapter.OutboundGroup)
  	if isURLTest {
@@ -63,7 +75,7 @@
  }
 --- /dev/null
 +++ b/daemon/sfa_urltest_test.go
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,118 @@
 +package daemon
 +
 +import (
@@ -110,7 +122,7 @@
 +func TestSFAURLTestWaitsForCompletionAndRejectsDuplicates(t *testing.T) {
 +	outbound := &sfaProbeOutbound{entered: make(chan struct{}), release: make(chan struct{})}
 +	service := &StartedService{serviceStatus: &ServiceStatus{Status: ServiceStatus_STARTED}, instance: &Instance{
-+		outboundManager: sfaProbeManager{outbound: outbound}, urlTestHistoryStorage: urltest.NewHistoryStorage(),
++		ctx: context.Background(), outboundManager: sfaProbeManager{outbound: outbound}, urlTestHistoryStorage: urltest.NewHistoryStorage(),
 +	}}
 +	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 +	defer cancel()
@@ -150,4 +162,35 @@
 +	if outbound.calls.Load() != 2 {
 +		t.Fatal("failed test kept lock after completion")
 +	}
++}
++
++func TestSFAURLTestStopsWithVPNSession(t *testing.T) {
++	outbound := &sfaProbeOutbound{entered: make(chan struct{}), release: make(chan struct{})}
++	session, stopSession := context.WithCancel(context.Background())
++	defer stopSession()
++	service := &StartedService{serviceStatus: &ServiceStatus{Status: ServiceStatus_STARTED}, instance: &Instance{
++		ctx: session, outboundManager: sfaProbeManager{outbound: outbound}, urlTestHistoryStorage: urltest.NewHistoryStorage(),
++	}}
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	done := make(chan error, 1)
++	go func() { _, err := service.URLTest(ctx, &URLTestRequest{OutboundTag: "node"}); done <- err }()
++	select {
++	case <-outbound.entered:
++	case <-ctx.Done():
++		t.Fatal("probe did not start")
++	}
++	stopSession()
++	select {
++	case err := <-done:
++		if !errors.Is(err, context.Canceled) {
++			t.Fatalf("expected cancellation: %v", err)
++		}
++	case <-ctx.Done():
++		t.Fatal("probe ignored VPN stop")
++	}
++	if !service.urlTestAccess.TryLock() {
++		t.Fatal("cancelled test kept request lock")
++	}
++	service.urlTestAccess.Unlock()
 +}

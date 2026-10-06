@@ -229,7 +229,7 @@ fun GroupsCard(
             onToggleExpanded = onToggleExpanded,
             onItemSelected = onItemSelected,
             onUrlTest = onUrlTest,
-            onItemUrlTest = onItemUrlTest,
+            onItemUrlTest = { tag -> if (uiState.testingGroups.isEmpty()) onItemUrlTest(tag) },
             query = query,
             protocol = protocol,
             grid = grid,
@@ -454,7 +454,7 @@ private fun GroupsCardContent(
                                     onItemSelected = { itemTag ->
                                         onItemSelected(group.tag, itemTag)
                                     },
-                                    onItemUrlTest = onItemUrlTest,
+                                    onItemUrlTest = { tag -> if (uiState.testingGroups.isEmpty()) onItemUrlTest(tag) },
                                     modifier = Modifier.animateItem(),
                                 )
                             }

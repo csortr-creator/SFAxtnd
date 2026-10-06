@@ -40,8 +40,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.UnfoldLess
-import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -85,7 +83,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.os.ConfigurationCompat
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -124,8 +121,6 @@ import io.nekohasekai.sfa.compose.screen.connections.ConnectionDetailsScreen
 import io.nekohasekai.sfa.compose.screen.connections.ConnectionsPage
 import io.nekohasekai.sfa.compose.screen.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.compose.screen.dashboard.DashboardViewModel
-import io.nekohasekai.sfa.compose.screen.dashboard.GroupsCard
-import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.tools.OpenConnectStatusViewModel
 import io.nekohasekai.sfa.compose.screen.tools.OpenVPNStatusViewModel
@@ -477,8 +472,6 @@ class MainActivity :
                 }
         }
 
-        // Groups Sheet state
-        var showGroupsSheet by remember { mutableStateOf(false) }
 
         // Connections Sheet state
         var showConnectionsSheet by remember { mutableStateOf(false) }
@@ -801,7 +794,6 @@ class MainActivity :
                 else -> currentRoute
             }
         val isConnectionsRoute = currentRootRoute == Screen.Connections.route
-        val isGroupsRoute = currentRootRoute == Screen.Groups.route
         val isServersRoute = currentRootRoute == Screen.Dashboard.route
         val showLocalSessionPanel = currentServiceStatus in listOf(Status.Started, Status.Starting, Status.Stopping)
         val isLogRoute = currentRootRoute == Screen.Log.route
@@ -811,20 +803,6 @@ class MainActivity :
         val logViewModel: LogViewModel? =
             if (isLogRoute) {
                 viewModel()
-            } else {
-                null
-            }
-
-        val groupsViewModel: GroupsViewModel? =
-            if (isGroupsRoute) {
-                viewModel(
-                    factory = object : ViewModelProvider.Factory {
-                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return GroupsViewModel(dashboardViewModel.commandClient) as T
-                        }
-                    },
-                )
             } else {
                 null
             }
@@ -898,7 +876,6 @@ class MainActivity :
                 cancelStatus()
             }
         }
-        val showGroupsInNav = dashboardUiState.hasGroups
         val showConnectionsInNav =
             if (isRemote) {
                 remoteConnected
@@ -910,9 +887,6 @@ class MainActivity :
             buildList {
                 add(Screen.Dashboard)
                 add(Screen.Subscriptions)
-                if (showGroupsInNav) {
-                    add(Screen.Groups)
-                }
                 if (showConnectionsInNav) {
                     add(Screen.Connections)
                 }
@@ -928,9 +902,6 @@ class MainActivity :
                 add(Screen.Log.route)
                 add(Screen.Tools.route)
                 add(Screen.Settings.route)
-                if (useNavigationRail && showGroupsInNav) {
-                    add(Screen.Groups.route)
-                }
                 if (useNavigationRail && showConnectionsInNav) {
                     add(Screen.Connections.route)
                 }
@@ -1025,7 +996,6 @@ class MainActivity :
                         onOpenNewProfile = openNewProfile,
                         dashboardViewModel = dashboardViewModel,
                         logViewModel = logViewModel,
-                        groupsViewModel = groupsViewModel,
                         connectionsViewModel = connectionsViewModel,
                         tailscaleStatusViewModel = tailscaleStatusViewModel,
                         tailscaleSSHSharedViewModel = tailscaleSSHSharedViewModel,
@@ -1041,9 +1011,6 @@ class MainActivity :
                                 serverName = remoteServer?.displayName ?: "",
                                 isConnected = remoteConnected,
                                 startTime = remoteStartedAt,
-                                groupsCount = dashboardUiState.groupsCount,
-                                hasGroups = dashboardUiState.hasGroups,
-                                onGroupsClick = { showGroupsSheet = true },
                                 connectionsCount = dashboardUiState.connectionsCount,
                                 onConnectionsClick = { showConnectionsSheet = true },
                                 onDisconnectClick = { RemoteControlManager.exitRemoteControl() },
@@ -1288,9 +1255,6 @@ class MainActivity :
                                     visible = showLocalSessionPanel,
                                     serviceStatus = currentServiceStatus,
                                     startTime = dashboardUiState.serviceStartTime,
-                                    groupsCount = dashboardUiState.groupsCount,
-                                    hasGroups = dashboardUiState.hasGroups,
-                                    onGroupsClick = { showGroupsSheet = true },
                                     connectionsCount = dashboardUiState.connectionsCount,
                                     onConnectionsClick = { showConnectionsSheet = true },
                                     onStopClick = { dashboardViewModel.toggleService() },
@@ -1350,85 +1314,10 @@ class MainActivity :
             }
         }
 
-        LaunchedEffect(dashboardUiState.hasGroups) {
-            if (!dashboardUiState.hasGroups) {
-                showGroupsSheet = false
-            }
-        }
         val connectionsAvailable = if (isRemote) remoteConnected else currentServiceStatus == Status.Started
         LaunchedEffect(connectionsAvailable) {
             if (!connectionsAvailable) {
                 showConnectionsSheet = false
-            }
-        }
-
-        // Groups ModalBottomSheet
-        if (showGroupsSheet && !useNavigationRail) {
-            val groupsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            val groupsViewModel: GroupsViewModel = viewModel(
-                factory = object : ViewModelProvider.Factory {
-                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                        @Suppress("UNCHECKED_CAST")
-                        return GroupsViewModel(dashboardViewModel.commandClient) as T
-                    }
-                },
-            )
-            val groupsUiState by groupsViewModel.uiState.collectAsState()
-            val allCollapsed = groupsUiState.expandedGroups.isEmpty()
-
-            ModalBottomSheet(
-                onDismissRequest = { showGroupsSheet = false },
-                sheetState = groupsSheetState,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(),
-                ) {
-                    // Groups content
-                    GroupsCard(
-                        serviceStatus = currentServiceStatus,
-                        commandClient = dashboardViewModel.commandClient,
-                        viewModel = groupsViewModel,
-                        listHeaderContent = {
-                            Row(
-                                modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.title_groups),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                if (groupsUiState.groups.isNotEmpty()) {
-                                    IconButton(onClick = { groupsViewModel.toggleAllGroups() }) {
-                                        Icon(
-                                            imageVector = if (allCollapsed) {
-                                                Icons.Default.UnfoldMore
-                                            } else {
-                                                Icons.Default.UnfoldLess
-                                            },
-                                            contentDescription = if (allCollapsed) {
-                                                stringResource(R.string.expand_all)
-                                            } else {
-                                                stringResource(R.string.collapse_all)
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        asSheet = true,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
             }
         }
 

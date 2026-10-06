@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material3.Icon
@@ -41,9 +40,6 @@ fun RemoteStatusBar(
     serverName: String,
     isConnected: Boolean,
     startTime: Long?,
-    groupsCount: Int,
-    hasGroups: Boolean,
-    onGroupsClick: () -> Unit,
     connectionsCount: Int,
     onConnectionsClick: () -> Unit,
     onDisconnectClick: () -> Unit,
@@ -61,20 +57,17 @@ fun RemoteStatusBar(
             tonalElevation = 3.dp,
         ) {
             Row(
-                modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text =
-                    if (isConnected) {
-                        serverName
-                    } else {
-                        stringResource(R.string.remote_connecting)
-                    },
+                        if (isConnected) {
+                            serverName
+                        } else {
+                            stringResource(R.string.remote_connecting)
+                        },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -85,11 +78,10 @@ fun RemoteStatusBar(
                 if (isConnected) {
                     Row(
                         modifier =
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                            .clickable(onClick = onConnectionsClick)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.secondaryContainer)
+                                .clickable(onClick = onConnectionsClick)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
@@ -107,42 +99,14 @@ fun RemoteStatusBar(
                             tint = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     }
-
-                    if (hasGroups) {
-                        Row(
-                            modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .clickable(onClick = onGroupsClick)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            Text(
-                                text = groupsCount.toString(),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = stringResource(R.string.title_groups),
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
-                    }
                 }
 
                 Row(
                     modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .clickable(onClick = onDisconnectClick)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable(onClick = onDisconnectClick)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {

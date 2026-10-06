@@ -115,7 +115,12 @@ internal fun NetworkOptionsContent(core: Boolean) {
             }
         }
     } else {
-        PreferenceSection("Определение протокола", Icons.Outlined.Route) {
+        PreferenceSection("Сниффинг трафика", Icons.Outlined.Route) {
+            Text(
+                "Определяет протокол и домен соединения для правил маршрутизации: например, Host в HTTP или имя сервера в TLS/QUIC. Содержимое зашифрованного HTTPS не расшифровывается.",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
             SettingChoice(
                 "Сниффинг",
                 options.optString("sniff", "profile"),
@@ -146,7 +151,7 @@ internal fun NetworkOptionsContent(core: Boolean) {
             val selected =
                 options.optString("sniffers").split(',').filter(String::isNotBlank).toSet()
             Text(
-                "Протоколы: пустой список использует набор ядра",
+                "Дополнительно: какие протоколы распознавать. Это не протокол VPN-сервера. Пустой список использует набор ядра; параметры применяются при включённом сниффинге.",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
             )

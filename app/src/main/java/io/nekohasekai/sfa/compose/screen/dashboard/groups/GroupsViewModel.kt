@@ -1,47 +1,46 @@
 package io.nekohasekai.sfa.compose.screen.dashboard.groups
 
 import androidx.lifecycle.viewModelScope
+import androidx.preference.PreferenceDataStore
+import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
+import io.nekohasekai.libbox.OutboundProbe
 import io.nekohasekai.sfa.compose.base.BaseViewModel
 import io.nekohasekai.sfa.compose.base.ScreenEvent
 import io.nekohasekai.sfa.compose.model.Group
 import io.nekohasekai.sfa.compose.model.GroupItem
-import io.nekohasekai.sfa.compose.model.toList
+import io.nekohasekai.sfa.constant.SettingsKey
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.ProfileManager
+import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
+import io.nekohasekai.sfa.utils.OfflineProbePlatform
+import io.nekohasekai.sfa.utils.OutboundProfileState
+import io.nekohasekai.sfa.utils.ProfileLatencyCache
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import java.io.File
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import io.nekohasekai.sfa.database.ProfileManager
-import io.nekohasekai.sfa.database.Settings
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
-import androidx.preference.PreferenceDataStore
-import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
-import io.nekohasekai.sfa.constant.SettingsKey
-import io.nekohasekai.sfa.utils.ProfileLatencyCache
-import io.nekohasekai.sfa.utils.OutboundProfileState
-import io.nekohasekai.sfa.utils.OfflineProbePlatform
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.OutboundProbe
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class GroupsUiState(
     val groups: List<Group> = emptyList(),
@@ -60,32 +59,47 @@ sealed class GroupsEvent : ScreenEvent {
 
 class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     BaseViewModel<GroupsUiState, GroupsEvent>(),
-    CommandClient.Handler, OnPreferenceDataStoreChangeListener {
+    CommandClient.Handler,
+    OnPreferenceDataStoreChangeListener {
     private val commandClient: CommandClient
     private val isUsingSharedClient: Boolean
 
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
     val serviceStatus = _serviceStatus.asStateFlow()
     private var lastServiceStatus: Status = Status.Stopped
+    private val testInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private val probeMutex = Mutex()
     private val loadMutex = Mutex()
     private var loadedContent: String? = null
-    @Volatile private var loadedFingerprints: Triple<Long, Map<String, String>, Long> = Triple(-1L, emptyMap(), 0L)
+    @Volatile
+    private var loadedFingerprints: Triple<Long, Map<String, String>, Long> =
+        Triple(-1L, emptyMap(), 0L)
 
-    private fun rememberLatency(profileId: Long, tag: String, fingerprint: String?, delay: Int, time: Long) {
+    private fun rememberLatency(
+        profileId: Long,
+        tag: String,
+        fingerprint: String?,
+        delay: Int,
+        time: Long,
+    ) {
         if (fingerprint == null) return
         synchronized(latencyCache) {
-            if (latencyCache.get(profileId, tag, fingerprint) == ProfileLatencyCache.Result(delay, time)) return
+            if (
+                latencyCache.get(profileId, tag, fingerprint) ==
+                    ProfileLatencyCache.Result(delay, time)
+            )
+                return
             latencyCache.put(profileId, tag, fingerprint, delay, time)
             Settings.outboundLatencyCache = latencyCache.encode()
         }
     }
+
     private var probeJob: Job? = null
     @Volatile private var probe: OutboundProbe? = null
     private val profileCallback: () -> Unit = { refreshSelectedProfile(force = true) }
 
-    private fun canUseCommandServer() = RemoteControlManager.remoteServer.value != null ||
-        _serviceStatus.value == Status.Started
+    private fun canUseCommandServer() =
+        RemoteControlManager.remoteServer.value != null || _serviceStatus.value == Status.Started
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
         if (key == SettingsKey.SELECTED_PROFILE) refreshSelectedProfile(force = true)
@@ -95,7 +109,6 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         probeJob?.cancel()
         probe?.let { runCatching { it.close() } }
         probe = null
-        updateState { copy(testingGroups = emptySet()) }
     }
 
     private fun refreshSelectedProfile(force: Boolean = false) {
@@ -127,43 +140,42 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             isUsingSharedClient = true
             commandClient.addHandler(this)
         } else {
-            commandClient =
-                CommandClient(
-                    viewModelScope,
-                    CommandClient.ConnectionType.Groups,
-                    this,
-                )
+            commandClient = CommandClient(viewModelScope, CommandClient.ConnectionType.Groups, this)
             isUsingSharedClient = false
         }
 
         viewModelScope.launch {
             combine(
-                AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer,
-                RemoteControlManager.isConnected,
-                _serviceStatus,
-            ) { foreground, remoteServer, remoteConnected, status ->
-                SessionTarget(
-                    connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
-                    remoteServerId = remoteServer?.id,
-                )
-            }.distinctUntilChanged().collect { target ->
-                if (target.connect) {
-                    if (isUsingSharedClient) {
-                        commandClient.addHandler(this@GroupsViewModel)
+                    AppLifecycleObserver.isForeground,
+                    RemoteControlManager.remoteServer,
+                    RemoteControlManager.isConnected,
+                    _serviceStatus,
+                ) { foreground, remoteServer, remoteConnected, status ->
+                    SessionTarget(
+                        connect =
+                            foreground &&
+                                if (remoteServer != null) remoteConnected
+                                else status == Status.Started,
+                        remoteServerId = remoteServer?.id,
+                    )
+                }
+                .distinctUntilChanged()
+                .collect { target ->
+                    if (target.connect) {
+                        if (isUsingSharedClient) {
+                            commandClient.addHandler(this@GroupsViewModel)
+                        } else {
+                            updateState { copy(isLoading = true) }
+                            commandClient.connect()
+                        }
                     } else {
-                        updateState { copy(isLoading = true) }
-                        commandClient.connect()
-                    }
-                } else {
-                    if (isUsingSharedClient) {
-                        commandClient.removeHandler(this@GroupsViewModel)
-                    } else {
-                        commandClient.disconnect()
+                        if (isUsingSharedClient) {
+                            commandClient.removeHandler(this@GroupsViewModel)
+                        } else {
+                            commandClient.disconnect()
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -193,7 +205,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     fun updateServiceStatus(status: Status) {
         val statusChanged = status != lastServiceStatus
         lastServiceStatus = status
-        if (status != Status.Stopped) stopProbe()
+        if (statusChanged && status != Status.Stopped) stopProbe()
         viewModelScope.launch {
             if (statusChanged) {
                 _serviceStatus.emit(status)
@@ -205,16 +217,18 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     fun toggleGroupExpand(groupTag: String) {
         val newExpanded = !uiState.value.expandedGroups.contains(groupTag)
         updateState {
-            val newExpandedGroups = if (newExpanded) {
-                expandedGroups + groupTag
-            } else {
-                expandedGroups - groupTag
-            }
+            val newExpandedGroups =
+                if (newExpanded) {
+                    expandedGroups + groupTag
+                } else {
+                    expandedGroups - groupTag
+                }
             copy(expandedGroups = newExpandedGroups)
         }
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                if (canUseCommandServer()) CommandTarget.standaloneClient().setGroupExpand(groupTag, newExpanded)
+                if (canUseCommandServer())
+                    CommandTarget.standaloneClient().setGroupExpand(groupTag, newExpanded)
             }
         }
     }
@@ -235,7 +249,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope.launch(Dispatchers.IO) {
             groups.forEach { group ->
                 runCatching {
-                    if (canUseCommandServer()) CommandTarget.standaloneClient().setGroupExpand(group.tag, newExpanded)
+                    if (canUseCommandServer())
+                        CommandTarget.standaloneClient().setGroupExpand(group.tag, newExpanded)
                 }
             }
         }
@@ -249,7 +264,12 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         // Check if this is actually a different selection
         val currentGroup = uiState.value.groups.find { it.tag == groupTag }
         if (!canUseCommandServer() && _serviceStatus.value != Status.Stopped) return
-        if (currentGroup == null || !currentGroup.selectable || currentGroup.items.none { it.tag == itemTag } || currentGroup.selected == itemTag) {
+        if (
+            currentGroup == null ||
+                !currentGroup.selectable ||
+                currentGroup.items.none { it.tag == itemTag } ||
+                currentGroup.selected == itemTag
+        ) {
             // Same item selected, no need to do anything
             return
         }
@@ -258,8 +278,10 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (uiState.value.profileId != profileId) return@launch
-                if (canUseCommandServer()) CommandTarget.standaloneClient().selectOutbound(groupTag, itemTag)
-                if (RemoteControlManager.remoteServer.value == null) saveSelection(profileId, groupTag, itemTag)
+                if (canUseCommandServer())
+                    CommandTarget.standaloneClient().selectOutbound(groupTag, itemTag)
+                if (RemoteControlManager.remoteServer.value == null)
+                    saveSelection(profileId, groupTag, itemTag)
                 if (uiState.value.profileId != profileId) return@launch
 
                 // Update local state and show snackbar
@@ -267,13 +289,13 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                     updateState {
                         copy(
                             groups =
-                            groups.map { group ->
-                                if (group.tag == groupTag) {
-                                    group.copy(selected = itemTag)
-                                } else {
-                                    group
-                                }
-                            },
+                                groups.map { group ->
+                                    if (group.tag == groupTag) {
+                                        group.copy(selected = itemTag)
+                                    } else {
+                                        group
+                                    }
+                                },
                             showCloseConnectionsSnackbar = canUseCommandServer(),
                         )
                     }
@@ -289,103 +311,141 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 CommandTarget.standaloneClient().closeConnections()
-                withContext(Dispatchers.Main) {
-                    dismissCloseConnectionsSnackbar()
-                }
+                withContext(Dispatchers.Main) { dismissCloseConnectionsSnackbar() }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    dismissCloseConnectionsSnackbar()
-                }
+                withContext(Dispatchers.Main) { dismissCloseConnectionsSnackbar() }
                 sendError(e)
             }
         }
     }
 
     fun dismissCloseConnectionsSnackbar() {
-        updateState {
-            copy(showCloseConnectionsSnackbar = false)
-        }
+        updateState { copy(showCloseConnectionsSnackbar = false) }
     }
 
-    fun urlTest(outboundTag: String) {
-        if (!canUseCommandServer()) {
-            testOffline(listOf(outboundTag), outboundTag)
-            return
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                CommandTarget.standaloneClient().urlTest(outboundTag)
-            } catch (e: Exception) {
-                sendError(e)
-            }
-        }
-    }
+    fun urlTest(outboundTag: String) = startUrlTest(outboundTag, listOf(outboundTag))
 
     fun urlTestGroup(groupTag: String) {
-        if (!canUseCommandServer()) {
-            val tags = uiState.value.groups.find { it.tag == groupTag }?.items?.map { it.tag }.orEmpty()
-            testOffline(tags, groupTag)
-            return
-        }
-        updateState { copy(testingGroups = testingGroups + groupTag) }
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                CommandTarget.standaloneClient().urlTest(groupTag)
-            } catch (e: Exception) {
-                sendError(e)
-            } finally {
-                withContext(Dispatchers.Main) {
-                    updateState { copy(testingGroups = testingGroups - groupTag) }
-                }
-            }
-        }
+        val tags = uiState.value.groups.find { it.tag == groupTag }?.items?.map { it.tag }.orEmpty()
+        startUrlTest(groupTag, tags)
     }
 
-    private fun testOffline(tags: List<String>, testingTag: String) {
-        if (_serviceStatus.value != Status.Stopped || tags.isEmpty() || probeJob?.isActive == true) return
-        val profileId = uiState.value.profileId
-        val fingerprints = loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
-        updateState { copy(testingGroups = testingGroups + testingTag) }
-        probeJob = viewModelScope.launch(Dispatchers.IO) {
-            probeMutex.withLock {
+    private fun startUrlTest(testingTag: String, tags: List<String>) {
+        val online = canUseCommandServer()
+        if (
+            (!online && (_serviceStatus.value != Status.Stopped || tags.isEmpty())) ||
+                !testInFlight.compareAndSet(false, true)
+        )
+            return
+        // Disable every test entry point, including individual node menus.
+        updateState { copy(testingGroups = groups.map { it.tag }.toSet() + testingTag) }
+        if (!online) {
+            testOffline(tags)
+            return
+        }
+        viewModelScope
+            .launch(Dispatchers.IO) {
                 try {
-                    val profile = ProfileManager.get(profileId) ?: return@withLock
-                    val config = OutboundProfileState.probeConfig(File(profile.typed.path).readText(), tags)
-                    coroutineContext.ensureActive()
-                    val session = Libbox.newOutboundProbe(config, OfflineProbePlatform())
-                    probe = session
-                    try {
-                        coroutineContext.ensureActive()
-                        val limit = Semaphore(4)
-                        coroutineScope {
-                            tags.distinct().map { tag -> async {
-                                limit.withPermit {
-                                    ensureActive()
-                                    val delay = runCatching { session.urlTest(tag) }.getOrDefault(0)
-                                    ensureActive()
-                                    val measuredAt = System.currentTimeMillis()
-                                    rememberLatency(profileId, tag, fingerprints[tag], delay, measuredAt)
-                                    if (uiState.value.profileId == profileId && _serviceStatus.value == Status.Stopped) {
-                                        updateState { copy(groups = groups.map { group ->
-                                            group.copy(items = group.items.map { item ->
-                                                if (item.tag == tag) item.copy(urlTestDelay = delay, urlTestTime = measuredAt) else item
-                                            })
-                                        }) }
-                                    }
-                                }
-                            } }.awaitAll()
-                        }
-                    } finally { session.close(); if (probe === session) probe = null }
+                    // Patched core RPC returns after the entire test finishes.
+                    CommandTarget.standaloneClient().urlTest(testingTag)
                 } catch (e: Exception) {
                     coroutineContext.ensureActive()
                     sendError(e)
-                } finally {
-                    if (uiState.value.profileId == profileId) {
-                        updateState { copy(testingGroups = testingGroups - testingTag) }
-                    }
                 }
             }
-        }
+            .invokeOnCompletion { finishUrlTest() }
+    }
+
+    private fun finishUrlTest() {
+        updateState { copy(testingGroups = emptySet()) }
+        testInFlight.set(false)
+    }
+
+    private fun testOffline(tags: List<String>) {
+        val profileId = uiState.value.profileId
+        val fingerprints =
+            loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
+        probeJob =
+            viewModelScope
+                .launch(Dispatchers.IO) {
+                    probeMutex.withLock {
+                        try {
+                            val profile = ProfileManager.get(profileId) ?: return@withLock
+                            val config =
+                                OutboundProfileState.probeConfig(
+                                    File(profile.typed.path).readText(),
+                                    tags,
+                                )
+                            coroutineContext.ensureActive()
+                            val session = Libbox.newOutboundProbe(config, OfflineProbePlatform())
+                            probe = session
+                            try {
+                                coroutineContext.ensureActive()
+                                val limit = Semaphore(4)
+                                coroutineScope {
+                                    tags
+                                        .distinct()
+                                        .map { tag ->
+                                            async {
+                                                limit.withPermit {
+                                                    ensureActive()
+                                                    val delay =
+                                                        runCatching { session.urlTest(tag) }
+                                                            .getOrDefault(0)
+                                                    ensureActive()
+                                                    val measuredAt = System.currentTimeMillis()
+                                                    rememberLatency(
+                                                        profileId,
+                                                        tag,
+                                                        fingerprints[tag],
+                                                        delay,
+                                                        measuredAt,
+                                                    )
+                                                    if (
+                                                        uiState.value.profileId == profileId &&
+                                                            _serviceStatus.value == Status.Stopped
+                                                    ) {
+                                                        updateState {
+                                                            copy(
+                                                                groups =
+                                                                    groups.map { group ->
+                                                                        group.copy(
+                                                                            items =
+                                                                                group.items.map {
+                                                                                    item ->
+                                                                                    if (
+                                                                                        item.tag ==
+                                                                                            tag
+                                                                                    )
+                                                                                        item.copy(
+                                                                                            urlTestDelay =
+                                                                                                delay,
+                                                                                            urlTestTime =
+                                                                                                measuredAt,
+                                                                                        )
+                                                                                    else item
+                                                                                }
+                                                                        )
+                                                                    }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .awaitAll()
+                                }
+                            } finally {
+                                session.close()
+                                if (probe === session) probe = null
+                            }
+                        } catch (e: Exception) {
+                            coroutineContext.ensureActive()
+                            sendError(e)
+                        }
+                    }
+                }
+                .also { it.invokeOnCompletion { finishUrlTest() } }
     }
 
     // CommandClient.Handler implementation
@@ -409,96 +469,180 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope.launch(Dispatchers.Default) {
             val profileId = uiState.value.profileId
             val pingContext = loadedFingerprints
-            val fingerprints = if (pingContext.first == profileId) pingContext.second else emptyMap()
+            val fingerprints =
+                if (pingContext.first == profileId) pingContext.second else emptyMap()
             val local = RemoteControlManager.remoteServer.value == null
             val currentGroups = uiState.value.groups
-            val previousPing = currentGroups
-                .flatMap { g -> g.items.map { it.tag to it } }
-                .toMap()
+            val previousPing = currentGroups.flatMap { g -> g.items.map { it.tag to it } }.toMap()
             val currentByTag = currentGroups.associateBy { it.tag }
-            val mergedGroups = newGroups.map { goGroup ->
-                val incoming = Group(goGroup)
-                val converted = if (!local) incoming else incoming.copy(items = incoming.items.map { item ->
-                    // The command stream can briefly replay the previous subscription after reload.
-                    if (item.urlTestTime < pingContext.third) item.copy(urlTestTime = 0L, urlTestDelay = 0) else item
-                })
-                val existing = currentByTag[converted.tag]
-                val items = converted.items.map { item ->
-                    if (item.urlTestDelay > 0 || item.urlTestTime > 0L) {
-                        if (local) rememberLatency(profileId, item.tag, fingerprints[item.tag],
-                            item.urlTestDelay, item.urlTestTime.takeIf { it > 0 } ?: System.currentTimeMillis())
-                        item
-                    } else {
-                        val cached = if (local) fingerprints[item.tag]?.let { latencyCache.get(profileId, item.tag, it) } else null
-                        val prev = previousPing[item.tag]
-                        if (cached != null) item.copy(urlTestDelay = cached.delay, urlTestTime = cached.time)
-                        else if (prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)) {
-                            item.copy(urlTestDelay = prev.urlTestDelay, urlTestTime = prev.urlTestTime)
-                        } else {
-                            item
+            val mergedGroups =
+                newGroups.map { goGroup ->
+                    val incoming = Group(goGroup)
+                    val converted =
+                        if (!local) incoming
+                        else
+                            incoming.copy(
+                                items =
+                                    incoming.items.map { item ->
+                                        // The command stream can briefly replay the previous
+                                        // subscription after reload.
+                                        if (item.urlTestTime < pingContext.third)
+                                            item.copy(urlTestTime = 0L, urlTestDelay = 0)
+                                        else item
+                                    }
+                            )
+                    val existing = currentByTag[converted.tag]
+                    val items =
+                        converted.items.map { item ->
+                            if (item.urlTestDelay > 0 || item.urlTestTime > 0L) {
+                                if (local)
+                                    rememberLatency(
+                                        profileId,
+                                        item.tag,
+                                        fingerprints[item.tag],
+                                        item.urlTestDelay,
+                                        item.urlTestTime.takeIf { it > 0 }
+                                            ?: System.currentTimeMillis(),
+                                    )
+                                item
+                            } else {
+                                val cached =
+                                    if (local)
+                                        fingerprints[item.tag]?.let {
+                                            latencyCache.get(profileId, item.tag, it)
+                                        }
+                                    else null
+                                val prev = previousPing[item.tag]
+                                if (cached != null)
+                                    item.copy(
+                                        urlTestDelay = cached.delay,
+                                        urlTestTime = cached.time,
+                                    )
+                                else if (
+                                    prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)
+                                ) {
+                                    item.copy(
+                                        urlTestDelay = prev.urlTestDelay,
+                                        urlTestTime = prev.urlTestTime,
+                                    )
+                                } else {
+                                    item
+                                }
+                            }
                         }
-                    }
+                    val withPing = converted.copy(items = items)
+                    if (existing == withPing) existing else withPing
                 }
-                val withPing = converted.copy(items = items)
-                if (existing == withPing) existing else withPing
-            }
 
             withContext(Dispatchers.Main) {
                 if (local && uiState.value.profileId != profileId) return@withContext
                 updateState {
-                    val initialExpandedGroups = if (expandedGroups.isEmpty() && currentGroups.isEmpty()) {
-                        mergedGroups.filter { it.isExpand }.map { it.tag }.toSet()
-                    } else {
-                        expandedGroups
-                    }
+                    val initialExpandedGroups =
+                        if (expandedGroups.isEmpty() && currentGroups.isEmpty()) {
+                            mergedGroups.filter { it.isExpand }.map { it.tag }.toSet()
+                        } else {
+                            expandedGroups
+                        }
                     copy(
                         groups = if (mergedGroups == groups) groups else mergedGroups,
                         expandedGroups = initialExpandedGroups,
                         isLoading = false,
-                        subscriptionName = if (RemoteControlManager.remoteServer.value == null) subscriptionName else "",
+                        subscriptionName =
+                            if (RemoteControlManager.remoteServer.value == null) subscriptionName
+                            else "",
                     )
                 }
             }
         }
     }
 
-    /** Build selector/urltest groups from selected profile JSON (works offline, before VPN start). */
-    private suspend fun loadGroupsFromSelectedProfile(force: Boolean = false) = loadMutex.withLock {
-        val profileId = Settings.selectedProfile
-        val profile = ProfileManager.get(profileId)
-        val selections = JSONObject(Settings.outboundSelections).optJSONObject(profileId.toString())?.toString().orEmpty()
-        val content = profile?.typed?.path?.takeIf { it.isNotBlank() }?.let { path ->
-            runCatching { File(path).readText() }.getOrNull()
+    /**
+     * Build selector/urltest groups from selected profile JSON (works offline, before VPN start).
+     */
+    private suspend fun loadGroupsFromSelectedProfile(force: Boolean = false) =
+        loadMutex.withLock {
+            val profileId = Settings.selectedProfile
+            val profile = ProfileManager.get(profileId)
+            val selections =
+                JSONObject(Settings.outboundSelections)
+                    .optJSONObject(profileId.toString())
+                    ?.toString()
+                    .orEmpty()
+            val content =
+                profile
+                    ?.typed
+                    ?.path
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { path -> runCatching { File(path).readText() }.getOrNull() }
+            val groups =
+                content
+                    ?.let {
+                        runCatching {
+                                parseGroupsFromConfig(
+                                    OutboundProfileState.withSelections(it, selections)
+                                )
+                            }
+                            .getOrDefault(emptyList())
+                    }
+                    .orEmpty()
+            if (Settings.selectedProfile != profileId) return@withLock
+            val sameProfile = uiState.value.profileId == profileId && loadedContent == content
+            loadedContent = content
+            val fingerprints =
+                content
+                    ?.let {
+                        runCatching { ProfileLatencyCache.fingerprints(it) }
+                            .getOrDefault(emptyMap())
+                    }
+                    .orEmpty()
+            val sinceSeconds =
+                if (sameProfile) loadedFingerprints.third else System.currentTimeMillis() / 1000
+            loadedFingerprints = Triple(profileId, fingerprints, sinceSeconds)
+            synchronized(latencyCache) {
+                latencyCache.retain(profileId, fingerprints)
+                Settings.outboundLatencyCache = latencyCache.encode()
+            }
+            updateState {
+                val previous =
+                    if (sameProfile) this.groups.flatMap { it.items }.associateBy { it.tag }
+                    else emptyMap()
+                val refreshed =
+                    groups.map { group ->
+                        group.copy(
+                            items =
+                                group.items.map { item ->
+                                    val cached =
+                                        fingerprints[item.tag]?.let {
+                                            latencyCache.get(profileId, item.tag, it)
+                                        }
+                                    if (cached != null)
+                                        item.copy(
+                                            urlTestDelay = cached.delay,
+                                            urlTestTime = cached.time,
+                                        )
+                                    else
+                                        previous[item.tag]?.let {
+                                            item.copy(
+                                                urlTestDelay = it.urlTestDelay,
+                                                urlTestTime = it.urlTestTime,
+                                            )
+                                        } ?: item
+                                }
+                        )
+                    }
+                copy(
+                    profileId = profileId,
+                    subscriptionName = profile?.name.orEmpty(),
+                    groups =
+                        if (sameProfile && !force && this.groups.isNotEmpty()) this.groups
+                        else refreshed,
+                    expandedGroups =
+                        if (sameProfile && this.groups.isNotEmpty()) expandedGroups
+                        else groups.map { it.tag }.toSet(),
+                    isLoading = false,
+                )
+            }
         }
-        val groups = content?.let {
-            runCatching { parseGroupsFromConfig(OutboundProfileState.withSelections(it, selections)) }.getOrDefault(emptyList())
-        }.orEmpty()
-        if (Settings.selectedProfile != profileId) return@withLock
-        val sameProfile = uiState.value.profileId == profileId && loadedContent == content
-        loadedContent = content
-        val fingerprints = content?.let { runCatching { ProfileLatencyCache.fingerprints(it) }.getOrDefault(emptyMap()) }.orEmpty()
-        val sinceSeconds = if (sameProfile) loadedFingerprints.third else System.currentTimeMillis() / 1000
-        loadedFingerprints = Triple(profileId, fingerprints, sinceSeconds)
-        synchronized(latencyCache) {
-            latencyCache.retain(profileId, fingerprints)
-            Settings.outboundLatencyCache = latencyCache.encode()
-        }
-        updateState {
-            val previous = if (sameProfile) this.groups.flatMap { it.items }.associateBy { it.tag } else emptyMap()
-            val refreshed = groups.map { group -> group.copy(items = group.items.map { item ->
-                val cached = fingerprints[item.tag]?.let { latencyCache.get(profileId, item.tag, it) }
-                if (cached != null) item.copy(urlTestDelay = cached.delay, urlTestTime = cached.time)
-                else previous[item.tag]?.let { item.copy(urlTestDelay = it.urlTestDelay, urlTestTime = it.urlTestTime) } ?: item
-            }) }
-            copy(
-                profileId = profileId,
-                subscriptionName = profile?.name.orEmpty(),
-                groups = if (sameProfile && !force && this.groups.isNotEmpty()) this.groups else refreshed,
-                expandedGroups = if (sameProfile && this.groups.isNotEmpty()) expandedGroups else groups.map { it.tag }.toSet(),
-                isLoading = false,
-            )
-        }
-    }
 
     companion object {
         private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
@@ -520,9 +664,10 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                     if (type != "selector" && type != "urltest") continue
                     val tag = ob.optString("tag").ifBlank { type }
                     val members = ob.optJSONArray("outbounds") ?: JSONArray()
-                    val selected = ob.optString("default").ifBlank {
-                        if (members.length() > 0) members.optString(0) else ""
-                    }
+                    val selected =
+                        ob.optString("default").ifBlank {
+                            if (members.length() > 0) members.optString(0) else ""
+                        }
                     val items = mutableListOf<GroupItem>()
                     for (j in 0 until members.length()) {
                         val memberTag = members.optString(j)
@@ -536,7 +681,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                 displayType = memberType.uppercase(),
                                 urlTestTime = 0L,
                                 urlTestDelay = 0,
-                            ),
+                            )
                         )
                     }
                     if (items.isEmpty()) continue
@@ -549,7 +694,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                             selected = selected,
                             isExpand = true,
                             items = items,
-                        ),
+                        )
                     )
                 }
                 groups

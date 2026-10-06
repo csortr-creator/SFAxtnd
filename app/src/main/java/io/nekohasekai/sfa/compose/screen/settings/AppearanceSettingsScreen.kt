@@ -58,6 +58,20 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 set("black", it)
             }
         }
+        PreferenceSection("Уведомление VPN", Icons.Outlined.Palette) {
+            SettingChoice(
+                "Название в уведомлении",
+                appearance.optString("notificationTitle", "group"),
+                listOf("group" to "Название группы / подписки", "server" to "Выбранный сервер"),
+            ) {
+                set("notificationTitle", it)
+            }
+            Text(
+                "При смене сервера название обновляется автоматически. Если сервер ещё не определён, отображается название подписки.",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         PreferenceSection("Текст", Icons.Outlined.Palette) {
             SettingChoice(
                 "Размер текста",

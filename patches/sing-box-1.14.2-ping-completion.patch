@@ -1,0 +1,153 @@
+--- a/daemon/started_service.go
++++ b/daemon/started_service.go
+@@ -67,6 +67,7 @@
+ 	logObserver             *observable.Observer[*log.Entry]
+ 	instance                *Instance
+ 	startedAt               time.Time
++	urlTestAccess           sync.Mutex
+ 	urlTestSubscriber       *observable.Subscriber[struct{}]
+ 	urlTestObserver         *observable.Observer[struct{}]
+ 	clashModeSubscriber     *observable.Subscriber[struct{}]
+@@ -704,6 +705,10 @@
+ }
+ 
+ func (s *StartedService) URLTest(ctx context.Context, request *URLTestRequest) (*emptypb.Empty, error) {
++	if !s.urlTestAccess.TryLock() {
++		return nil, status.Error(codes.FailedPrecondition, "URL test already running")
++	}
++	defer s.urlTestAccess.Unlock()
+ 	s.serviceAccess.RLock()
+ 	if s.serviceStatus.Status != ServiceStatus_STARTED {
+ 		s.serviceAccess.RUnlock()
+@@ -720,25 +725,28 @@
+ 	urlTest, isURLTest := outbound.(*group.URLTest)
+ 	outboundGroup, isOutboundGroup := outbound.(adapter.OutboundGroup)
+ 	if isURLTest {
+-		go urlTest.CheckOutbounds()
++		if _, err := urlTest.URLTest(ctx); err != nil {
++			return nil, err
++		}
+ 	} else if isOutboundGroup {
+ 		outbounds := common.FilterNotNil(common.Map(outboundGroup.All(), func(it string) adapter.Outbound {
+ 			itOutbound, _ := boxService.outboundManager.Outbound(it)
+ 			return itOutbound
+ 		}))
+-		go group.URLTestOutbounds(boxService.ctx, boxService.outboundManager, historyStorage, boxService.logFactory.Logger(), outbounds, "", 0, true)
++		group.URLTestOutbounds(ctx, boxService.outboundManager, historyStorage, boxService.logFactory.Logger(), outbounds, "", 0, true)
+ 	} else {
+-		go func() {
+-			t, err := urltest.URLTest(boxService.ctx, "", outbound)
+-			if err != nil {
+-				historyStorage.DeleteURLTestHistory(outboundTag)
+-			} else {
+-				historyStorage.StoreURLTestHistory(outboundTag, &adapter.URLTestHistory{
+-					Time:  time.Now(),
+-					Delay: t,
+-				})
+-			}
+-		}()
++		t, err := urltest.URLTest(ctx, "", outbound)
++		if err != nil {
++			historyStorage.DeleteURLTestHistory(outboundTag)
++		} else {
++			historyStorage.StoreURLTestHistory(outboundTag, &adapter.URLTestHistory{
++				Time:  time.Now(),
++				Delay: t,
++			})
++		}
++	}
++	if err := ctx.Err(); err != nil {
++		return nil, err
+ 	}
+ 	return &emptypb.Empty{}, nil
+ }
+--- /dev/null
++++ b/daemon/sfa_urltest_test.go
+@@ -0,0 +1,87 @@
++package daemon
++
++import (
++	"context"
++	"errors"
++	"net"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/urltest"
++	M "github.com/sagernet/sing/common/metadata"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++)
++
++type sfaProbeOutbound struct {
++	adapter.Outbound
++	entered chan struct{}
++	release chan struct{}
++	calls   atomic.Int32
++}
++
++func (o *sfaProbeOutbound) DialContext(ctx context.Context, _ string, _ M.Socksaddr) (net.Conn, error) {
++	if o.calls.Add(1) == 1 {
++		close(o.entered)
++	}
++	select {
++	case <-o.release:
++		return nil, errors.New("test dial failure")
++	case <-ctx.Done():
++		return nil, ctx.Err()
++	}
++}
++
++type sfaProbeManager struct {
++	adapter.OutboundManager
++	outbound adapter.Outbound
++}
++
++func (m sfaProbeManager) Outbound(_ string) (adapter.Outbound, bool) { return m.outbound, true }
++
++func TestSFAURLTestWaitsForCompletionAndRejectsDuplicates(t *testing.T) {
++	outbound := &sfaProbeOutbound{entered: make(chan struct{}), release: make(chan struct{})}
++	service := &StartedService{serviceStatus: &ServiceStatus{Status: ServiceStatus_STARTED}, instance: &Instance{
++		outboundManager: sfaProbeManager{outbound: outbound}, urlTestHistoryStorage: urltest.NewHistoryStorage(),
++	}}
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	done := make(chan error, 1)
++	go func() { _, err := service.URLTest(ctx, &URLTestRequest{OutboundTag: "node"}); done <- err }()
++	select {
++	case <-outbound.entered:
++	case <-ctx.Done():
++		t.Fatal("test did not start")
++	}
++	select {
++	case <-done:
++		t.Fatal("RPC acknowledged before dial completed")
++	default:
++	}
++	for range 10 {
++		_, err := service.URLTest(ctx, &URLTestRequest{OutboundTag: "node"})
++		if status.Code(err) != codes.FailedPrecondition {
++			t.Fatalf("duplicate not rejected: %v", err)
++		}
++	}
++	if outbound.calls.Load() != 1 {
++		t.Fatal("duplicate tests were started")
++	}
++	close(outbound.release)
++	select {
++	case err := <-done:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-ctx.Done():
++		t.Fatal("RPC did not finish")
++	}
++	if _, err := service.URLTest(ctx, &URLTestRequest{OutboundTag: "node"}); err != nil {
++		t.Fatal(err)
++	}
++	if outbound.calls.Load() != 2 {
++		t.Fatal("failed test kept lock after completion")
++	}
++}

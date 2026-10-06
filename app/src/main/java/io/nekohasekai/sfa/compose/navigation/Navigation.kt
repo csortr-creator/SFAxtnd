@@ -23,7 +23,6 @@ import io.nekohasekai.sfa.compose.screen.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.compose.screen.dashboard.DashboardScreen
 import io.nekohasekai.sfa.compose.screen.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.compose.screen.dashboard.GroupsCard
-import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.compose.screen.log.LogScreen
 import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
@@ -97,7 +96,6 @@ fun NavHost(
     onOpenNewProfile: (NewProfileArgs) -> Unit = {},
     dashboardViewModel: DashboardViewModel? = null,
     logViewModel: LogViewModel? = null,
-    groupsViewModel: GroupsViewModel? = null,
     connectionsViewModel: ConnectionsViewModel? = null,
     tailscaleStatusViewModel: TailscaleStatusViewModel? = null,
     tailscaleSSHSharedViewModel: TailscaleSSHSharedViewModel? = null,
@@ -117,34 +115,19 @@ fun NavHost(
     ) {
         composable(Screen.Dashboard.route) {
             val dashboard = dashboardViewModel?.uiState?.collectAsState()?.value
-            if (groupsViewModel != null) {
-                GroupsCard(
-                    serviceStatus = serviceStatus,
-                    viewModel = groupsViewModel,
-                    showTopBar = true,
-                    profiles = dashboard?.profiles.orEmpty(),
-                    onProfileSelected = { dashboardViewModel?.selectProfile(it) },
-                    onToggleConnection = onToggleConnection,
-                    serviceStartTime = dashboard?.serviceStartTime,
-                    downlink = dashboard?.downlink ?: "0 B/s",
-                    uplink = dashboard?.uplink ?: "0 B/s",
-                    trafficAvailable = dashboard?.trafficVisible == true,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                GroupsCard(
-                    serviceStatus = serviceStatus,
-                    showTopBar = true,
-                    profiles = dashboard?.profiles.orEmpty(),
-                    onProfileSelected = { dashboardViewModel?.selectProfile(it) },
-                    onToggleConnection = onToggleConnection,
-                    serviceStartTime = dashboard?.serviceStartTime,
-                    downlink = dashboard?.downlink ?: "0 B/s",
-                    uplink = dashboard?.uplink ?: "0 B/s",
-                    trafficAvailable = dashboard?.trafficVisible == true,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            GroupsCard(
+                serviceStatus = serviceStatus,
+                showTopBar = true,
+                profiles = dashboard?.profiles.orEmpty(),
+                onProfileSelected = { dashboardViewModel?.selectProfile(it) },
+                onToggleConnection = onToggleConnection,
+                serviceStartTime = dashboard?.serviceStartTime,
+                downlink = dashboard?.downlink ?: "0 B/s",
+                uplink = dashboard?.uplink ?: "0 B/s",
+                trafficAvailable = dashboard?.trafficVisible == true,
+                modifier = Modifier.fillMaxSize(),
+            )
+
         }
 
         composable(Screen.Log.route) {
@@ -185,20 +168,13 @@ fun NavHost(
             }
         }
 
+        // Old group links now open the unified Servers screen.
         composable(Screen.Groups.route) {
-            if (groupsViewModel != null) {
-                GroupsCard(
-                    serviceStatus = serviceStatus,
-                    viewModel = groupsViewModel,
-                    showTopBar = true,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                GroupsCard(
-                    serviceStatus = serviceStatus,
-                    showTopBar = true,
-                    modifier = Modifier.fillMaxSize(),
-                )
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(Screen.Groups.route) { inclusive = true }
+                    launchSingleTop = true
+                }
             }
         }
 

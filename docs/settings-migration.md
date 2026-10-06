@@ -52,3 +52,13 @@ configs for the actual 1.14.2 parser/router constructor. Go tests exercise order
 DNS timeout fallback and assert no backup query after primary success. Android
 compilation and APK generation run in GitHub Actions. Device UI/network testing
 requires an Android device and remains separate from those checks.
+
+Follow-up: Appearance includes group/subscription vs active-server notification
+titles, refreshed on selector changes even with speed notifications disabled.
+Nested selections resolve to their leaf; absent/cyclic selections retain the
+subscription name. The duplicate Groups sheet/rail item and footer shortcut are
+removed, with old links redirected to Servers. The subscription picker remains.
+Manual URL tests use an immediate client-side gate and a non-queuing core RPC
+lock; the RPC acknowledges actual completion. Loading indicators remain active
+throughout the test, including failed probes. Native regression tests block a
+dial to assert the RPC waits and ten duplicate requests start no extra probes.

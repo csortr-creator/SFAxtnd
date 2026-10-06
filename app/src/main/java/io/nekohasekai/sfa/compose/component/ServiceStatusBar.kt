@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material3.FilledTonalButton
@@ -45,9 +44,6 @@ fun ServiceStatusBar(
     visible: Boolean,
     serviceStatus: Status,
     startTime: Long?,
-    groupsCount: Int,
-    hasGroups: Boolean,
-    onGroupsClick: () -> Unit,
     connectionsCount: Int,
     onConnectionsClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -85,15 +81,6 @@ fun ServiceStatusBar(
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Outlined.Cable, "Соединения", Modifier.size(18.dp))
                 }
-                if (hasGroups)
-                    FilledTonalButton(
-                        onClick = onGroupsClick,
-                        contentPadding = PaddingValues(horizontal = 10.dp),
-                    ) {
-                        Text(groupsCount.toString())
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Default.Folder, "Группы серверов", Modifier.size(18.dp))
-                    }
                 FilledTonalButton(
                     onClick = onStopClick,
                     enabled = serviceStatus == Status.Started,

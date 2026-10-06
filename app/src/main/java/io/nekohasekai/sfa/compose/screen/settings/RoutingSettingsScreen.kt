@@ -354,7 +354,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     }
                 RoutingPresetRow(
                     "Whitelist для России",
-                    "Разрешённые сайты напрямую, всё остальное через VPN",
+                    "Для ограничений мобильного интернета: ресурсы белого списка напрямую, остальное через VPN",
                     Icons.Outlined.VerifiedUser,
                     whitelistEnabled,
                 ) { enabled ->

@@ -43,7 +43,6 @@ import kotlinx.coroutines.delay
 fun ServiceStatusBar(
     visible: Boolean,
     serviceStatus: Status,
-    startTime: Long?,
     connectionsCount: Int,
     onConnectionsClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -86,10 +85,6 @@ fun ServiceStatusBar(
                     enabled = serviceStatus == Status.Started,
                     contentPadding = PaddingValues(horizontal = 10.dp),
                 ) {
-                    if (startTime != null) {
-                        UptimeText(startTime)
-                        Spacer(Modifier.width(4.dp))
-                    }
                     Icon(Icons.Default.Stop, "Отключить VPN", Modifier.size(18.dp))
                 }
             }

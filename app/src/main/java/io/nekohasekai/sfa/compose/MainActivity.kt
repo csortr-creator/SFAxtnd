@@ -1254,7 +1254,6 @@ class MainActivity :
                                 if (!isRemote) ServiceStatusBar(
                                     visible = showLocalSessionPanel,
                                     serviceStatus = currentServiceStatus,
-                                    startTime = dashboardUiState.serviceStartTime,
                                     connectionsCount = dashboardUiState.connectionsCount,
                                     onConnectionsClick = { showConnectionsSheet = true },
                                     onStopClick = { dashboardViewModel.toggleService() },

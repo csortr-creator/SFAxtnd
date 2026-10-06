@@ -17,16 +17,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class VPNService :
-    VpnService(),
-    PlatformInterfaceWrapper {
+class VPNService : VpnService(), PlatformInterfaceWrapper {
     companion object {
         private const val TAG = "VPNService"
     }
 
     private val service = BoxService(this, this)
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = service.onStartCommand()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) =
+        service.onStartCommand()
 
     override fun onBind(intent: Intent): IBinder {
         val binder = super.onBind(intent)
@@ -41,11 +40,7 @@ class VPNService :
     }
 
     override fun onRevoke() {
-        runBlocking {
-            withContext(Dispatchers.Main) {
-                service.onRevoke()
-            }
-        }
+        runBlocking { withContext(Dispatchers.Main) { service.onRevoke() } }
     }
 
     override fun autoDetectInterfaceControl(fd: Int) {
@@ -58,16 +53,13 @@ class VPNService :
     override fun openTun(options: TunOptions): Int {
         if (prepare(this) != null) error("android: missing vpn permission")
 
-        val builder =
-            Builder()
-                .setSession("sing-box")
-                .setMtu(options.mtu)
+        val builder = Builder().setSession("sing-box").setMtu(options.mtu)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
         }
 
-        if (Settings.allowBypass) {
+        if (Settings.allowBypass && !options.strictRoute) {
             builder.allowBypass()
         }
 
@@ -173,7 +165,7 @@ class VPNService :
                         options.httpProxyServer,
                         options.httpProxyServerPort,
                         options.httpProxyBypassDomain.toList(),
-                    ),
+                    )
                 )
             }
         } else {
@@ -187,7 +179,9 @@ class VPNService :
         return pfd.fd
     }
 
-    override fun sendNotification(notification: Notification) = service.sendNotification(notification)
+    override fun sendNotification(notification: Notification) =
+        service.sendNotification(notification)
 
-    override fun cancelNotification(identifier: String, typeID: Int) = service.cancelNotification(identifier, typeID)
+    override fun cancelNotification(identifier: String, typeID: Int) =
+        service.cancelNotification(identifier, typeID)
 }

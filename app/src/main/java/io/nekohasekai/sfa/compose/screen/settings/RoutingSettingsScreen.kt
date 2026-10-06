@@ -203,7 +203,13 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
             reloadJob?.cancel()
             reloadJob =
                 scope.launch {
-                    val raw = withContext(Dispatchers.IO) { Settings.routingConfigJson }
+                    val raw =
+                        withContext(Dispatchers.IO) {
+                            val old = Settings.routingConfigJson
+                            RoutingPresets.migrateConfig(old).also {
+                                if (it != old) Settings.routingConfigJson = it
+                            }
+                        }
                     val parsed = decodeRoutingConfig(raw)
                     strategy = parsed.strategy
                     cacheEnabled = parsed.cacheEnabled
@@ -344,7 +350,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 val whitelistEnabled =
                     listOf(RoutingPresets.WHITELIST_DOMAINS, RoutingPresets.WHITELIST_IPS).all { tag
                         ->
-                        rules.any { it.enabled && it.ruleSet == tag }
+                        rules.any { it.enabled && tag in RoutingPresets.tags(it.ruleSet) }
                     }
                 RoutingPresetRow(
                     "Whitelist для России",
@@ -355,34 +361,19 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     persist(
                         nextRules =
                             if (enabled) RoutingPresets.whitelist(rules)
-                            else rules.filter { it.ruleSet !in RoutingPresets.remoteRuleSets.keys }
+                            else rules.filterNot(RoutingPresets::isWhitelist)
                     )
                 }
                 RoutingPresetRow(
-                    "Российские сайты напрямую",
-                    "Домены .ru и российские IP без VPN",
+                    "РФ напрямую",
+                    "Российские домены и IP из обновляемых SRS-списков",
                     Icons.Outlined.Public,
-                    rules.any { it.name == "ru-ip" && it.enabled },
+                    rules.any { it.enabled && RoutingPresets.isRf(it) },
                 ) { enabled ->
-                    val keep = rules.filter { it.name !in setOf("ru-sites", "ru-ip") }
                     persist(
-                        nextGeoSourceId = if (enabled) GeoFileSources.SAGERNET.id else geoSourceId,
                         nextRules =
-                            if (!enabled) keep
-                            else
-                                keep.filter { it.ruleSet !in RoutingPresets.remoteRuleSets.keys } +
-                                    listOf(
-                                        RoutingRule(
-                                            name = "ru-sites",
-                                            domainSuffix = ".ru",
-                                            outbound = RoutingRule.OUTBOUND_DIRECT,
-                                        ),
-                                        RoutingRule(
-                                            name = "ru-ip",
-                                            ruleSet = "geoip-ru",
-                                            outbound = RoutingRule.OUTBOUND_DIRECT,
-                                        ),
-                                    ),
+                            if (enabled) RoutingPresets.rfDirect(rules)
+                            else rules.filterNot(RoutingPresets::isRf)
                     )
                 }
                 RoutingPresetRow(

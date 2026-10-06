@@ -2,20 +2,25 @@ package io.nekohasekai.sfa.utils
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import io.nekohasekai.libbox.Libbox
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 object RuleSetUpdater {
     private const val TAG = "RuleSetUpdater"
     private const val RULE_SET_DIR = "rule_sets"
 
-    suspend fun ensureRuleSets(context: Context, configJson: String, updateIntervalMs: Long): String {
+    suspend fun ensureRuleSets(
+        context: Context,
+        configJson: String,
+        updateIntervalMs: Long,
+    ): String {
         return withContext(Dispatchers.IO) {
             try {
                 val root = JSONObject(configJson)
@@ -33,19 +38,27 @@ object RuleSetUpdater {
                         val urlString = ruleSet.optString("url")
                         if (urlString.isNotEmpty()) {
                             val tag = ruleSet.optString("tag")
-                            val fileName = "$tag.srs"
+                            val format = ruleSet.optString("format", "binary")
+                            val safeTag = tag.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                            val hash =
+                                java.security.MessageDigest.getInstance("SHA-256")
+                                    .digest(urlString.toByteArray())
+                                    .take(8)
+                                    .joinToString("") { "%02x".format(it) }
+                            val fileName =
+                                "$safeTag-$hash.${if (format == "source") "json" else "srs"}"
                             val file = File(dir, fileName)
                             // Whitelist must be usable on a fresh install even when GitHub
                             // is unreachable on the current restricted mobile network.
                             if (!file.exists() && tag in RoutingPresets.remoteRuleSets) {
-                                context.assets.open("rule_sets/$fileName").use { input ->
+                                context.assets.open("rule_sets/$tag.srs").use { input ->
                                     file.outputStream().use { input.copyTo(it) }
                                 }
                             }
 
                             var shouldDownload = true
                             if (file.exists()) {
-                                if (updateIntervalMs < 0) { // -1 means never update if exists
+                                if (updateIntervalMs <= 0) { // -1 means never update if exists
                                     shouldDownload = false
                                 } else if (updateIntervalMs > 0) {
                                     val lastModified = file.lastModified()
@@ -57,29 +70,29 @@ object RuleSetUpdater {
                             }
 
                             if (shouldDownload) {
-                                downloadFile(urlString, file)
+                                downloadFile(urlString, file, format)
                             }
 
-                            if (file.exists()) {
-                                ruleSet.put("type", "local")
-                                ruleSet.remove("url")
-                                ruleSet.remove("download_detour")
-                                ruleSet.put("path", file.absolutePath)
-                            } else {
-                                Log.e(TAG, "Failed to ensure rule-set file for tag: $tag")
-                            }
+                            RuleSetPolicy.configure(
+                                ruleSet,
+                                file.takeIf { it.exists() }?.absolutePath,
+                                updateIntervalMs,
+                            )
                         }
                     }
                 }
                 root.toString()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to process rule sets", e)
-                configJson
+                throw IllegalArgumentException(
+                    "Не удалось подготовить наборы правил: ${e.message}",
+                    e,
+                )
             }
         }
     }
 
-    private fun downloadFile(urlString: String, destFile: File) {
+    private fun downloadFile(urlString: String, destFile: File, format: String) {
         Log.i(TAG, "Downloading rule-set from $urlString")
         var connection: HttpURLConnection? = null
         try {
@@ -94,9 +107,36 @@ object RuleSetUpdater {
                 val tempFile = File(destFile.parentFile, destFile.name + ".tmp")
                 connection.inputStream.use { input ->
                     FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
+                        val buffer = ByteArray(8192)
+                        var total = 0
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= 16 * 1024 * 1024) { "Rule-set exceeds 16 MiB" }
+                            output.write(buffer, 0, count)
+                        }
                     }
                 }
+                Libbox.checkConfig(
+                    JSONObject()
+                        .put(
+                            "route",
+                            JSONObject()
+                                .put(
+                                    "rule_set",
+                                    JSONArray()
+                                        .put(
+                                            JSONObject()
+                                                .put("type", "local")
+                                                .put("tag", "validate-update")
+                                                .put("format", format)
+                                                .put("path", tempFile.absolutePath)
+                                        ),
+                                ),
+                        )
+                        .toString()
+                )
                 if (tempFile.renameTo(destFile)) {
                     Log.i(TAG, "Successfully downloaded to ${destFile.absolutePath}")
                 } else {

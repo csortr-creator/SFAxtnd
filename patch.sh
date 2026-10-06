@@ -29,6 +29,15 @@ else
     git -C sing-box-core apply "$PWD/$PING_PATCH"
 fi
 
+# Explicit cold/warm HTTP probing on the same reusable transport.
+MODE_PATCH="$(dirname "$0")/patches/sing-box-1.14.2-probe-mode.patch"
+if git -C sing-box-core apply --reverse --check "$PWD/$MODE_PATCH" 2>/dev/null; then
+    echo "Probe mode patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$MODE_PATCH"
+    git -C sing-box-core apply "$PWD/$MODE_PATCH"
+fi
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

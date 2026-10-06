@@ -1,0 +1,202 @@
+--- a/common/urltest/urltest.go
++++ b/common/urltest/urltest.go
+@@ -78,7 +78,17 @@
+ 	return nil
+ }
+ 
++type probeModeKey struct{}
++
++// WithProbeMode selects an explicit cold or same-connection warm measurement.
++func WithProbeMode(ctx context.Context, warm bool) context.Context {
++	return context.WithValue(ctx, probeModeKey{}, warm)
++}
++
+ func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
++	if warm, explicit := ctx.Value(probeModeKey{}).(bool); explicit {
++		return urlTestMode(ctx, link, detour, warm)
++	}
+ 	multiplexOutbound, isMultiplexOutbound := common.Cast[adapter.OutboundWithMultiplex](detour)
+ 	if isMultiplexOutbound && multiplexOutbound.MultiplexEnabled() {
+ 		_, err := urlTest(ctx, link, detour)
+@@ -89,7 +99,11 @@
+ 	return urlTest(ctx, link, detour)
+ }
+ 
+-func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err error) {
++func urlTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
++	return urlTestMode(ctx, link, detour, false)
++}
++
++func urlTestMode(ctx context.Context, link string, detour N.Dialer, warm bool) (t uint16, err error) {
+ 	if link == "" {
+ 		link = "https://www.gstatic.com/generate_204"
+ 	}
+@@ -121,10 +135,16 @@
+ 	if err != nil {
+ 		return
+ 	}
++	firstConnection := true
+ 	client := http.Client{
+ 		Transport: &http.Transport{
+ 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+-				return instance, nil
++				if firstConnection {
++					firstConnection = false
++					return instance, nil
++				}
++				// Reconnect if the test endpoint explicitly closes keep-alive.
++				return detour.DialContext(ctx, network, M.ParseSocksaddrHostPortStr(hostname, port))
+ 			},
+ 			TLSClientConfig: &tls.Config{
+ 				Time:    ntp.TimeFuncFromContext(ctx),
+@@ -142,6 +162,14 @@
+ 		return
+ 	}
+ 	resp.Body.Close()
++	if warm {
++		start = time.Now()
++		resp, err = client.Do(req.Clone(ctx))
++		if err != nil {
++			return
++		}
++		resp.Body.Close()
++	}
+ 	t = uint16(time.Since(start) / time.Millisecond)
+ 	return
+ }
+--- a/experimental/libbox/command_client.go
++++ b/experimental/libbox/command_client.go
+@@ -601,6 +601,22 @@
+ 		return client.URLTest(ctx, &daemon.URLTestRequest{
+ 			OutboundTag: outboundTag,
+ 		})
++	})
++	if err != nil {
++		return E.Cause(err, "url test")
++	}
++	return nil
++}
++
++// URLTestWithMode waits for all requested probes and passes the client measurement mode.
++func (c *CommandClient) URLTestWithMode(outboundTag string, warm bool) error {
++	mode := "false"
++	if warm {
++		mode = "true"
++	}
++	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
++		ctx = metadata.AppendToOutgoingContext(ctx, "x-sfa-probe-warm", mode)
++		return client.URLTest(ctx, &daemon.URLTestRequest{OutboundTag: outboundTag})
+ 	})
+ 	if err != nil {
+ 		return E.Cause(err, "url test")
+--- a/experimental/libbox/outbound_probe.go
++++ b/experimental/libbox/outbound_probe.go
+@@ -66,12 +66,20 @@
+ 	return p.urlTest(outboundTag, "")
+ }
+ 
++func (p *OutboundProbe) URLTestWithMode(outboundTag string, warm bool) (int32, error) {
++	return p.urlTestContext(urltest.WithProbeMode(p.ctx, warm), outboundTag, "")
++}
++
+ func (p *OutboundProbe) urlTest(outboundTag, testURL string) (int32, error) {
++	return p.urlTestContext(p.ctx, outboundTag, testURL)
++}
++
++func (p *OutboundProbe) urlTestContext(parent context.Context, outboundTag, testURL string) (int32, error) {
+ 	outbound, loaded := p.instance.Outbound().Outbound(outboundTag)
+ 	if !loaded {
+ 		return 0, E.New("outbound not found: ", outboundTag)
+ 	}
+-	ctx, cancel := context.WithTimeout(p.ctx, 12*time.Second)
++	ctx, cancel := context.WithTimeout(parent, 12*time.Second)
+ 	defer cancel()
+ 	delay, err := urltest.URLTest(ctx, testURL, outbound)
+ 	if err != nil {
+--- a/daemon/started_service.go
++++ b/daemon/started_service.go
+@@ -28,6 +28,7 @@
+ 	"github.com/gofrs/uuid/v5"
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/metadata"
+ 	"google.golang.org/grpc/status"
+ 	"google.golang.org/protobuf/types/known/emptypb"
+ )
+@@ -721,6 +722,11 @@
+ 	stop := context.AfterFunc(boxService.ctx, cancel)
+ 	defer stop()
+ 	defer cancel()
++	if headers, ok := metadata.FromIncomingContext(ctx); ok {
++		if modes := headers.Get("x-sfa-probe-warm"); len(modes) > 0 {
++			ctx = urltest.WithProbeMode(ctx, modes[0] == "true")
++		}
++	}
+ 	outboundTag := request.OutboundTag
+ 	outbound, isLoaded := boxService.outboundManager.Outbound(outboundTag)
+ 	if !isLoaded {
+--- /dev/null
++++ b/common/urltest/sfa_probe_mode_test.go
+@@ -0,0 +1,62 @@
++package urltest
++
++import (
++	"context"
++	M "github.com/sagernet/sing/common/metadata"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"sync/atomic"
++	"testing"
++)
++
++type probeTestDialer struct{ dials atomic.Int32 }
++
++func (d *probeTestDialer) DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error) {
++	d.dials.Add(1)
++	return (&net.Dialer{}).DialContext(ctx, network, address.String())
++}
++func (d *probeTestDialer) ListenPacket(ctx context.Context, address M.Socksaddr) (net.PacketConn, error) {
++	panic("unused")
++}
++
++func TestSFAProbeMode(t *testing.T) {
++	for _, warm := range []bool{false, true} {
++		t.Run(map[bool]string{false: "cold", true: "warm"}[warm], func(t *testing.T) {
++			var requests atomic.Int32
++			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(204) }))
++			defer server.Close()
++			dialer := &probeTestDialer{}
++			_, err := URLTest(WithProbeMode(context.Background(), warm), server.URL, dialer)
++			if err != nil {
++				t.Fatal(err)
++			}
++			expected := int32(1)
++			if warm {
++				expected = 2
++			}
++			if requests.Load() != expected {
++				t.Fatalf("requests=%d want=%d", requests.Load(), expected)
++			}
++			if dialer.dials.Load() != 1 {
++				t.Fatalf("warm connection was not reused: dials=%d", dialer.dials.Load())
++			}
++		})
++	}
++}
++func TestSFAWarmProbeReconnectsClosedEndpoint(t *testing.T) {
++	var requests atomic.Int32
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		requests.Add(1)
++		w.Header().Set("Connection", "close")
++		w.WriteHeader(204)
++	}))
++	defer server.Close()
++	dialer := &probeTestDialer{}
++	if _, err := URLTest(WithProbeMode(context.Background(), true), server.URL, dialer); err != nil {
++		t.Fatal(err)
++	}
++	if requests.Load() != 2 || dialer.dials.Load() != 2 {
++		t.Fatal("closed connections must be reopened")
++	}
++}

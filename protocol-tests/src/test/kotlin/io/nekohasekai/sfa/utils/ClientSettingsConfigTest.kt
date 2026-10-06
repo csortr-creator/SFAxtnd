@@ -244,6 +244,77 @@ class ClientSettingsConfigTest {
         )
     }
 
+    @Test
+    fun resolveAndFastFallbackUseNativeActionsAndKeepDnsFirst() {
+        val root = JSONObject(profile)
+        ClientSettingsConfig.applyCore(
+            root,
+            JSONObject(
+                """{"sniff":"on","hijack":"on","resolveMode":"on","resolveStrategy":"prefer_ipv6","fastFallback":true}"""
+            ),
+        )
+        val rules = root.getJSONObject("route").getJSONArray("rules")
+        assertEquals("sniff", rules.getJSONObject(0).getString("action"))
+        assertEquals("hijack-dns", rules.getJSONObject(1).getString("action"))
+        assertEquals("resolve", rules.getJSONObject(2).getString("action"))
+        assertEquals("prefer_ipv6", rules.getJSONObject(2).getString("strategy"))
+        assertFalse(root.getJSONArray("outbounds").getJSONObject(0).has("fallback_delay"))
+        assertEquals(
+            "10ms",
+            root.getJSONArray("outbounds").getJSONObject(1).getString("fallback_delay"),
+        )
+        export(root, "resolve-fast-fallback.json")
+        ClientSettingsConfig.applyCore(root, JSONObject("""{"resolveMode":"off"}"""))
+        assertFalse(
+            (0 until rules.length()).any {
+                root
+                    .getJSONObject("route")
+                    .getJSONArray("rules")
+                    .optJSONObject(it)
+                    ?.optString("action") == "resolve"
+            }
+        )
+    }
+
+    @Test
+    fun explicitDnsRoutingWinsBeforeFakeIpAndPreservesQueryType() {
+        val input = user(true)
+        input
+            .getJSONObject("dns")
+            .put(
+                "rules",
+                JSONArray()
+                    .put(
+                        JSONObject("""{"kind":"domain","value":"ads2.example","target":"block"}""")
+                    )
+                    .put(
+                        JSONObject(
+                            """{"kind":"suffix","value":"example.net","target":"direct","queryType":"A"}"""
+                        )
+                    )
+                    .put(
+                        JSONObject(
+                            """{"kind":"keyword","value":"private","target":"proxy","enabled":false}"""
+                        )
+                    ),
+            )
+        val root = JSONObject(UserRoutingConfig.applyToConfig(profile, input.toString()))
+        val rules = root.getJSONObject("dns").getJSONArray("rules")
+        assertEquals("ads2.example", rules.getJSONObject(0).getJSONArray("domain").getString(0))
+        assertEquals("reject", rules.getJSONObject(0).getString("action"))
+        val direct =
+            (0 until rules.length())
+                .map { rules.getJSONObject(it) }
+                .first {
+                    it.optString("server") == "d1" &&
+                        it.optJSONArray("domain_suffix")?.optString(0) == "example.net"
+                }
+        assertEquals("A", direct.getString("query_type"))
+        assertEquals("evaluate", direct.getString("action"))
+        assertFalse((0 until rules.length()).any { rules.getJSONObject(it).has("domain_keyword") })
+        export(root, "explicit-dns-routes.json")
+    }
+
     private fun export(root: JSONObject, name: String) {
         val target = File("build/native-configs").apply { mkdirs() }
         File(target, name).writeText(root.toString(2))

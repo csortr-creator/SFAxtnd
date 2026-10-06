@@ -47,6 +47,7 @@ fun DnsSettingsScreen(navController: NavController) {
     fun replaceServers(next: List<JSONObject>) = set("servers", JSONArray(next))
     val list = (0 until servers.length()).mapNotNull { servers.optJSONObject(it) }
     ClientSettingsPage("DNS", navController) {
+        DnsRoutingContent(dns) { next -> set("rules", next) }
         PreferenceSection("Режим DNS", Icons.Outlined.Dns) {
             SettingToggle(
                 "Собственные настройки DNS",

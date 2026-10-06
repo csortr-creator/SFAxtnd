@@ -52,6 +52,30 @@ object ClientSettingsConfig {
             if (sniffers.isNotEmpty()) action.put("sniffer", JSONArray(sniffers))
             rules.put(action)
         }
+        val outbounds = root.optJSONArray("outbounds") ?: JSONArray()
+        if (options.optBoolean("fastFallback"))
+            for (i in 0 until outbounds.length()) {
+                val outbound = outbounds.optJSONObject(i) ?: continue
+                if (
+                    outbound.optString("type") in
+                        setOf(
+                            "direct",
+                            "vless",
+                            "vmess",
+                            "trojan",
+                            "shadowsocks",
+                            "hysteria",
+                            "hysteria2",
+                            "tuic",
+                            "http",
+                            "socks",
+                            "anytls",
+                            "naive",
+                            "ssh",
+                        )
+                )
+                    outbound.put("fallback_delay", "10ms")
+            }
         if (hijack == "on")
             rules.put(
                 JSONObject()
@@ -65,9 +89,21 @@ object ClientSettingsConfig {
                     )
                     .put("action", "hijack-dns")
             )
+        if (options.optString("resolveMode") == "on") {
+            rules.put(
+                JSONObject()
+                    .put("action", "resolve")
+                    .put("strategy", options.optString("resolveStrategy", "prefer_ipv4"))
+            )
+        }
         for (i in 0 until existing.length()) {
             val rule = existing.optJSONObject(i) ?: continue
             if (sniff != "profile" && rule.optString("action") == "sniff") continue
+            if (
+                options.optString("resolveMode", "profile") != "profile" &&
+                    rule.optString("action") == "resolve"
+            )
+                continue
             if (hijack != "profile" && rule.optString("action") == "hijack-dns") continue
             // Replace the legacy block outbound action; rejection is a normal route event.
             if (rule.optString("outbound") == "block") {

@@ -347,7 +347,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             .launch(Dispatchers.IO) {
                 try {
                     // Patched core RPC returns after the entire test finishes.
-                    CommandTarget.standaloneClient().urlTest(testingTag)
+                    CommandTarget.standaloneClient().urlTestWithMode(testingTag, warmPing())
                 } catch (e: Exception) {
                     coroutineContext.ensureActive()
                     sendError(e)
@@ -355,6 +355,10 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             }
             .invokeOnCompletion { finishUrlTest() }
     }
+
+    private fun warmPing() =
+        runCatching { org.json.JSONObject(Settings.coreOptionsJson).optBoolean("pingWarm", false) }
+            .getOrDefault(false)
 
     private fun finishUrlTest() {
         updateState { copy(testingGroups = emptySet()) }
@@ -381,6 +385,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                             probe = session
                             try {
                                 coroutineContext.ensureActive()
+                                val warm = warmPing()
                                 val limit = Semaphore(4)
                                 coroutineScope {
                                     tags
@@ -390,7 +395,9 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                                 limit.withPermit {
                                                     ensureActive()
                                                     val delay =
-                                                        runCatching { session.urlTest(tag) }
+                                                        runCatching {
+                                                                session.urlTestWithMode(tag, warm)
+                                                            }
                                                             .getOrDefault(0)
                                                     ensureActive()
                                                     val measuredAt = System.currentTimeMillis()

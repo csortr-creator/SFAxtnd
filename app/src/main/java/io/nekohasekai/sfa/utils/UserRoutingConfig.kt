@@ -15,7 +15,8 @@ object UserRoutingConfig {
             if (raw.isNotBlank()) {
                 val user = JSONObject(raw)
                 applyDns(root, user.optJSONObject("dns"))
-                applyRules(root, user.optJSONArray("rules"))
+                applyRules(root, RoutingPresets.migrateRules(user.optJSONArray("rules")))
+                applyDnsRoutingRules(root, user.optJSONObject("dns"))
                 applyGeo(root, user.optJSONObject("geo"))
                 ClientSettingsConfig.applyDns(root, user.optJSONObject("dns"))
                 ClientSettingsConfig.applyRuleSets(root, user.optJSONArray("ruleSets"))
@@ -193,6 +194,45 @@ object UserRoutingConfig {
         return server
     }
 
+    private fun applyDnsRoutingRules(root: JSONObject, user: JSONObject?) {
+        if (user?.optBoolean("managed", false) != true) return
+        val source = user.optJSONArray("rules") ?: return
+        val extra = JSONArray()
+        val tags = linkedSetOf<String>()
+        for (i in 0 until source.length()) {
+            val item = source.optJSONObject(i) ?: continue
+            if (!item.optBoolean("enabled", true)) continue
+            val rule = JSONObject()
+            val field =
+                when (item.optString("kind")) {
+                    "domain" -> "domain"
+                    "suffix" -> "domain_suffix"
+                    "keyword" -> "domain_keyword"
+                    "ruleset" -> "rule_set"
+                    else -> error("Неизвестное условие DNS")
+                }
+            val values =
+                splitValues(item.optString("value")).map {
+                    if (field == "rule_set") geoToRuleSet(it) ?: it else it
+                }
+            require(values.isNotEmpty()) { "Пустое условие DNS" }
+            rule.put(field, JSONArray(values))
+            if (field == "rule_set") tags.addAll(values)
+            val query = item.optString("queryType")
+            if (query in setOf("A", "AAAA")) rule.put("query_type", query)
+            when (item.optString("target", "proxy")) {
+                "block" -> rule.put("action", "reject")
+                "direct" -> rule.put("server", "dns-direct")
+                "proxy" -> rule.put("server", "dns-proxy")
+                else -> error("Неизвестный маршрут DNS")
+            }
+            extra.put(rule)
+        }
+        val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
+        ensureRuleSetEntries(route, tags)
+        mergeDnsRules(root, extra)
+    }
+
     private fun applyGeo(root: JSONObject, geoUser: JSONObject?) {
         if (geoUser == null) return
         val sourceId = geoUser.optString("sourceId", "").trim()
@@ -209,6 +249,7 @@ object UserRoutingConfig {
         for (i in 0 until ruleSet.length()) {
             val item = ruleSet.optJSONObject(i) ?: continue
             val tag = item.optString("tag")
+            if (tag in RoutingPresets.remoteRuleSets) continue
             when {
                 tag.startsWith("geosite") && geositeBase.isNotEmpty() -> {
                     item.put("type", "remote")
@@ -264,10 +305,10 @@ object UserRoutingConfig {
                 buildDnsRuleFromRoute(item, root)?.let { dnsRulesExtra.put(it) }
             }
         }
-        val whitelistActive = usedRuleSetTags.any { it in RoutingPresets.remoteRuleSets }
+        val whitelistActive = usedRuleSetTags.any { it in RoutingPresets.whitelistTags }
         val combined = JSONArray()
         fun essential(rule: JSONObject): Boolean =
-            rule.optString("action") in setOf("sniff", "hijack-dns") ||
+            rule.optString("action") in setOf("sniff", "hijack-dns", "resolve", "route-options") ||
                 (rule.optBoolean("ip_is_private") && rule.optString("outbound") == "direct") ||
                 (rule.optJSONArray("ip_cidr")?.let {
                     it.length() == 1 && it.optString(0) == "::/0"
@@ -339,7 +380,10 @@ object UserRoutingConfig {
         putList("domain_keyword", item.optString("domainKeyword"))
         putList(
             "rule_set",
-            splitValues(item.optString("ruleSet")).map { geoToRuleSet(it) ?: it }.joinToString(","),
+            splitValues(item.optString("ruleSet"))
+                .map { geoToRuleSet(it) ?: it }
+                .filterNot { it in setOf(RoutingPresets.RF_IPS, RoutingPresets.WHITELIST_IPS) }
+                .joinToString(","),
         )
         if (!hasMatch) {
             val value = item.optString("value").trim()

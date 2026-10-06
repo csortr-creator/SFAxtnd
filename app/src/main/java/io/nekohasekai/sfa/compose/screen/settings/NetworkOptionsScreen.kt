@@ -19,6 +19,7 @@ fun NetworkOptionsScreen(navController: NavController) {
 @Composable
 internal fun NetworkOptionsContent(core: Boolean) {
     var raw by remember { mutableStateOf(Settings.coreOptionsJson) }
+    var advancedSniff by remember { mutableStateOf(false) }
     val options = settingsObject(raw)
     fun set(key: String, value: Any) {
         val current = settingsObject(Settings.coreOptionsJson).put(key, value)
@@ -78,7 +79,7 @@ internal fun NetworkOptionsContent(core: Boolean) {
                 Settings.routingBlockIpv6 = it
             }
             SettingChoice(
-                "Строгая маршрутизация",
+                "Строгая маршрутизация · strict_route",
                 if (options.has("strictRoute")) options.optBoolean("strictRoute").toString()
                 else "profile",
                 listOf("profile" to "Из подписки", "true" to "Включить", "false" to "Выключить"),
@@ -89,6 +90,20 @@ internal fun NetworkOptionsContent(core: Boolean) {
                     raw = current.toString()
                     Settings.coreOptionsJson = raw
                 } else set("strictRoute", it.toBoolean())
+            }
+            Text(
+                "В Android strict_route запрещает приложениям обходить активный VPN. Исключения маршрутов и приложений сохраняются. Для блокировки сети после остановки VPN включите «Блокировать соединения без VPN» в системных настройках Android.",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        PreferenceSection("Проверка задержки", Icons.Outlined.Speed) {
+            SettingToggle(
+                "Мерить по прогретому соединению",
+                "Два HTTP-запроса: первый прогревает соединение, измеряется второй. Выключено: один запрос с установкой соединения.",
+                options.optBoolean("pingWarm", false),
+            ) {
+                set("pingWarm", it)
             }
         }
         PreferenceSection("Диагностика ядра", Icons.Outlined.BugReport) {
@@ -124,52 +139,107 @@ internal fun NetworkOptionsContent(core: Boolean) {
             SettingChoice(
                 "Сниффинг",
                 options.optString("sniff", "profile"),
-                listOf("profile" to "Из подписки", "on" to "Включить", "off" to "Выключить"),
+                listOf(
+                    "profile" to "Из подписки",
+                    "on" to "Sniff для маршрутов",
+                    "off" to "Выключить",
+                ),
             ) {
                 set("sniff", it)
             }
-            SettingNumber(
-                "Тайм-аут сниффинга",
-                options.optInt("sniffTimeoutMs", 300),
-                50..5000,
-                { set("sniffTimeoutMs", it) },
-                "мс",
-            )
-            val supported =
-                listOf(
-                    "tls",
-                    "http",
-                    "quic",
-                    "dns",
-                    "stun",
-                    "bittorrent",
-                    "dtls",
-                    "ssh",
-                    "rdp",
-                    "ntp",
-                )
-            val selected =
-                options.optString("sniffers").split(',').filter(String::isNotBlank).toSet()
             Text(
-                "Дополнительно: какие протоколы распознавать. Это не протокол VPN-сервера. Пустой список использует набор ядра; параметры применяются при включённом сниффинге.",
+                "Найденный домен используется для правил; соединение сохраняет адрес назначения, выбранный приложением.",
+                Modifier.padding(horizontal = 16.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(
+                onClick = { advancedSniff = !advancedSniff },
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) {
+                Text(
+                    if (advancedSniff) "Скрыть дополнительные параметры"
+                    else "Дополнительные параметры"
+                )
+            }
+            if (advancedSniff) {
+                SettingNumber(
+                    "Тайм-аут сниффинга",
+                    options.optInt("sniffTimeoutMs", 300),
+                    50..5000,
+                    { set("sniffTimeoutMs", it) },
+                    "мс",
+                )
+                val supported =
+                    listOf(
+                        "tls",
+                        "http",
+                        "quic",
+                        "dns",
+                        "stun",
+                        "bittorrent",
+                        "dtls",
+                        "ssh",
+                        "rdp",
+                        "ntp",
+                    )
+                val selected =
+                    options.optString("sniffers").split(',').filter(String::isNotBlank).toSet()
+                Text(
+                    "Дополнительно: какие протоколы распознавать. Это не протокол VPN-сервера. Пустой список использует набор ядра; параметры применяются при включённом сниффинге.",
+                    Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                supported.forEach { name ->
+                    SettingToggle(name.uppercase(), "", name in selected) { enabled ->
+                        set(
+                            "sniffers",
+                            (if (enabled) selected + name else selected - name).joinToString(","),
+                        )
+                    }
+                }
+            }
+        }
+        PreferenceSection("Разрешение доменов для маршрутов", Icons.Outlined.Route) {
+            SettingChoice(
+                "Разрешать назначение до выбора маршрута",
+                options.optString("resolveMode", "profile"),
+                listOf(
+                    "profile" to "Из подписки",
+                    "on" to "Разрешать домены",
+                    "off" to "Отключить предварительный resolve",
+                ),
+            ) {
+                set("resolveMode", it)
+            }
+            SettingChoice(
+                "IPv4 / IPv6 для разрешения назначения",
+                options.optString("resolveStrategy", "prefer_ipv4"),
+                dnsStrategies,
+            ) {
+                set("resolveStrategy", it)
+            }
+            Text(
+                "Resolve позволяет IP/CIDR и GeoIP-правилам проверять адреса доменного назначения. Использует маршрутизацию DNS. AsIs/IPIfNonMatch/IPOnDemand — режимы Xray; эти названия не являются параметрами sing-box.",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
-            supported.forEach { name ->
-                SettingToggle(name.uppercase(), "", name in selected) { enabled ->
-                    set(
-                        "sniffers",
-                        (if (enabled) selected + name else selected - name).joinToString(","),
-                    )
-                }
+            SettingToggle(
+                "Быстрее пробовать альтернативный адрес",
+                "Happy Eyeballs: уменьшить задержку между попытками IPv4/IPv6 до 10 мс. Это не одновременный дозвон по всем IP.",
+                options.optBoolean("fastFallback", false),
+            ) {
+                set("fastFallback", it)
             }
         }
         PreferenceSection("Обновление списков", Icons.Outlined.Update) {
             var interval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
             SettingChoice(
                 "Период обновления",
-                (interval / 3600000L).toString(),
+                if (interval <= 0) "-1"
+                else if (interval == 1800000L) "0.5" else (interval / 3600000L).toString(),
                 listOf(
+                    "-1" to "Не обновлять автоматически",
+                    "0.5" to "Каждые 30 минут",
                     "1" to "Каждый час",
                     "6" to "Каждые 6 часов",
                     "12" to "Каждые 12 часов",
@@ -178,7 +248,7 @@ internal fun NetworkOptionsContent(core: Boolean) {
                     "168" to "Раз в неделю",
                 ),
             ) {
-                interval = it.toLong() * 3600000L
+                interval = if (it == "-1") -1 else (it.toDouble() * 3600000L).toLong()
                 Settings.ruleSetUpdateInterval = interval
             }
         }

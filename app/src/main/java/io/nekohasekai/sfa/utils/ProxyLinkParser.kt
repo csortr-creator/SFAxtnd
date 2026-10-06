@@ -13,9 +13,16 @@ internal object ProxyLinkParser {
     // URI components are not form data: a literal '+' in a password must survive decoding.
     fun decode(value: String): String = URLDecoder.decode(value.replace("+", "%2B"), "UTF-8")
 
-    fun query(value: String?): Map<String, String> = value.orEmpty().split('&')
-        .filter { it.indexOf('=') > 0 }
-        .associate { decode(it.substringBefore('=')) to decode(it.substringAfter('=')) }
+    fun query(value: String?): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        for (pair in value.orEmpty().split('&').filter { it.isNotEmpty() }) {
+            require(pair.indexOf('=') > 0) { "Invalid share-link query parameter" }
+            val key = decode(pair.substringBefore('='))
+            require(key !in result) { "Invalid duplicate share-link parameter" }
+            result[key] = decode(pair.substringAfter('='))
+        }
+        return result
+    }
 
     data class Endpoint(val host: String, val ports: List<String>) {
         val port: Int get() = ports.first().substringBefore(':').toInt()
@@ -48,12 +55,86 @@ internal object ProxyLinkParser {
         return Endpoint(host, ports)
     }
 
+    fun shadowsocks(line: String): JSONObject {
+        val body = line.substringAfter("://").substringBefore('#')
+        val main = body.substringBefore('?').trimEnd('/')
+        val params = query(body.substringAfter('?', ""))
+        require(params.keys.all { it == "plugin" }) { "Unsupported Shadowsocks parameter" }
+        fun base64(value: String): String {
+            val bytes =
+                try {
+                    Base64.getDecoder().decode(value)
+                } catch (_: IllegalArgumentException) {
+                    Base64.getUrlDecoder().decode(value)
+                }
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(bytes))
+                .toString()
+        }
+        val decoded = if ('@' in main) main else base64(main)
+        require('@' in decoded) { "Missing Shadowsocks server address" }
+        val rawUserInfo = decoded.substringBeforeLast('@')
+        val userInfo = if ('@' !in main || ':' in rawUserInfo) rawUserInfo else base64(decode(rawUserInfo))
+        require(':' in userInfo) { "Invalid Shadowsocks credentials" }
+        val plain = '@' in main && ':' in rawUserInfo
+        val method =
+            if (plain) decode(userInfo.substringBefore(':')) else userInfo.substringBefore(':')
+        val password =
+            if (plain) decode(userInfo.substringAfter(':')) else userInfo.substringAfter(':')
+        val methods =
+            setOf(
+                "none",
+                "aes-128-gcm",
+                "aes-192-gcm",
+                "aes-256-gcm",
+                "chacha20-ietf-poly1305",
+                "xchacha20-ietf-poly1305",
+                "2022-blake3-aes-128-gcm",
+                "2022-blake3-aes-256-gcm",
+                "2022-blake3-chacha20-poly1305",
+            )
+        require(method in methods) { "Unsupported Shadowsocks encryption method" }
+        require(password.isNotEmpty() || method == "none") { "Missing Shadowsocks password" }
+        val authority = decoded.substringAfterLast('@')
+        require(
+            if (authority.startsWith('[')) authority.substringAfter(']').startsWith(':')
+            else ':' in authority
+        ) {
+            "Missing Shadowsocks server port"
+        }
+        val server = endpoint(authority)
+        require(server.ports.size == 1 && ':' !in server.ports.first()) {
+            "Invalid Shadowsocks server port"
+        }
+        return JSONObject()
+            .put("type", "shadowsocks")
+            .put("tag", decode(line.substringAfter('#', "Proxy")))
+            .put("server", server.host)
+            .put("server_port", server.port)
+            .put("method", method)
+            .put("password", password)
+            .also { node ->
+                params["plugin"]
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { plugin ->
+                        val name = plugin.substringBefore(';')
+                        require(name in setOf("obfs-local", "v2ray-plugin")) {
+                            "Unsupported Shadowsocks plugin"
+                        }
+                        node.put("plugin", name).put("plugin_opts", plugin.substringAfter(';', ""))
+                    }
+            }
+    }
+
     fun hysteria(line: String): JSONObject {
         val scheme = line.substringBefore("://").lowercase()
         val v2 = scheme != "hysteria"
         val body = line.substringAfter("://").substringBefore('#')
         val authority = body.substringBefore('?').trimEnd('/')
         val params = query(body.substringAfter('?', ""))
+        val allowed = setOf("auth", "sni", "peer", "insecure", "pinSHA256", "alpn", "ech", "mport", "hopInterval", "obfs", "obfs-password", "obfsPassword", "protocol", "obfsParam", "upmbps", "downmbps", "up_mbps", "down_mbps")
+        require(params.keys.all { it in allowed }) { "Unsupported Hysteria parameter" }
         val auth = if ('@' in authority) decode(authority.substringBeforeLast('@')) else params["auth"].orEmpty()
         val server = endpoint(authority.substringAfterLast('@'))
         val tls = JSONObject().put("enabled", true)

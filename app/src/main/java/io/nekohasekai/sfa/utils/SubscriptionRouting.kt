@@ -44,13 +44,13 @@ object SubscriptionRouting {
         }
     }
 
-    fun apply(root: JSONObject, mode: Mode) {
+    fun apply(root: JSONObject, mode: Mode, blockIpv6: Boolean = true) {
         val route = ensureRoute(root)
         ensureRuleSet(route)
 
         when (mode) {
-            Mode.NORMAL -> applyNormalRouting(root)
-            Mode.WHITELIST_BYPASS -> applyWhitelistRouting(root)
+            Mode.NORMAL -> applyNormalRouting(root, blockIpv6)
+            Mode.WHITELIST_BYPASS -> applyWhitelistRouting(root, blockIpv6)
         }
     }
 
@@ -86,26 +86,26 @@ object SubscriptionRouting {
         route.put("rule_set", existing)
     }
 
-    private fun applyNormalRouting(root: JSONObject) {
+    private fun applyNormalRouting(root: JSONObject, blockIpv6: Boolean) {
         val route = ensureRoute(root)
         val oldRules = route.optJSONArray("rules") ?: JSONArray()
 
         val rules = JSONArray()
         appendSystemRules(rules, oldRules)
-        appendNormalDirectRules(rules)
+        appendNormalDirectRules(rules, blockIpv6)
 
         route.put("rules", rules)
         route.put("final", NORMAL_SELECTOR_TAG)
         root.put("route", route)
     }
 
-    private fun applyWhitelistRouting(root: JSONObject) {
+    private fun applyWhitelistRouting(root: JSONObject, blockIpv6: Boolean) {
         val route = ensureRoute(root)
         val oldRules = route.optJSONArray("rules") ?: JSONArray()
 
         val rules = JSONArray()
         appendSystemRules(rules, oldRules)
-        appendWhitelistDirectRules(rules)
+        appendWhitelistDirectRules(rules, blockIpv6)
 
         route.put("rules", rules)
 
@@ -144,10 +144,10 @@ object SubscriptionRouting {
         }
     }
 
-    private fun appendCommonDirectRules(rules: JSONArray) {
+    private fun appendCommonDirectRules(rules: JSONArray, blockIpv6: Boolean) {
         // Only settings-driven / essential system rules — no hard-coded RU/apps/domains.
         // User rules come from UserRoutingConfig (Маршруты in the app).
-        if (io.nekohasekai.sfa.database.Settings.routingBlockIpv6) {
+        if (blockIpv6) {
             rules.put(
                 JSONObject().apply {
                     put("ip_cidr", JSONArray().apply { put("::/0") })
@@ -163,12 +163,12 @@ object SubscriptionRouting {
         )
     }
 
-    private fun appendNormalDirectRules(rules: JSONArray) {
-        appendCommonDirectRules(rules)
+    private fun appendNormalDirectRules(rules: JSONArray, blockIpv6: Boolean) {
+        appendCommonDirectRules(rules, blockIpv6)
     }
 
-    private fun appendWhitelistDirectRules(rules: JSONArray) {
-        appendCommonDirectRules(rules)
+    private fun appendWhitelistDirectRules(rules: JSONArray, blockIpv6: Boolean) {
+        appendCommonDirectRules(rules, blockIpv6)
     }
 
     private fun getOutboundTags(root: JSONObject): Set<String> {

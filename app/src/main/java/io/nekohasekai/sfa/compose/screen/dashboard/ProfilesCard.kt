@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -83,6 +85,7 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.shareProfile
 import io.nekohasekai.sfa.ktx.shareProfileAsJson
+import io.nekohasekai.sfa.utils.SubscriptionImportReport
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -769,6 +772,16 @@ private fun ShareButton(
     onShareURL: () -> Unit,
     onShareQRS: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    var reportText by remember { mutableStateOf<String?>(null) }
+    reportText?.let { text ->
+        AlertDialog(
+            onDismissRequest = { reportText = null },
+            title = { Text("Отчёт импорта") },
+            text = { Text(text, modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = { reportText = null }) { Text("Закрыть") } },
+        )
+    }
     var expanded by remember { mutableStateOf(false) }
 
     Box {
@@ -785,6 +798,19 @@ private fun ShareButton(
                 onClick = {
                     expanded = false
                     onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Отчёт импорта") },
+                onClick = {
+                    expanded = false
+                    scope.launch {
+                        reportText =
+                            withContext(Dispatchers.IO) {
+                                SubscriptionImportReport.read(profile.typed.path)?.displayText()
+                                    ?: "Для этой версии подписки отчёта ещё нет. Обновите подписку."
+                            }
+                    }
                 },
             )
             HorizontalDivider()
@@ -902,6 +928,20 @@ private fun SubscriptionMetadata(profile: Profile) {
                         .getOrNull()
                 }
         }
+    val report by
+        produceState<SubscriptionImportReport?>(null, profile.id, profile.typed.lastUpdated.time) {
+            value =
+                withContext(Dispatchers.IO) { SubscriptionImportReport.read(profile.typed.path) }
+        }
+    report?.let {
+        Text(
+            it.summary(),
+            style = MaterialTheme.typography.bodySmall,
+            color =
+                if (it.issues.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.error,
+        )
+    }
     Text(
         listOfNotNull(
                 if (profile.typed.type == TypedProfile.Type.Remote) "Подписка"

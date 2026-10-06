@@ -82,7 +82,9 @@ object ProfileManager {
 
     suspend fun delete(profile: Profile): Int {
         try {
-            return instance.profileDao().delete(profile)
+            return instance.profileDao().delete(profile).also {
+                if (it > 0) java.io.File("${profile.typed.path}.import.json").delete()
+            }
         } finally {
             notifyCallbacks()
         }
@@ -90,7 +92,11 @@ object ProfileManager {
 
     suspend fun delete(profiles: List<Profile>): Int {
         try {
-            return instance.profileDao().delete(profiles)
+            return instance.profileDao().delete(profiles).also {
+                if (it == profiles.size) profiles.forEach { profile ->
+                    java.io.File("${profile.typed.path}.import.json").delete()
+                }
+            }
         } finally {
             notifyCallbacks()
         }

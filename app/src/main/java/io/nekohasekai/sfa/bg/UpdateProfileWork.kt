@@ -79,7 +79,8 @@ class UpdateProfileWork {
                     continue
                 }
                 try {
-                    val content = HTTPClient().use { it.getString(profile.typed.remoteURL) }
+                    val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
+                    val content = result.config
                     Libbox.checkConfig(content)
                     val file = File(profile.typed.path)
                     if (file.readText() != content) {
@@ -88,6 +89,7 @@ class UpdateProfileWork {
                             selectedProfileUpdated = true
                         }
                     }
+                    result.report.save(profile.typed.path)
                     profile.typed.lastUpdated = Date()
                     ProfileManager.update(profile)
                 } catch (e: CancellationException) {

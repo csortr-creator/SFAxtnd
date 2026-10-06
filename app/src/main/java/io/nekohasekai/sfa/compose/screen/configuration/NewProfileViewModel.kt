@@ -310,11 +310,13 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
         typedProfile.path = configFile.path
 
         // Fetch initial config - this MUST succeed for remote profiles
-        val content = HTTPClient().use { it.getString(state.remoteUrl) }
+        val result = HTTPClient().use { it.getSubscription(state.remoteUrl) }
+        val content = result.config
         Libbox.checkConfig(content)
         val configContent = content
 
         configFile.writeText(configContent)
+        result.report.save(configFile.path)
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)

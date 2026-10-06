@@ -255,7 +255,8 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 var selectedProfileUpdated = false
 
                 // Fetch remote config
-                val content = HTTPClient().use { it.getString(profile.typed.remoteURL) }
+                val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
+                val content = result.config
                 Libbox.checkConfig(content)
 
                 // Check if content changed
@@ -268,6 +269,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 }
 
                 // Update last updated time
+                result.report.save(profile.typed.path)
                 profile.typed.lastUpdated = Date()
                 ProfileManager.update(profile)
 

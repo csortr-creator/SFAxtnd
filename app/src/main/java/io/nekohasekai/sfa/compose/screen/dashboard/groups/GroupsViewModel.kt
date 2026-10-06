@@ -70,9 +70,6 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     private val probeMutex = Mutex()
     private val loadMutex = Mutex()
     private var loadedContent: String? = null
-    companion object {
-        private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
-    }
     @Volatile private var loadedFingerprints: Triple<Long, Map<String, String>, Long> = Triple(-1L, emptyMap(), 0L)
 
     private fun rememberLatency(profileId: Long, tag: String, fingerprint: String?, delay: Int, time: Long) {
@@ -504,6 +501,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     }
 
     companion object {
+        private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
+
         fun parseGroupsFromConfig(jsonStr: String): List<Group> {
             return try {
                 val root = JSONObject(jsonStr.trim())

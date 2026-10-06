@@ -214,6 +214,35 @@ class ClientSettingsConfigTest {
         export(result, "legacy-dns-migrated.json")
     }
 
+    @Test
+    fun explicitHijackCapturesPort53WhenSniffIsOff() {
+        val root = JSONObject(profile)
+        ClientSettingsConfig.applyCore(root, JSONObject("""{"sniff":"off","hijack":"on"}"""))
+        val rules = root.getJSONObject("route").getJSONArray("rules")
+        assertEquals(1, rules.length())
+        assertEquals(
+            53,
+            rules
+                .getJSONObject(0)
+                .getJSONArray("rules")
+                .getJSONObject(1)
+                .getJSONArray("port")
+                .getInt(0),
+        )
+        export(root, "hijack-without-sniff.json")
+    }
+
+    @Test
+    fun ipv4ModePreservesSingleStringTunnelAddress() {
+        val root = JSONObject(profile)
+        root.getJSONArray("inbounds").getJSONObject(0).put("address", "10.23.0.1/30")
+        ClientSettingsConfig.applyCore(root, JSONObject("""{"ipMode":"ipv4"}"""))
+        assertEquals(
+            "10.23.0.1/30",
+            root.getJSONArray("inbounds").getJSONObject(0).getJSONArray("address").getString(0),
+        )
+    }
+
     private fun export(root: JSONObject, name: String) {
         val target = File("build/native-configs").apply { mkdirs() }
         File(target, name).writeText(root.toString(2))

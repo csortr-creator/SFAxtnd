@@ -17,7 +17,12 @@ object ClientSettingsConfig {
                 inbound.put("strict_route", options.optBoolean("strictRoute"))
             val mode = options.optString("ipMode", "profile")
             if (mode in setOf("ipv4", "dual")) {
-                val addresses = inbound.optJSONArray("address") ?: JSONArray().put("172.19.0.1/30")
+                val addresses =
+                    when (val value = inbound.opt("address")) {
+                        is JSONArray -> value
+                        is String -> JSONArray().put(value)
+                        else -> JSONArray().put("172.19.0.1/30")
+                    }
                 val updated = JSONArray()
                 for (j in 0 until addresses.length()) {
                     val address = addresses.optString(j)
@@ -48,7 +53,18 @@ object ClientSettingsConfig {
             rules.put(action)
         }
         if (hijack == "on")
-            rules.put(JSONObject().put("protocol", "dns").put("action", "hijack-dns"))
+            rules.put(
+                JSONObject()
+                    .put("type", "logical")
+                    .put("mode", "or")
+                    .put(
+                        "rules",
+                        JSONArray()
+                            .put(JSONObject().put("protocol", "dns"))
+                            .put(JSONObject().put("port", JSONArray().put(53))),
+                    )
+                    .put("action", "hijack-dns")
+            )
         for (i in 0 until existing.length()) {
             val rule = existing.optJSONObject(i) ?: continue
             if (sniff != "profile" && rule.optString("action") == "sniff") continue
@@ -117,7 +133,7 @@ object ClientSettingsConfig {
                     if (uri.port > 0) target.put("server_port", uri.port)
                     if (uri.scheme == "https" || uri.scheme == "h3")
                         target.put("path", uri.rawPath.ifBlank { "/dns-query" })
-                    if (!host.matches(Regex("[0-9.:a-fA-F]+"))) {
+                    if (!isIpLiteral(host)) {
                         val bootstrapTag = "sfa-bootstrap"
                         if (
                             (0 until servers.length()).none {
@@ -207,12 +223,12 @@ object ClientSettingsConfig {
         for (i in 0 until outbounds.length()) outbounds
             .optJSONObject(i)
             ?.optString("server")
-            ?.takeIf { it.isNotBlank() && !it.matches(Regex("[0-9.:a-fA-F]+")) }
+            ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
             ?.let(bootstrapDomains::add)
         for (i in 0 until servers.length()) servers
             .optJSONObject(i)
             ?.optString("server")
-            ?.takeIf { it.isNotBlank() && !it.matches(Regex("[0-9.:a-fA-F]+")) }
+            ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
             ?.let(bootstrapDomains::add)
         if (bootstrapDomains.isNotEmpty())
             chain(JSONObject().put("domain", JSONArray(bootstrapDomains.toList())), "direct")
@@ -228,7 +244,12 @@ object ClientSettingsConfig {
                     return (0 until nested.length()).any {
                         nested.optJSONObject(it)?.let(::needsResponse) == true
                     }
-                val sets = rule.optJSONArray("rule_set")
+                val sets =
+                    when (val raw = rule.opt("rule_set")) {
+                        is JSONArray -> raw
+                        is String -> JSONArray().put(raw)
+                        else -> null
+                    }
                 return !rule.has("match_response") &&
                     (rule.has("ip_cidr") ||
                         rule.has("ip_is_private") ||
@@ -328,6 +349,9 @@ object ClientSettingsConfig {
             )
         }
     }
+
+    private fun isIpLiteral(host: String) =
+        host.contains(':') || host.matches(Regex("[0-9]+(?:\\.[0-9]+){3}"))
 
     private fun values(raw: String) =
         raw.split(',', ';', '\n').map(String::trim).filter(String::isNotEmpty)

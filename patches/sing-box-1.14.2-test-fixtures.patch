@@ -1,0 +1,146 @@
+--- a/transport/v2rayxhttp/interop_test.go
++++ b/transport/v2rayxhttp/interop_test.go
+@@ -5,12 +5,14 @@
+ 	"context"
+ 	"encoding/json"
+ 	"io"
++	"math/rand/v2"
+ 	"net"
+ 	"net/netip"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+ 	"strconv"
++	"sync"
+ 	"testing"
+ 	"time"
+ 
+@@ -419,20 +421,41 @@
+ 	return certificatePath, keyPath, caPath
+ }
+ 
++var interopPortMutex sync.Mutex
++var interopNextPort = 10000 + rand.IntN(10000)
++
++// Do not reserve a listener by briefly opening a port in the OS ephemeral
++// client range: an outgoing test connection can claim it before the inbound
++// server starts. Use distinct ports below that range, checking occupancy.
+ func interopPort(t testing.TB) uint16 {
+ 	t.Helper()
++	interopPortMutex.Lock()
++	defer interopPortMutex.Unlock()
++	for range 20000 {
++		port := interopNextPort
++		interopNextPort++
++		if interopNextPort >= 30000 {
++			interopNextPort = 10000
++		}
++		listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
++		if err != nil {
++			continue
++		}
++		_ = listener.Close()
++		return uint16(port)
++	}
++	t.Fatal("no available interop test listener port")
++	return 0
++}
++
++func interopEchoServer(t testing.TB) (uint16, func()) {
++	t.Helper()
+ 	listener, err := net.Listen("tcp", "127.0.0.1:0")
+ 	require.NoError(t, err)
+-	defer listener.Close()
+-	return uint16(listener.Addr().(*net.TCPAddr).Port)
+-}
+-
+-func interopEchoServer(t testing.TB) (uint16, func()) {
+-	t.Helper()
+-	_, benchmark := t.(*testing.B)
+-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+-	require.NoError(t, err)
+ 	done := make(chan struct{})
++	var workers sync.WaitGroup
++	var access sync.Mutex
++	active := make(map[net.Conn]struct{})
+ 	go func() {
+ 		defer close(done)
+ 		for {
+@@ -440,21 +463,27 @@
+ 			if err != nil {
+ 				return
+ 			}
+-			if !benchmark {
+-				t.Log("echo accepted connection")
+-			}
++			access.Lock()
++			active[connection] = struct{}{}
++			access.Unlock()
++			workers.Add(1)
+ 			go func() {
++				defer workers.Done()
+ 				defer connection.Close()
+-				n, copyErr := io.Copy(connection, connection)
+-				if !benchmark {
+-					t.Logf("echo connection completed: bytes=%d error=%v", n, copyErr)
+-				}
++				defer func() { access.Lock(); delete(active, connection); access.Unlock() }()
++				_, _ = io.Copy(connection, connection)
+ 			}()
+ 		}
+ 	}()
+ 	return uint16(listener.Addr().(*net.TCPAddr).Port), func() {
+ 		_ = listener.Close()
+-		<-done
++		<-done // all worker Add calls have finished before Wait
++		access.Lock()
++		for connection := range active {
++			_ = connection.Close()
++		}
++		access.Unlock()
++		workers.Wait()
+ 	}
+ }
+ 
+--- /dev/null
++++ b/transport/v2rayxhttp/interop_fixture_test.go
+@@ -0,0 +1,39 @@
++package v2rayxhttp_test
++
++import (
++	"io"
++	"net"
++	"strconv"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestInteropFixtureListenerPortsAvoidOutgoingRange(t *testing.T) {
++	seen := make(map[uint16]bool)
++	for range 64 {
++		port := interopPort(t)
++		require.GreaterOrEqual(t, int(port), 10000)
++		require.Less(t, int(port), 30000)
++		require.False(t, seen[port])
++		seen[port] = true
++	}
++}
++
++func TestInteropFixtureEchoCleanupClosesWorkers(t *testing.T) {
++	port, stop := interopEchoServer(t)
++	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))))
++	require.NoError(t, err)
++	defer conn.Close()
++	require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
++	_, err = conn.Write([]byte("ping"))
++	require.NoError(t, err)
++	response := make([]byte, 4)
++	_, err = io.ReadFull(conn, response)
++	require.NoError(t, err)
++	require.Equal(t, []byte("ping"), response)
++	stop()
++	_, err = conn.Read(response)
++	require.Error(t, err)
++}

@@ -10,6 +10,16 @@ else
     git -C sing-box-core apply "$PWD/$CORE_PATCH"
 fi
 
+# Interop fixtures must finish workers before test teardown and avoid
+# allocating future listener ports from the outgoing ephemeral range.
+FIXTURE_PATCH="$(dirname "$0")/patches/sing-box-1.14.2-test-fixtures.patch"
+if git -C sing-box-core apply --reverse --check "$PWD/$FIXTURE_PATCH" 2>/dev/null; then
+    echo "Interop fixture patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$FIXTURE_PATCH"
+    git -C sing-box-core apply "$PWD/$FIXTURE_PATCH"
+fi
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

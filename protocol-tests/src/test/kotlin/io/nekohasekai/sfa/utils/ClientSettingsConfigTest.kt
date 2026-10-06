@@ -173,6 +173,7 @@ class ClientSettingsConfigTest {
             """{"rules":[{"network":"tcp,udp","protocol":"http,tls","port":"80,443,1000:2000","outbound":"node"}]}"""
         val root = JSONObject(UserRoutingConfig.applyToConfig(profile, user))
         val rule = root.getJSONObject("route").getJSONArray("rules").getJSONObject(2)
+        assertEquals(2, rule.getJSONArray("network").length())
         assertEquals("node", rule.getString("outbound"))
         assertEquals(2, rule.getJSONArray("protocol").length())
         assertEquals(443, rule.getJSONArray("port").getInt(1))

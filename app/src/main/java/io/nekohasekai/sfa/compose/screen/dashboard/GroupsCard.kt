@@ -8,7 +8,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -497,7 +497,7 @@ private data class UrlTestPalette(
 
 @Composable
 private fun rememberUrlTestPalette(): UrlTestPalette {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
 
     val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = if (darkTheme) 0.09f else 0.07f)
 

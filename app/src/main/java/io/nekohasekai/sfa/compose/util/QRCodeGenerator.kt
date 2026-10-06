@@ -2,7 +2,7 @@ package io.nekohasekai.sfa.compose.util
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -60,7 +60,7 @@ object QRCodeGenerator {
 
     @Composable
     fun rememberBitmap(content: String, size: Int = 512): Bitmap {
-        val isDarkTheme = isSystemInDarkTheme()
+        val isDarkTheme = (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
         return remember(content, isDarkTheme) {
             generate(
                 content = content,

@@ -9,7 +9,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -319,7 +319,7 @@ fun TailscalePeerScreen(
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isSystemInDarkTheme()) {
+                    color = if ((MaterialTheme.colorScheme.surface.luminance() < 0.5f)) {
                         lerp(
                             MaterialTheme.colorScheme.surfaceContainerHighest,
                             MaterialTheme.colorScheme.surfaceContainerHigh,

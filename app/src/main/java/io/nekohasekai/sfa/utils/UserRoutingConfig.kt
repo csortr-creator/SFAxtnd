@@ -466,7 +466,7 @@ object UserRoutingConfig {
         putPorts("port", item.optString("port"))
         putPorts("source_port", item.optString("sourcePort"))
         val network = item.optString("network").trim()
-        if (network.isNotEmpty() && network != "tcp,udp" && !network.equals("TCP и UDP", true)) {
+        if (network.isNotEmpty()) {
             val nets = splitValues(network.replace("и", ",").lowercase())
             if (nets.isNotEmpty()) {
                 rule.put("network", JSONArray(nets))

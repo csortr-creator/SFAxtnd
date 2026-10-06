@@ -268,6 +268,10 @@ open class CommandClient(
 
         override fun writeStatus(message: StatusMessage) {
             if (!isActiveEpoch(epoch)) return
+            if (statusIntervalMillis != 1000L) {
+                message.uplink = PowerUsagePolicy.bytesPerSecond(message.uplink, statusIntervalMillis)
+                message.downlink = PowerUsagePolicy.bytesPerSecond(message.downlink, statusIntervalMillis)
+            }
             getAllHandlers().forEach { it.updateStatus(message) }
         }
 

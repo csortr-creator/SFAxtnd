@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.*
@@ -36,7 +35,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,7 +85,8 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                         "rules" -> "Правила маршрутизации"
                         "dns" -> "DNS"
                         "connection" -> "Параметры подключения"
-                        "sources" -> "Наборы правил"
+                        "sources" -> "Списки сайтов и IP"
+                        "advanced" -> "Дополнительные настройки"
                         else -> "Маршруты"
                     }
                 )
@@ -127,6 +127,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
     var intervalMenuOpen by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
+    var showResetRules by remember { mutableStateOf(false) }
 
     var strategyMenuOpen by remember { mutableStateOf(false) }
     var showAddServer by remember { mutableStateOf(false) }
@@ -179,6 +180,24 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 nextRules,
             )
     }
+
+    if (showResetRules)
+        AlertDialog(
+            onDismissRequest = { showResetRules = false },
+            title = { Text("Удалить мои правила?") },
+            text = { Text("Будут использоваться маршруты из подписки. Настройки DNS сохранятся.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showResetRules = false
+                        persist(nextRules = emptyList())
+                    }
+                ) {
+                    Text("Удалить")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showResetRules = false }) { Text("Отмена") } },
+        )
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, section) {
@@ -244,156 +263,188 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 )
     ) {
         if (section == "overview") {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(
-                        Icons.Outlined.Route,
-                        null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                    Column {
-                        Text(
-                            "Как направлять трафик",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Text(
-                            "Выберите пресет или добавьте свои правила. Изменения применятся при следующем подключении.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    }
-                }
-            }
-        }
-        if (section == "overview") {
             PreferenceSection(
-                "Пресеты",
-                Icons.Outlined.AutoAwesome,
-                "Готовые настройки в одно касание",
+                "Куда идёт трафик",
+                Icons.Outlined.Route,
+                "Ваши правила дополняют настройки подписки",
             ) {
-                ListItem(
-                    headlineContent = { Text("Whitelist · Россия") },
-                    supportingContent = {
-                        Text("Разрешённые домены и IP напрямую, остальной трафик через сервер.")
-                    },
-                    leadingContent = {
-                        Icon(
-                            Icons.Outlined.VerifiedUser,
-                            null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    },
-                    trailingContent = {
-                        if (
-                            rules.any {
-                                it.enabled && it.ruleSet == RoutingPresets.WHITELIST_DOMAINS
-                            }
-                        )
-                            Icon(
-                                Icons.Default.Check,
-                                "Пресет включён",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                    },
-                    colors = itemColors,
-                    modifier =
-                        Modifier.clickable { persist(nextRules = RoutingPresets.whitelist(rules)) },
-                )
-                HorizontalDivider(
-                    Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                Text(
-                    "Маршрутизация",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 16.dp, top = 12.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 FlowRow(
                     Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    FilterChip(
-                        selected = rules.any { it.name == "ru-ip" && it.enabled },
-                        onClick = {
-                            val keep =
-                                rules.filter {
-                                    it.name !in setOf("ru-sites", "ru-ip") &&
-                                        it.ruleSet !in RoutingPresets.remoteRuleSets
-                                }
-                            persist(
-                                nextGeoSourceId = GeoFileSources.SAGERNET.id,
-                                nextRules =
-                                    keep +
-                                        listOf(
-                                            RoutingRule(
-                                                name = "ru-sites",
-                                                domainSuffix = ".ru",
-                                                outbound = RoutingRule.OUTBOUND_DIRECT,
-                                            ),
-                                            RoutingRule(
-                                                name = "ru-ip",
-                                                ruleSet = "geoip-ru",
-                                                outbound = RoutingRule.OUTBOUND_DIRECT,
-                                            ),
-                                        ),
-                            )
-                        },
-                        label = { Text("Россия напрямую") },
-                        leadingIcon = { Icon(Icons.Outlined.Public, null) },
+                    SuggestionChip(
+                        onClick = { navController.navigate("settings/routing/section/rules") },
+                        label = { Text("Через VPN") },
+                        icon = { Icon(Icons.Outlined.Shield, null) },
                     )
-                    FilterChip(
-                        selected = rules.any { it.name == "ads" && it.enabled },
-                        onClick = {
-                            persist(
-                                nextRules =
-                                    rules.filter { it.name != "ads" } +
-                                        RoutingRule(
-                                            name = "ads",
-                                            ruleSet = "geosite-category-ads-all",
-                                            outbound = RoutingRule.OUTBOUND_BLOCK,
-                                        )
-                            )
-                        },
-                        label = { Text("Без рекламы") },
-                        leadingIcon = { Icon(Icons.Outlined.Block, null) },
+                    SuggestionChip(
+                        onClick = { navController.navigate("settings/routing/section/rules") },
+                        label = { Text("Напрямую") },
+                        icon = { Icon(Icons.Outlined.Public, null) },
                     )
-                    TextButton(onClick = { persist(nextRules = emptyList()) }) {
-                        Text("Сброс правил")
-                    }
+                    SuggestionChip(
+                        onClick = { navController.navigate("settings/routing/section/rules") },
+                        label = { Text("Блокировать") },
+                        icon = { Icon(Icons.Outlined.Block, null) },
+                    )
                 }
-            }
-        }
-        if (section == "overview") {
-            PreferenceSection("Настройки маршрутов", Icons.Outlined.Tune) {
+                Text(
+                    "Напрямую — без VPN. Для остальных сайтов действуют правила подписки, если не включён Whitelist.",
+                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 RoutingSectionLink(
-                    "Правила",
-                    "Включено ${rules.count { it.enabled }} из ${rules.size}",
+                    "Мои правила",
+                    "Активно: ${rules.count { it.enabled }} · всего: ${rules.size}",
                     Icons.Outlined.AltRoute,
                 ) {
                     navController.navigate("settings/routing/section/rules")
                 }
+                rules
+                    .withIndex()
+                    .filter { it.value.enabled }
+                    .take(3)
+                    .forEach { indexed ->
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    indexed.value.displayTitle(),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            supportingContent = {
+                                Text(indexed.value.displaySubtitle(), maxLines = 2)
+                            },
+                            leadingContent = {
+                                Icon(
+                                    Icons.Outlined.CheckCircle,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            colors = itemColors,
+                            modifier =
+                                Modifier.clickable {
+                                    navController.navigate("settings/routing/rule/${indexed.index}")
+                                },
+                        )
+                    }
+                FilledTonalButton(
+                    onClick = { navController.navigate("settings/routing/rule/-1") },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Text("Добавить правило", Modifier.padding(start = 8.dp))
+                }
+            }
+            PreferenceSection(
+                "Быстрые настройки",
+                Icons.Outlined.AutoAwesome,
+                "Можно включать и выключать по отдельности",
+            ) {
+                val whitelistEnabled =
+                    listOf(RoutingPresets.WHITELIST_DOMAINS, RoutingPresets.WHITELIST_IPS).all { tag
+                        ->
+                        rules.any { it.enabled && it.ruleSet == tag }
+                    }
+                RoutingPresetRow(
+                    "Whitelist для России",
+                    "Разрешённые сайты напрямую, всё остальное через VPN",
+                    Icons.Outlined.VerifiedUser,
+                    whitelistEnabled,
+                ) { enabled ->
+                    persist(
+                        nextRules =
+                            if (enabled) RoutingPresets.whitelist(rules)
+                            else rules.filter { it.ruleSet !in RoutingPresets.remoteRuleSets.keys }
+                    )
+                }
+                RoutingPresetRow(
+                    "Российские сайты напрямую",
+                    "Домены .ru и российские IP без VPN",
+                    Icons.Outlined.Public,
+                    rules.any { it.name == "ru-ip" && it.enabled },
+                ) { enabled ->
+                    val keep = rules.filter { it.name !in setOf("ru-sites", "ru-ip") }
+                    persist(
+                        nextGeoSourceId = if (enabled) GeoFileSources.SAGERNET.id else geoSourceId,
+                        nextRules =
+                            if (!enabled) keep
+                            else
+                                keep.filter { it.ruleSet !in RoutingPresets.remoteRuleSets.keys } +
+                                    listOf(
+                                        RoutingRule(
+                                            name = "ru-sites",
+                                            domainSuffix = ".ru",
+                                            outbound = RoutingRule.OUTBOUND_DIRECT,
+                                        ),
+                                        RoutingRule(
+                                            name = "ru-ip",
+                                            ruleSet = "geoip-ru",
+                                            outbound = RoutingRule.OUTBOUND_DIRECT,
+                                        ),
+                                    ),
+                    )
+                }
+                RoutingPresetRow(
+                    "Блокировать рекламу",
+                    "Рекламные домены из готового списка",
+                    Icons.Outlined.Block,
+                    rules.any { it.name == "ads" && it.enabled },
+                ) { enabled ->
+                    val keep = rules.filter { it.name != "ads" }
+                    persist(
+                        nextRules =
+                            if (!enabled) keep
+                            else
+                                keep +
+                                    RoutingRule(
+                                        name = "ads",
+                                        ruleSet = "geosite-category-ads-all",
+                                        outbound = RoutingRule.OUTBOUND_BLOCK,
+                                    )
+                    )
+                }
+            }
+            PreferenceSection("Другие настройки", Icons.Outlined.Tune) {
                 RoutingSectionLink(
-                    "DNS",
-                    if (servers.isEmpty()) "Из подписки" else "Серверов: ${servers.size}",
+                    "DNS · адреса сайтов",
+                    if (servers.isEmpty()) "Используются настройки подписки"
+                    else "Своих DNS-серверов: ${servers.size}",
                     Icons.Outlined.Dns,
                 ) {
                     navController.navigate("settings/routing/section/dns")
                 }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 RoutingSectionLink(
-                    "Наборы правил",
+                    "Дополнительно",
+                    "Списки сайтов и IP, IPv6 и параметры VPN",
+                    Icons.Outlined.Tune,
+                ) {
+                    navController.navigate("settings/routing/section/advanced")
+                }
+            }
+            Text(
+                "Изменения применятся после переподключения VPN.",
+                Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (section == "advanced") {
+            PreferenceSection("Дополнительные настройки", Icons.Outlined.Tune) {
+                RoutingSectionLink(
+                    "Списки сайтов и IP",
                     GeoFileSources.ALL.firstOrNull { it.id == geoSourceId }?.name ?: "Из подписки",
                     Icons.Outlined.Public,
                 ) {
                     navController.navigate("settings/routing/section/sources")
                 }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 RoutingSectionLink(
-                    "Подключение",
+                    "Параметры VPN",
                     if (blockIpv6) "Только IPv4 · $tunStack" else "IPv4 и IPv6 · $tunStack",
                     Icons.Outlined.Tune,
                 ) {
@@ -406,7 +457,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
             PreferenceSection(
                 "Правила",
                 Icons.Outlined.AltRoute,
-                "Включено ${rules.count { it.enabled }} из ${rules.size}",
+                "Первое совпавшее правило определяет направление трафика",
                 action = {
                     IconButton(onClick = { navController.navigate("settings/routing/rule/-1") }) {
                         Icon(Icons.Default.Add, "Добавить правило")
@@ -510,6 +561,13 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
                 }
+                if (rules.isNotEmpty())
+                    TextButton(
+                        onClick = { showResetRules = true },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        Text("Удалить все мои правила")
+                    }
             }
         }
         if (section == "dns") {
@@ -1147,4 +1205,21 @@ private fun encodeRoutingConfig(
         )
         .put("rules", rulesJson)
         .toString()
+}
+
+@Composable
+private fun RoutingPresetRow(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
+        leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+        trailingContent = { Switch(enabled, onChange) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
 }

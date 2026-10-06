@@ -41,36 +41,57 @@ data class RoutingRule(
     }
 
     fun displayTitle(): String {
-        if (name.isNotBlank()) return name
+        if (name.isNotBlank())
+            return when (name) {
+                "ru-sites" -> "Домены .ru"
+                "ru-ip" -> "Российские IP-адреса"
+                "ads" -> "Рекламные сайты"
+                else -> name
+            }
         listOf(domain, domainSuffix, domainKeyword, ipCidr, packageName, ruleSet, value)
             .firstOrNull { it.isNotBlank() }
-            ?.let { return it }
+            ?.let {
+                return it
+            }
         return "Правило"
     }
 
     fun displaySubtitle(): String {
         val parts = buildList {
-            if (!enabled) add("выкл")
-            if (domain.isNotBlank()) add("domain")
-            if (domainSuffix.isNotBlank()) add("suffix")
-            if (domainKeyword.isNotBlank()) add("keyword")
-            if (ipCidr.isNotBlank()) add("ip")
-            if (port.isNotBlank()) add("port")
-            if (packageName.isNotBlank()) add("app")
-            if (ruleSet.isNotBlank()) add("srs")
+            if (!enabled) add("Выключено")
+            if (domain.isNotBlank()) add("Домен")
+            if (domainSuffix.isNotBlank()) add("Домены")
+            if (domainKeyword.isNotBlank()) add("Часть домена")
+            if (ipCidr.isNotBlank()) add("IP-адреса")
+            if (port.isNotBlank()) add("Порты")
+            if (packageName.isNotBlank()) add("Приложения")
+            if (ruleSet.isNotBlank()) add("Готовый список")
             if (network.isNotBlank()) add(network)
             if (protocol.isNotBlank()) add(protocol)
-            if (wifiSsid.isNotBlank()) add("wifi")
-            if (dnsRule) add("dns")
-            if (value.isNotBlank() && domain.isBlank()) add(type.name.lowercase())
+            if (wifiSsid.isNotBlank()) add("Сеть Wi-Fi")
+            if (dnsRule) add("DNS")
+            if (value.isNotBlank() && domain.isBlank())
+                add(
+                    when (type) {
+                        Type.DOMAIN -> "Домен"
+                        Type.DOMAIN_SUFFIX -> "Домены"
+                        Type.DOMAIN_KEYWORD -> "Часть домена"
+                        Type.IP_CIDR -> "IP-адреса"
+                        Type.GEOSITE,
+                        Type.GEOIP -> "Готовый список"
+                        Type.PACKAGE_NAME -> "Приложения"
+                        Type.PROTOCOL -> "Протокол"
+                    }
+                )
         }
         val match = parts.joinToString(" · ").ifBlank { "—" }
-        val destination = when (outbound) {
-            OUTBOUND_DIRECT -> "Напрямую"
-            OUTBOUND_BLOCK -> "Блокировать"
-            OUTBOUND_PROXY -> "Через сервер"
-            else -> outbound
-        }
+        val destination =
+            when (outbound) {
+                OUTBOUND_DIRECT -> "Напрямую"
+                OUTBOUND_BLOCK -> "Блокировать"
+                OUTBOUND_PROXY -> "Через VPN"
+                else -> outbound
+            }
         return "$match · $destination"
     }
 }

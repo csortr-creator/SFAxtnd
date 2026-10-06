@@ -803,6 +803,7 @@ class MainActivity :
         val isConnectionsRoute = currentRootRoute == Screen.Connections.route
         val isGroupsRoute = currentRootRoute == Screen.Groups.route
         val isServersRoute = currentRootRoute == Screen.Dashboard.route
+        val showLocalSessionPanel = currentServiceStatus in listOf(Status.Started, Status.Starting, Status.Stopping)
         val isLogRoute = currentRootRoute == Screen.Log.route
 
         val isSubScreen = isSettingsSubScreen || isToolsSubScreen || isConnectionsDetail || isProfileRoute
@@ -1020,7 +1021,7 @@ class MainActivity :
                         onToggleConnection = { if (isRemote) RemoteControlManager.exitRemoteControl()
                             else if (currentServiceStatus == Status.Stopped) startService() else dashboardViewModel.toggleService() },
                         showStartFab = showStartFab,
-                        showStatusBar = showStatusBar,
+                        showStatusBar = showStatusBar && (isRemote || useNavigationRail),
                         newProfileArgs = newProfileArgs,
                         onClearNewProfileArgs = { newProfileArgs = NewProfileArgs() },
                         onOpenNewProfile = openNewProfile,
@@ -1050,23 +1051,10 @@ class MainActivity :
                                 onDisconnectClick = { RemoteControlManager.exitRemoteControl() },
                                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomOverlayPadding),
                             )
-                        } else {
-                            ServiceStatusBar(
-                                visible = showStatusBar && !isSubScreen && !isServersRoute,
-                                serviceStatus = currentServiceStatus,
-                                startTime = dashboardUiState.serviceStartTime,
-                                groupsCount = dashboardUiState.groupsCount,
-                                hasGroups = dashboardUiState.hasGroups,
-                                onGroupsClick = { showGroupsSheet = true },
-                                connectionsCount = dashboardUiState.connectionsCount,
-                                onConnectionsClick = { showConnectionsSheet = true },
-                                onStopClick = { dashboardViewModel.toggleService() },
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomOverlayPadding),
-                            )
                         }
                     }
 
-                    val showPadFab = useNavigationRail && !isSubScreen && !isServersRoute && (showStartFab || showStatusBar)
+                    val showPadFab = useNavigationRail && !isSubScreen && (showStartFab || showStatusBar)
                     if (useNavigationRail) {
                         androidx.compose.animation.AnimatedVisibility(
                             visible = showPadFab,
@@ -1292,7 +1280,31 @@ class MainActivity :
                     bottomBar = {
                         if (!isSubScreen) {
                             val hasUpdate by UpdateState.hasUpdate
-                            NavigationBar {
+                            Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                tonalElevation = 3.dp,
+                            ) {
+                            Column {
+                                if (!isRemote) ServiceStatusBar(
+                                    visible = showLocalSessionPanel,
+                                    serviceStatus = currentServiceStatus,
+                                    startTime = dashboardUiState.serviceStartTime,
+                                    downlink = dashboardUiState.downlink,
+                                    uplink = dashboardUiState.uplink,
+                                    trafficAvailable = dashboardUiState.trafficVisible,
+                                    groupsCount = dashboardUiState.groupsCount,
+                                    hasGroups = dashboardUiState.hasGroups,
+                                    onGroupsClick = { showGroupsSheet = true },
+                                    connectionsCount = dashboardUiState.connectionsCount,
+                                    onConnectionsClick = { showConnectionsSheet = true },
+                                    onStopClick = { dashboardViewModel.toggleService() },
+                                )
+                                androidx.compose.material3.HorizontalDivider(
+                                    Modifier.padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent) {
                                 bottomNavigationScreens.forEach { screen ->
                                     NavigationBarItem(
                                         icon = {
@@ -1332,6 +1344,8 @@ class MainActivity :
                                         },
                                     )
                                 }
+                            }
+                            }
                             }
                         }
                     },

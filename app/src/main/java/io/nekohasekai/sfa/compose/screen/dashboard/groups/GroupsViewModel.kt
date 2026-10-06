@@ -27,6 +27,7 @@ import java.io.File
 import androidx.preference.PreferenceDataStore
 import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
 import io.nekohasekai.sfa.constant.SettingsKey
+import io.nekohasekai.sfa.utils.ProfileLatencyCache
 import io.nekohasekai.sfa.utils.OutboundProfileState
 import io.nekohasekai.sfa.utils.OfflineProbePlatform
 import io.nekohasekai.libbox.Libbox
@@ -69,6 +70,19 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     private val probeMutex = Mutex()
     private val loadMutex = Mutex()
     private var loadedContent: String? = null
+    companion object {
+        private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
+    }
+    @Volatile private var loadedFingerprints: Pair<Long, Map<String, String>> = -1L to emptyMap()
+
+    private fun rememberLatency(profileId: Long, tag: String, fingerprint: String?, delay: Int, time: Long) {
+        if (fingerprint == null) return
+        synchronized(latencyCache) {
+            if (latencyCache.get(profileId, tag, fingerprint) == ProfileLatencyCache.Result(delay, time)) return
+            latencyCache.put(profileId, tag, fingerprint, delay, time)
+            Settings.outboundLatencyCache = latencyCache.encode()
+        }
+    }
     private var probeJob: Job? = null
     @Volatile private var probe: OutboundProbe? = null
     private val profileCallback: () -> Unit = { refreshSelectedProfile(force = true) }
@@ -333,6 +347,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
     private fun testOffline(tags: List<String>, testingTag: String) {
         if (_serviceStatus.value != Status.Stopped || tags.isEmpty() || probeJob?.isActive == true) return
         val profileId = uiState.value.profileId
+        val fingerprints = loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
         updateState { copy(testingGroups = testingGroups + testingTag) }
         probeJob = viewModelScope.launch(Dispatchers.IO) {
             probeMutex.withLock {
@@ -351,10 +366,12 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                     ensureActive()
                                     val delay = runCatching { session.urlTest(tag) }.getOrDefault(0)
                                     ensureActive()
+                                    val measuredAt = System.currentTimeMillis()
+                                    rememberLatency(profileId, tag, fingerprints[tag], delay, measuredAt)
                                     if (uiState.value.profileId == profileId && _serviceStatus.value == Status.Stopped) {
                                         updateState { copy(groups = groups.map { group ->
                                             group.copy(items = group.items.map { item ->
-                                                if (item.tag == tag) item.copy(urlTestDelay = delay, urlTestTime = System.currentTimeMillis()) else item
+                                                if (item.tag == tag) item.copy(urlTestDelay = delay, urlTestTime = measuredAt) else item
                                             })
                                         }) }
                                     }
@@ -393,6 +410,9 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
 
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
         viewModelScope.launch(Dispatchers.Default) {
+            val profileId = uiState.value.profileId
+            val fingerprints = loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
+            val local = RemoteControlManager.remoteServer.value == null
             val currentGroups = uiState.value.groups
             val previousPing = currentGroups
                 .flatMap { g -> g.items.map { it.tag to it } }
@@ -403,10 +423,14 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                 val existing = currentByTag[converted.tag]
                 val items = converted.items.map { item ->
                     if (item.urlTestDelay > 0 || item.urlTestTime > 0L) {
+                        if (local) rememberLatency(profileId, item.tag, fingerprints[item.tag],
+                            item.urlTestDelay, item.urlTestTime.takeIf { it > 0 } ?: System.currentTimeMillis())
                         item
                     } else {
+                        val cached = if (local) fingerprints[item.tag]?.let { latencyCache.get(profileId, item.tag, it) } else null
                         val prev = previousPing[item.tag]
-                        if (prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)) {
+                        if (cached != null) item.copy(urlTestDelay = cached.delay, urlTestTime = cached.time)
+                        else if (prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)) {
                             item.copy(urlTestDelay = prev.urlTestDelay, urlTestTime = prev.urlTestTime)
                         } else {
                             item
@@ -418,6 +442,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             }
 
             withContext(Dispatchers.Main) {
+                if (local && uiState.value.profileId != profileId) return@withContext
                 updateState {
                     val initialExpandedGroups = if (expandedGroups.isEmpty() && currentGroups.isEmpty()) {
                         mergedGroups.filter { it.isExpand }.map { it.tag }.toSet()
@@ -449,10 +474,18 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         if (Settings.selectedProfile != profileId) return@withLock
         val sameProfile = uiState.value.profileId == profileId && loadedContent == content
         loadedContent = content
+        val fingerprints = content?.let { runCatching { ProfileLatencyCache.fingerprints(it) }.getOrDefault(emptyMap()) }.orEmpty()
+        loadedFingerprints = profileId to fingerprints
+        synchronized(latencyCache) {
+            latencyCache.retain(profileId, fingerprints)
+            Settings.outboundLatencyCache = latencyCache.encode()
+        }
         updateState {
             val previous = if (sameProfile) this.groups.flatMap { it.items }.associateBy { it.tag } else emptyMap()
             val refreshed = groups.map { group -> group.copy(items = group.items.map { item ->
-                previous[item.tag]?.let { item.copy(urlTestDelay = it.urlTestDelay, urlTestTime = it.urlTestTime) } ?: item
+                val cached = fingerprints[item.tag]?.let { latencyCache.get(profileId, item.tag, it) }
+                if (cached != null) item.copy(urlTestDelay = cached.delay, urlTestTime = cached.time)
+                else previous[item.tag]?.let { item.copy(urlTestDelay = it.urlTestDelay, urlTestTime = it.urlTestTime) } ?: item
             }) }
             copy(
                 profileId = profileId,

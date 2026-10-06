@@ -24,13 +24,15 @@ open class CommandClient(
     private val connectionTypes: List<ConnectionType>,
     private val handler: Handler,
     private val localOnly: Boolean = false,
+    private val statusIntervalMillis: Long = 1000L,
 ) {
     constructor(
         scope: CoroutineScope,
         connectionType: ConnectionType,
         handler: Handler,
         localOnly: Boolean = false,
-    ) : this(scope, listOf(connectionType), handler, localOnly)
+        statusIntervalMillis: Long = 1000L,
+    ) : this(scope, listOf(connectionType), handler, localOnly, statusIntervalMillis)
 
     private val additionalHandlers = mutableListOf<Handler>()
     private var cachedGroups: MutableList<OutboundGroup>? = null
@@ -142,7 +144,7 @@ open class CommandClient(
                     }
                 options.addCommand(command)
             }
-            options.statusInterval = 1 * 1000 * 1000 * 1000
+            options.statusInterval = statusIntervalMillis.coerceAtLeast(250L) * 1_000_000L
             val remoteServer = if (localOnly) null else CommandTarget.remoteServer
             val newClient: io.nekohasekai.libbox.CommandClient
             try {

@@ -13,7 +13,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.net.NetworkInterface
 
-/** Own monitor and resolver: probing never replaces the VPN service's callbacks. */
 class OfflineProbePlatform : PlatformInterfaceWrapper {
     @Volatile private var network: Network? = null
 

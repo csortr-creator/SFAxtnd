@@ -52,10 +52,6 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Workspaces
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * File category icons - File types and operations
- * Based on Google's Material Design Icons taxonomy
- */
 object FileIcons {
     val icons =
         listOf(

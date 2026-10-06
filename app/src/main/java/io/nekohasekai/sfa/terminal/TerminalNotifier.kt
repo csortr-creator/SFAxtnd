@@ -13,7 +13,6 @@ import io.nekohasekai.sfa.bg.ServiceNotification
 import io.nekohasekai.sfa.compose.MainActivity
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Desktop notifications (OSC 9 / OSC 777) from terminal sessions. */
 object TerminalNotifier {
     private const val CHANNEL_ID = "terminal_notifications"
     private const val NOTIFICATION_ID_BASE = 0x5F20

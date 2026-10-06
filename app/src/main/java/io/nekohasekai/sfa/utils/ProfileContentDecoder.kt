@@ -4,7 +4,6 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.ProfileContent
 import org.json.JSONObject
 
-/** Accept share links on the same local import surfaces as encoded SFA profiles. */
 object ProfileContentDecoder {
     fun decode(data: ByteArray): ProfileContent {
         val text = data.toString(Charsets.UTF_8).trim()

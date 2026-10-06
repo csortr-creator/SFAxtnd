@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.utils
 
-/** Resolve nested selectors to the active leaf; the subscription name is the safe fallback. */
 object NotificationTitle {
     data class Group(val tag: String, val selected: String)
 

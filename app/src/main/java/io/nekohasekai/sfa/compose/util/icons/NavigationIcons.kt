@@ -60,10 +60,6 @@ import androidx.compose.material.icons.filled.WaterfallChart
 import androidx.compose.material.icons.filled.West
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Navigation category icons - App navigation and menus
- * Based on Google's Material Design Icons taxonomy
- */
 object NavigationIcons {
     val icons =
         listOf(

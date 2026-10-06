@@ -123,10 +123,6 @@ import androidx.compose.material.icons.filled.WebAsset
 import androidx.compose.material.icons.filled.WebAssetOff
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * AV (Audio/Video) category icons - Media controls and playback
- * Based on Google's Material Design Icons taxonomy
- */
 object AVIcons {
     val icons =
         listOf(

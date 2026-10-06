@@ -10,10 +10,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WarningAmber
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Alert category icons - Warnings, errors, and notifications
- * Based on Google's Material Design Icons taxonomy
- */
 object AlertIcons {
     val icons =
         listOf(

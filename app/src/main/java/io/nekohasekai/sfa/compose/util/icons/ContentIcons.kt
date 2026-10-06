@@ -89,10 +89,6 @@ import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.material.icons.filled.WhereToVote
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Content category icons - Content creation and management
- * Based on Google's Material Design Icons taxonomy
- */
 object ContentIcons {
     val icons =
         listOf(

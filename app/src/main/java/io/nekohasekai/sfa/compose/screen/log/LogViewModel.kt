@@ -8,6 +8,7 @@ import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import java.util.LinkedList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -15,11 +16,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.LinkedList
 
-class LogViewModel :
-    BaseLogViewModel(),
-    CommandClient.Handler {
+class LogViewModel : BaseLogViewModel(), CommandClient.Handler {
     companion object {
         private val maxLines = 3000
     }
@@ -33,27 +31,38 @@ class LogViewModel :
         )
     private var lastServiceStatus: Status = Status.Stopped
     private val serviceStatusFlow = MutableStateFlow(Status.Stopped)
+    private val visibleScreens = MutableStateFlow(0)
+
+    fun setVisible(visible: Boolean) {
+        visibleScreens.update { (it + if (visible) 1 else -1).coerceAtLeast(0) }
+    }
 
     init {
         viewModelScope.launch {
             combine(
-                AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer,
-                RemoteControlManager.isConnected,
-                serviceStatusFlow,
-            ) { foreground, remoteServer, remoteConnected, status ->
-                SessionTarget(
-                    connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
-                    remoteServerId = remoteServer?.id,
-                )
-            }.distinctUntilChanged().collect { target ->
-                if (target.connect) {
-                    commandClient.connect()
-                } else {
-                    commandClient.disconnect()
+                    AppLifecycleObserver.isUiActive,
+                    RemoteControlManager.remoteServer,
+                    RemoteControlManager.isConnected,
+                    serviceStatusFlow,
+                    visibleScreens,
+                ) { foreground, remoteServer, remoteConnected, status, visible ->
+                    SessionTarget(
+                        connect =
+                            foreground &&
+                                visible > 0 &&
+                                if (remoteServer != null) remoteConnected
+                                else status == Status.Started,
+                        remoteServerId = remoteServer?.id,
+                    )
                 }
-            }
+                .distinctUntilChanged()
+                .collect { target ->
+                    if (target.connect) {
+                        commandClient.connect()
+                    } else {
+                        commandClient.disconnect()
+                    }
+                }
         }
     }
 
@@ -77,7 +86,8 @@ class LogViewModel :
             return
         }
         when (status) {
-            Status.Stopped, Status.Stopping -> {
+            Status.Stopped,
+            Status.Stopping -> {
                 _uiState.update { it.copy(isConnected = false) }
             }
 
@@ -94,7 +104,8 @@ class LogViewModel :
     }
 
     override fun setDefaultLogLevel(level: Int) {
-        val logLevel = LogLevel.entries.find { it.priority == level } ?: error("Unknown log level: $level")
+        val logLevel =
+            LogLevel.entries.find { it.priority == level } ?: error("Unknown log level: $level")
         viewModelScope.launch(Dispatchers.Main) {
             _uiState.update { it.copy(defaultLogLevel = logLevel) }
             updateDisplayedLogs()
@@ -114,9 +125,7 @@ class LogViewModel :
         viewModelScope.launch {
             val sent =
                 withContext(Dispatchers.IO) {
-                    runCatching {
-                        CommandTarget.standaloneClient().clearLogs()
-                    }.isSuccess
+                    runCatching { CommandTarget.standaloneClient().clearLogs() }.isSuccess
                 }
             // With the service stopped there is no broadcast to clear the UI,
             // so the local buffer is cleared directly.
@@ -127,24 +136,27 @@ class LogViewModel :
     }
 
     override fun appendLogs(message: List<LogEntry>) {
-        val processedLogs = message.map { processLogEntry(it) }
+        val processedLogs = message.takeLast(maxLines).map { processLogEntry(it) }
         viewModelScope.launch(Dispatchers.Main) {
             if (_uiState.value.isPaused) {
                 bufferedLogs.addAll(processedLogs)
+                while (bufferedLogs.size > maxLines) bufferedLogs.removeFirst()
             } else {
                 val totalSize = allLogs.size + processedLogs.size
                 val removeCount = (totalSize - maxLines).coerceAtLeast(0)
 
                 if (removeCount > 0) {
-                    repeat(removeCount) {
-                        allLogs.removeFirst()
-                    }
+                    repeat(removeCount) { allLogs.removeFirst() }
                 }
 
                 allLogs.addAll(processedLogs)
                 updateDisplayedLogs()
 
-                if (_autoScrollEnabled.value && !_uiState.value.isPaused && !_uiState.value.isSearchActive) {
+                if (
+                    _autoScrollEnabled.value &&
+                        !_uiState.value.isPaused &&
+                        !_uiState.value.isSearchActive
+                ) {
                     scrollToBottom()
                 }
             }
@@ -158,9 +170,7 @@ class LogViewModel :
             val removeCount = (totalSize - maxLines).coerceAtLeast(0)
 
             if (removeCount > 0) {
-                repeat(removeCount) {
-                    allLogs.removeFirst()
-                }
+                repeat(removeCount) { allLogs.removeFirst() }
             }
 
             allLogs.addAll(bufferedLogs)

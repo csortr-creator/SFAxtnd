@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.utils
 
 import org.json.JSONObject
 
-/** Keep native remote updates alive while retaining an offline initial copy. */
 object RuleSetPolicy {
     fun configure(entry: JSONObject, cachedPath: String?, intervalMs: Long) {
         if (intervalMs > 0) {

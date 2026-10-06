@@ -4,15 +4,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.lifecycle.MutableLiveData
 import androidx.preference.PreferenceDataStore
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
@@ -21,23 +17,26 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
-import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
+import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.NotificationTitle
-import kotlinx.coroutines.DelicateCoroutinesApi
+import io.nekohasekai.sfa.utils.NotificationUpdateGate
+import io.nekohasekai.sfa.utils.PowerUsagePolicy
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-@OptIn(DelicateCoroutinesApi::class)
-class ServiceNotification(
-    private val status: MutableLiveData<Status>,
-    private val service: Service,
-) : BroadcastReceiver(), CommandClient.Handler, OnPreferenceDataStoreChangeListener {
+class ServiceNotification(private val service: Service) :
+    CommandClient.Handler, OnPreferenceDataStoreChangeListener {
     companion object {
         private const val notificationId = 1
         private const val notificationChannel = "service"
@@ -52,21 +51,31 @@ class ServiceNotification(
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val dynamicNotification = MutableStateFlow(Settings.dynamicNotification)
+    private val updates = NotificationUpdateGate()
+    private var polling = false
+    private var titleMode = readTitleMode()
+    private var contentText = ""
     private val commandClient =
-        CommandClient(GlobalScope, CommandClient.ConnectionType.Status, this, localOnly = true)
-    private var receiverRegistered = false
+        CommandClient(
+            scope,
+            CommandClient.ConnectionType.Status,
+            this,
+            localOnly = true,
+            statusIntervalMillis = 3000L,
+        )
     private var started = false
     private var profileName = ""
     private var activeGroups = emptyList<NotificationTitle.Group>()
     private val groupClient =
         CommandClient(
-            GlobalScope,
+            scope,
             CommandClient.ConnectionType.Groups,
             object : CommandClient.Handler {
                 override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
                     val snapshot = newGroups.map { NotificationTitle.Group(it.tag, it.selected) }
-                    GlobalScope.launch(Dispatchers.Main) {
+                    scope.launch {
                         if (started) {
                             activeGroups = snapshot
                             refreshTitle()
@@ -77,26 +86,35 @@ class ServiceNotification(
             localOnly = true,
         )
 
-    private fun title() =
-        NotificationTitle.resolve(
-            runCatching {
-                    JSONObject(Settings.appearanceJson).optString("notificationTitle", "group")
-                }
-                .getOrDefault("group"),
-            profileName,
-            activeGroups,
-        )
+    private fun readTitleMode() =
+        runCatching { JSONObject(Settings.appearanceJson).optString("notificationTitle", "group") }
+            .getOrDefault("group")
+
+    private fun title() = NotificationTitle.resolve(titleMode, profileName, activeGroups)
 
     private fun refreshTitle() {
-        Application.notificationManager.notify(
-            notificationId,
-            notificationBuilder.setContentTitle(title()).build(),
-        )
+        val currentTitle = title()
+        if (updates.changed(currentTitle, contentText)) {
+            Application.notificationManager.notify(
+                notificationId,
+                notificationBuilder
+                    .setContentTitle(currentTitle)
+                    .setContentText(contentText)
+                    .build(),
+            )
+        }
     }
 
     override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
-        if (key == "appearance")
-            GlobalScope.launch(Dispatchers.Main) { if (started) refreshTitle() }
+        scope.launch {
+            if (started) {
+                dynamicNotification.value = Settings.dynamicNotification
+                if (key == "appearance") {
+                    titleMode = readTitleMode()
+                    refreshTitle()
+                }
+            }
+        }
     }
 
     private val notificationBuilder by lazy {
@@ -136,7 +154,10 @@ class ServiceNotification(
 
     fun show(lastProfileName: String, @StringRes contentTextId: Int) {
         profileName = lastProfileName
+        titleMode = readTitleMode()
+        contentText = service.getString(contentTextId)
         if (contentTextId == R.string.status_starting) activeGroups = emptyList()
+        updates.changed(title(), contentText)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(
                 NotificationChannel(
@@ -155,28 +176,28 @@ class ServiceNotification(
         )
     }
 
-    suspend fun start() {
-        if (checkPermission()) {
+    suspend fun start() =
+        withContext(Dispatchers.Main.immediate) {
+            if (started || !checkPermission()) return@withContext
             started = true
-            Settings.dataStore.registerChangeListener(this)
+            dynamicNotification.value = Settings.dynamicNotification
+            Settings.dataStore.registerChangeListener(this@ServiceNotification)
             groupClient.connect()
+            scope.launch {
+                combine(
+                        AppLifecycleObserver.isScreenOn,
+                        AppLifecycleObserver.isDeviceIdle,
+                        dynamicNotification,
+                    ) { screenOn, idle, dynamic ->
+                        PowerUsagePolicy.notificationActive(dynamic, screenOn, idle)
+                    }
+                    .distinctUntilChanged()
+                    .collect { active ->
+                        polling = active
+                        if (active) commandClient.connect() else commandClient.disconnect()
+                    }
+            }
         }
-        if (Settings.dynamicNotification && checkPermission()) {
-            commandClient.connect()
-            withContext(Dispatchers.Main) { registerReceiver() }
-        }
-    }
-
-    private fun registerReceiver() {
-        service.registerReceiver(
-            this,
-            IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_SCREEN_OFF)
-            },
-        )
-        receiverRegistered = true
-    }
 
     override fun updateStatus(status: StatusMessage) {
         val content =
@@ -184,37 +205,23 @@ class ServiceNotification(
                 "/s ↑\t" +
                 Libbox.formatBytes(status.downlink) +
                 "/s ↓"
-        GlobalScope.launch(Dispatchers.Main) {
-            if (started)
-                Application.notificationManager.notify(
-                    notificationId,
-                    notificationBuilder.setContentTitle(title()).setContentText(content).build(),
-                )
-        }
-    }
-
-    override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            Intent.ACTION_SCREEN_ON -> {
-                commandClient.connect()
-            }
-
-            Intent.ACTION_SCREEN_OFF -> {
-                commandClient.disconnect()
+        scope.launch {
+            if (started && polling) {
+                contentText = content
+                refreshTitle()
             }
         }
     }
 
     fun close() {
         started = false
+        polling = false
+        scope.coroutineContext.cancelChildren()
+        updates.reset()
         Settings.dataStore.unregisterChangeListener(this)
         groupClient.disconnect()
         activeGroups = emptyList()
         commandClient.disconnect()
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        if (receiverRegistered) {
-            service.unregisterReceiver(this)
-            receiverRegistered = false
-        }
     }
 }

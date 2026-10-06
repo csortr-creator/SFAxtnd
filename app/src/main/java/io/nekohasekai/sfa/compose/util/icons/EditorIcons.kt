@@ -126,10 +126,6 @@ import androidx.compose.material.icons.filled.VerticalDistribute
 import androidx.compose.material.icons.filled.WaterfallChart
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Editor category icons - Text and content editing
- * Based on Google's Material Design Icons taxonomy
- */
 object EditorIcons {
     val icons =
         listOf(

@@ -5,7 +5,6 @@ import org.json.JSONObject
 import java.net.URLDecoder
 import java.util.Base64
 
-/** Conversion of share-link fields to the native sing-box option names. */
 internal object ProxyLinkParser {
     private val schemes = setOf("vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "hy2")
 

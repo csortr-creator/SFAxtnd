@@ -81,10 +81,6 @@ import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.WatchOff
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Hardware category icons - Physical hardware and peripherals
- * Based on Google's Material Design Icons taxonomy
- */
 object HardwareIcons {
     val icons =
         listOf(

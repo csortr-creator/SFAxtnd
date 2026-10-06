@@ -45,7 +45,6 @@ object RoutingPresets {
     fun rfDirect(rules: List<RoutingRule>) =
         rules.filterNot { isWhitelist(it) || isRf(it) } + preset(false)
 
-    /** Collapse older built-in presets while preserving rule order and unrelated settings. */
     fun migrateRules(rules: JSONArray?): JSONArray? {
         if (rules == null) return null
         val items = (0 until rules.length()).mapNotNull { rules.optJSONObject(it) }

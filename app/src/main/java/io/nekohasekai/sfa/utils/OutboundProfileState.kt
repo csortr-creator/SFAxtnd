@@ -3,7 +3,6 @@ package io.nekohasekai.sfa.utils
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Pure config transformations shared by the offline list, probes and VPN startup. */
 object OutboundProfileState {
     fun withSelections(content: String, selections: String): String {
         val root = JSONObject(content)

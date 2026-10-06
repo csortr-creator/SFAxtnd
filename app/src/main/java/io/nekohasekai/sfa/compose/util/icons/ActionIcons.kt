@@ -468,10 +468,6 @@ import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Action category icons - User actions and common UI operations
- * Based on Google's Material Design Icons taxonomy
- */
 object ActionIcons {
     val icons =
         listOf(

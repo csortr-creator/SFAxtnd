@@ -225,10 +225,6 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WbTwilight
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Image category icons - Image editing and gallery
- * Based on Google's Material Design Icons taxonomy
- */
 object ImageIcons {
     val icons =
         listOf(

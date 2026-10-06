@@ -85,10 +85,6 @@ import androidx.compose.material.icons.filled.WaterDamage
 import androidx.compose.material.icons.filled.WheelchairPickup
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Places category icons - Locations and venues
- * Based on Google's Material Design Icons taxonomy
- */
 object PlacesIcons {
     val icons =
         listOf(

@@ -146,7 +146,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
 
         viewModelScope.launch {
             combine(
-                    AppLifecycleObserver.isForeground,
+                    AppLifecycleObserver.isUiActive,
                     RemoteControlManager.remoteServer,
                     RemoteControlManager.isConnected,
                     _serviceStatus,
@@ -563,9 +563,6 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         }
     }
 
-    /**
-     * Build selector/urltest groups from selected profile JSON (works offline, before VPN start).
-     */
     private suspend fun loadGroupsFromSelectedProfile(force: Boolean = false) =
         loadMutex.withLock {
             val profileId = Settings.selectedProfile

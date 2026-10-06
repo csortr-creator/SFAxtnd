@@ -69,6 +69,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -121,6 +122,11 @@ fun LogScreen(
     onBack: (() -> Unit)? = null,
 ) {
     val resolvedViewModel = viewModel ?: viewModel<LogViewModel>()
+    LifecycleStartEffect(resolvedViewModel) {
+        val localLog = resolvedViewModel as? LogViewModel
+        localLog?.setVisible(true)
+        onStopOrDispose { localLog?.setVisible(false) }
+    }
     val uiState by resolvedViewModel.uiState.collectAsState()
     val context = LocalContext.current
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass

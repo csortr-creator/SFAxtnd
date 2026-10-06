@@ -204,10 +204,6 @@ import androidx.compose.material.icons.filled.WifiTetheringError
 import androidx.compose.material.icons.filled.WifiTetheringOff
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Device category icons - Device-specific icons and features
- * Based on Google's Material Design Icons taxonomy
- */
 object DeviceIcons {
     val icons =
         listOf(

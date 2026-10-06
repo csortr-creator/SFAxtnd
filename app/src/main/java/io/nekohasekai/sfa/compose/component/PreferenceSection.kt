@@ -15,7 +15,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-/** Consistent MD3 section with optional progressive disclosure and accessible header. */
 @Composable
 fun PreferenceSection(
     title: String,

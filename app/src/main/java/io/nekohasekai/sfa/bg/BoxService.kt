@@ -73,7 +73,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private val status = MutableLiveData(Status.Stopped)
     private val binder = ServiceBinder(status)
-    private val notification = ServiceNotification(status, service)
+    private val notification = ServiceNotification(service)
     private lateinit var commandServer: CommandServer
 
     private var receiverRegistered = false
@@ -166,6 +166,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) serviceUpdateIdleMode()
+
             if (commandServer.needWIFIState()) {
                 val wifiPermission =
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -251,6 +253,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) serviceUpdateIdleMode()
+
         if (commandServer.needWIFIState()) {
             val wifiPermission =
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -280,6 +284,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     @RequiresApi(Build.VERSION_CODES.M)
     private fun serviceUpdateIdleMode() {
+        if (!::commandServer.isInitialized) return
         if (Application.powerManager.isDeviceIdleMode) {
             commandServer.pause()
         } else {

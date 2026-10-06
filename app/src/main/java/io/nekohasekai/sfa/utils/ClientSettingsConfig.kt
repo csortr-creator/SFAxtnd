@@ -4,7 +4,6 @@ import java.net.URI
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Translates client options to the sing-box 1.14 schema without changing stored profiles. */
 object ClientSettingsConfig {
     fun applyCore(root: JSONObject, options: JSONObject) {
         val inbounds = root.optJSONArray("inbounds") ?: JSONArray()

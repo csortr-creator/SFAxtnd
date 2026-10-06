@@ -192,10 +192,6 @@ import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.Workspaces
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Social category icons - Social media and sharing
- * Based on Google's Material Design Icons taxonomy
- */
 object SocialIcons {
     val icons =
         listOf(

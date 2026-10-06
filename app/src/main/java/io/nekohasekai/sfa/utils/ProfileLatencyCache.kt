@@ -3,7 +3,6 @@ package io.nekohasekai.sfa.utils
 import java.security.MessageDigest
 import org.json.JSONObject
 
-/** Only hashes and measurements are persisted, never server credentials. */
 class ProfileLatencyCache(raw: String = "{}") {
     data class Result(val delay: Int, val time: Long)
 

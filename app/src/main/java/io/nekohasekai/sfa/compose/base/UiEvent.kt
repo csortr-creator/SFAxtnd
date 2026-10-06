@@ -4,10 +4,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/**
- * Base sealed class for all UI events in the application.
- * These are one-time events that should trigger UI actions.
- */
 sealed class UiEvent {
     data class ErrorMessage(val message: String) : UiEvent()
 
@@ -29,9 +25,6 @@ sealed class UiEvent {
     }
 }
 
-/**
- * Interface for screen-specific events that don't need global handling
- */
 interface ScreenEvent
 
 interface EventHandler<T : UiEvent> {

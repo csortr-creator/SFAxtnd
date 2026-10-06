@@ -29,30 +29,18 @@ abstract class BaseViewModel<State, Event> : ViewModel() {
         _uiState.update { it.reducer() }
     }
 
-    /**
-     * Send an event that will be handled locally by the screen.
-     * For global events, use sendGlobalEvent() instead.
-     */
     protected fun sendEvent(event: Event) {
         viewModelScope.launch {
             _events.emit(event)
         }
     }
 
-    /**
-     * Send a global UI event that will be handled by ComposeActivity.
-     * This is a convenience method for sending UiEvents to the global bus.
-     */
     fun sendGlobalEvent(event: UiEvent) {
         viewModelScope.launch {
             GlobalEventBus.emit(event)
         }
     }
 
-    /**
-     * Send an error event to be displayed as a dialog.
-     * This is a convenience method for the common error handling case.
-     */
     protected fun sendErrorMessage(message: String) {
         sendGlobalEvent(UiEvent.ErrorMessage(message))
     }
@@ -66,9 +54,6 @@ abstract class BaseViewModel<State, Event> : ViewModel() {
         viewModelScope.launch(errorHandler, block = block)
     }
 
-    /**
-     * Convenience method to handle exceptions with a custom fallback message
-     */
     protected fun sendError(throwable: Throwable) {
         sendErrorMessage(throwable.message ?: "An unknown error occurred")
     }

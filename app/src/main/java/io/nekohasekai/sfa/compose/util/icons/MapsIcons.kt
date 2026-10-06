@@ -218,10 +218,6 @@ import androidx.compose.material.icons.filled.ZoomInMap
 import androidx.compose.material.icons.filled.ZoomOutMap
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Maps category icons - Location and navigation
- * Based on Google's Material Design Icons taxonomy
- */
 object MapsIcons {
     val icons =
         listOf(

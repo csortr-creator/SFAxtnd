@@ -2,6 +2,9 @@ package io.nekohasekai.sfa.bg
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import kotlinx.coroutines.CancellationException
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -50,6 +53,7 @@ class UpdateProfileWork {
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
                 PeriodicWorkRequest.Builder(UpdateTask::class.java, minDelay, TimeUnit.MINUTES)
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                     .apply {
                         if (minInitDelay > 0) setInitialDelay(minInitDelay, TimeUnit.SECONDS)
                         setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.MINUTES)
@@ -86,6 +90,8 @@ class UpdateProfileWork {
                     }
                     profile.typed.lastUpdated = Date()
                     ProfileManager.update(profile)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "update profile ${profile.name}", e)
                     success = false

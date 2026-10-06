@@ -151,7 +151,7 @@ class DashboardViewModel :
 
         viewModelScope.launch {
             combine(
-                AppLifecycleObserver.isForeground,
+                AppLifecycleObserver.isUiActive,
                 RemoteControlManager.remoteServer,
                 RemoteControlManager.isConnected,
                 _serviceStatus,
@@ -209,7 +209,7 @@ class DashboardViewModel :
         when (currentState.serviceStatus) {
             Status.Starting, Status.Started -> stopService()
             Status.Stopped -> sendGlobalEvent(UiEvent.RequestStartService)
-            else -> { /* Ignore while transitioning */ }
+            else -> {   }
         }
     }
 

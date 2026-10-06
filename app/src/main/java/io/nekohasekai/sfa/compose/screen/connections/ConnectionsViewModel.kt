@@ -72,7 +72,7 @@ class ConnectionsViewModel :
     init {
         viewModelScope.launch {
             combine(
-                AppLifecycleObserver.isForeground,
+                AppLifecycleObserver.isUiActive,
                 AppLifecycleObserver.isScreenOn,
                 _visibleCount,
                 _serviceStatus,

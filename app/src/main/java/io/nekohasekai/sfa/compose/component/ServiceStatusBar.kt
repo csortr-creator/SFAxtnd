@@ -36,8 +36,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 
 @Composable
 fun ServiceStatusBar(
@@ -92,7 +98,6 @@ fun ServiceStatusBar(
     }
 }
 
-/** Read-only session information; stopping the VPN is a separate action. */
 @Composable
 fun ConnectionInfoPill(
     startTime: Long?,
@@ -167,10 +172,17 @@ private fun StatusItem(text: String, modifier: Modifier = Modifier) {
 fun UptimeText(startTime: Long, modifier: Modifier = Modifier) {
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    LaunchedEffect(startTime) {
-        while (true) {
-            delay(1000)
-            currentTime = System.currentTimeMillis()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(startTime, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            AppLifecycleObserver.isUiActive.collectLatest { active ->
+                if (active) {
+                    while (isActive) {
+                        currentTime = System.currentTimeMillis()
+                        delay(1000)
+                    }
+                }
+            }
         }
     }
 

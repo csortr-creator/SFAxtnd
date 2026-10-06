@@ -316,11 +316,6 @@ class HTTPClient : Closeable {
     }
 
 
-    /**
-     * Auto-apply multiplex (smux/yamux/h2mux) from share-link query or node JSON.
-     * Supported: mux=1|true, muxProtocol, muxConcurrency, max_connections, min_streams, padding.
-     * If outbound already has "multiplex", left unchanged.
-     */
     private fun applyMultiplex(outbound: JSONObject, params: Map<String, String>? = null, source: JSONObject? = null) {
         if (outbound.has("multiplex")) return
 

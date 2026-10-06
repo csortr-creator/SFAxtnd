@@ -7,10 +7,6 @@ import java.util.Date
 import java.util.concurrent.TimeUnit
 
 object RelativeTimeFormatter {
-    /**
-     * Formats a date as relative time for recent dates (within 7 days)
-     * or as full date/time for older dates.
-     */
     fun format(context: Context, date: Date?): String {
         if (date == null) return ""
 
@@ -52,10 +48,6 @@ object RelativeTimeFormatter {
         }
     }
 
-    /**
-     * Formats a date as short relative time for compact displays.
-     * Uses shorter format like "2h" instead of "2 hours ago".
-     */
     fun formatShort(context: Context, date: Date?): String {
         if (date == null) return ""
 
@@ -82,9 +74,6 @@ object RelativeTimeFormatter {
         }
     }
 
-    /**
-     * Gets the exact date/time string for tooltips or detailed views.
-     */
     fun formatExact(date: Date?): String {
         if (date == null) return ""
         return DateFormat.getDateTimeInstance(DateFormat.FULL, DateFormat.MEDIUM).format(date)

@@ -101,10 +101,6 @@ import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.VpnKeyOff
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Communication category icons - Messaging, calls, emails
- * Based on Google's Material Design Icons taxonomy
- */
 object CommunicationIcons {
     val icons =
         listOf(

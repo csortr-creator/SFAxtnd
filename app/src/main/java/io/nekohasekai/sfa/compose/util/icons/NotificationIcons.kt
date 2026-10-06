@@ -73,10 +73,6 @@ import androidx.compose.material.icons.filled.WifiCalling
 import androidx.compose.material.icons.filled.WifiOff
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Notification category icons - Alerts and status updates
- * Based on Google's Material Design Icons taxonomy
- */
 object NotificationIcons {
     val icons =
         listOf(

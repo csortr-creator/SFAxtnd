@@ -16,10 +16,6 @@ import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
 import io.nekohasekai.sfa.compose.util.ProfileIcon
 
-/**
- * Toggle category icons - Switches and toggles
- * Based on Google's Material Design Icons taxonomy
- */
 object ToggleIcons {
     val icons =
         listOf(

@@ -87,7 +87,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                         "connection" -> "Параметры подключения"
                         "sources" -> "Списки сайтов и IP"
                         "advanced" -> "Дополнительные настройки"
-                        else -> "Маршруты"
+                        else -> "Маршрутизация"
                     }
                 )
             },
@@ -408,19 +408,35 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     )
                 }
             }
-            PreferenceSection("Другие настройки", Icons.Outlined.Tune) {
+            PreferenceSection("Параметры маршрутизации", Icons.Outlined.Tune) {
+                RoutingSectionLink(
+                    "Файлы маршрутизации",
+                    "Импорт SRS / JSON и собственные URL",
+                    Icons.Outlined.Public,
+                ) {
+                    navController.navigate("settings/rule-sets")
+                }
+
+                RoutingSectionLink(
+                    "Сниффинг и перехват DNS",
+                    "Протоколы, тайм-аут и DNS hijack",
+                    Icons.Outlined.Tune,
+                ) {
+                    navController.navigate("settings/network-options")
+                }
+
                 RoutingSectionLink(
                     "DNS · адреса сайтов",
                     if (servers.isEmpty()) "Используются настройки подписки"
                     else "Своих DNS-серверов: ${servers.size}",
                     Icons.Outlined.Dns,
                 ) {
-                    navController.navigate("settings/routing/section/dns")
+                    navController.navigate("settings/dns")
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 RoutingSectionLink(
                     "Дополнительно",
-                    "Списки сайтов и IP, IPv6 и параметры VPN",
+                    "Источники geosite и geoip",
                     Icons.Outlined.Tune,
                 ) {
                     navController.navigate("settings/routing/section/advanced")
@@ -444,11 +460,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 RoutingSectionLink(
-                    "Параметры VPN",
-                    if (blockIpv6) "Только IPv4 · $tunStack" else "IPv4 и IPv6 · $tunStack",
+                    "Сниффинг и обновление списков",
+                    "Протоколы, тайм-аут и частота обновлений",
                     Icons.Outlined.Tune,
                 ) {
-                    navController.navigate("settings/routing/section/connection")
+                    navController.navigate("settings/network-options")
                 }
             }
         }
@@ -532,6 +548,30 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                                 )
                                             },
                                         )
+                                        if (index > 0)
+                                            DropdownMenuItem(
+                                                text = { Text("Поднять правило") },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    val next = rules.toMutableList()
+                                                    val previous = next[index - 1]
+                                                    next[index - 1] = next[index]
+                                                    next[index] = previous
+                                                    persist(nextRules = next)
+                                                },
+                                            )
+                                        if (index < rules.lastIndex)
+                                            DropdownMenuItem(
+                                                text = { Text("Опустить правило") },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    val next = rules.toMutableList()
+                                                    val following = next[index + 1]
+                                                    next[index + 1] = next[index]
+                                                    next[index] = following
+                                                    persist(nextRules = next)
+                                                },
+                                            )
                                         DropdownMenuItem(
                                             text = { Text("Удалить") },
                                             leadingIcon = { Icon(Icons.Outlined.Delete, null) },
@@ -1151,15 +1191,24 @@ private fun encodeRoutingConfig(
     geoGeoipUrl: String,
     rules: List<RoutingRule>,
 ): String {
+    val root =
+        runCatching { JSONObject(Settings.routingConfigJson.ifBlank { "{}" }) }
+            .getOrDefault(JSONObject())
     val dns =
-        JSONObject()
+        (root.optJSONObject("dns") ?: JSONObject())
             .put("strategy", strategy.name)
             .put("cacheEnabled", cacheEnabled)
             .put("reverseMapping", reverseMapping)
             .put("finalServer", finalServer)
     val serversJson = JSONArray()
     servers.forEach { server ->
-        val obj = JSONObject().put("tag", server.tag).put("address", server.address)
+        val oldServers = root.optJSONObject("dns")?.optJSONArray("servers") ?: JSONArray()
+        val obj =
+            (0 until oldServers.length())
+                .mapNotNull { oldServers.optJSONObject(it) }
+                .firstOrNull { it.optString("tag") == server.tag }
+                ?.let { JSONObject(it.toString()) } ?: JSONObject()
+        obj.put("tag", server.tag).put("address", server.address)
         if (!server.detour.isNullOrBlank()) {
             obj.put("detour", server.detour)
         }
@@ -1194,7 +1243,7 @@ private fun encodeRoutingConfig(
         rulesJson.put(obj)
     }
 
-    return JSONObject()
+    return root
         .put("dns", dns)
         .put(
             "geo",

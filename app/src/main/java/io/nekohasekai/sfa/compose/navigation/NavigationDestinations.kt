@@ -70,6 +70,5 @@ val bottomNavigationScreens =
     listOf(
         Screen.Dashboard,
         Screen.Subscriptions,
-        Screen.Routing,
         Screen.Settings,
     )

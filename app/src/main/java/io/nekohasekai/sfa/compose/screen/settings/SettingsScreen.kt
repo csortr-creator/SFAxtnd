@@ -104,23 +104,48 @@ fun SettingsScreen(navController: NavController) {
                     bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
                 )
     ) {
-        PreferenceSection("Подключение", Icons.Outlined.Shield) {
+        PreferenceSection("Сеть", Icons.Outlined.Shield) {
+            RoutingSectionLink(
+                "Маршрутизация",
+                "Прокси, обход, блокировка и списки сайтов",
+                Icons.Outlined.Route,
+            ) {
+                navController.navigate("settings/routing")
+            }
+            RoutingSectionLink(
+                "DNS",
+                "Прямое соединение, прокси и резервные серверы",
+                Icons.Outlined.Dns,
+            ) {
+                navController.navigate("settings/dns")
+            }
+            RoutingSectionLink(
+                "Ядро",
+                "Сетевой стек, MTU и параметры соединения",
+                Icons.Outlined.Settings,
+            ) {
+                navController.navigate("settings/core")
+            }
             RoutingSectionLink(
                 "Сервис VPN",
-                "Запуск, режим работы и системные настройки",
+                "Системные параметры и обход VPN приложениями",
                 Icons.Outlined.Tune,
             ) {
                 navController.navigate("settings/service")
             }
-            RoutingSectionLink("Ядро", "Параметры sing-box", Icons.Outlined.Settings) {
-                navController.navigate("settings/core")
-            }
         }
         PreferenceSection("Приложение", Icons.Outlined.Palette) {
             RoutingSectionLink(
-                "Оформление и настройки",
-                if (hasUpdate) "Доступно обновление" else "Тема, язык и обновления",
+                "Оформление",
+                "Тема, акцент и размер текста",
                 Icons.Outlined.Palette,
+            ) {
+                navController.navigate("settings/appearance")
+            }
+            RoutingSectionLink(
+                "Обновления и поведение",
+                if (hasUpdate) "Доступно обновление" else "Язык, уведомления и обновления",
+                Icons.Outlined.SystemUpdate,
             ) {
                 navController.navigate("settings/app")
             }
@@ -157,11 +182,11 @@ fun SettingsScreen(navController: NavController) {
                 uriHandler.openUri("https://sing-box.sagernet.org/")
             }
             RoutingSectionLink(
-                "Поддержать sing-box",
-                "Разработчики сетевого ядра",
+                "Разработчик SFAxtnd",
+                "csortr-creator · GitHub",
                 Icons.Outlined.FavoriteBorder,
             ) {
-                uriHandler.openUri("https://sekai.icu/sponsors/")
+                uriHandler.openUri("https://github.com/csortr-creator")
             }
         }
         Spacer(modifier = Modifier.height(16.dp))

@@ -115,6 +115,8 @@ fun CoreSettingsScreen(navController: NavController) {
                 bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
             ),
     ) {
+        NetworkOptionsContent(core = true)
+
         // Core Information Card
         Card(
             modifier =

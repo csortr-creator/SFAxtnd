@@ -45,6 +45,9 @@ object Settings {
     /** TUN network stack: system | gvisor | mixed */
     var tunStack by dataStore.string(SettingsKey.TUN_STACK) { "system" }
 
+    var coreOptionsJson by dataStore.string("core_options") { "{}" }
+    var appearanceJson by dataStore.string("appearance") { "{}" }
+
     var outboundLatencyCache by dataStore.string("outbound_latency_cache") { "{}" }
 
     var outboundSelections by dataStore.string("outbound_selections") { "{}" }

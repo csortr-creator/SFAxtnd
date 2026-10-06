@@ -12,6 +12,7 @@ dependencies {
 // Exercise the production parser without loading Android or the native libbox.
 sourceSets.main {
     kotlin.srcDir("../app/src/main/java")
+    kotlin.include("io/nekohasekai/sfa/utils/ClientSettingsConfig.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProfileLatencyCache.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/OutboundProfileState.kt")

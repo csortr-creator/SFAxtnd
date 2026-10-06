@@ -61,14 +61,16 @@ import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditRoutingRuleScreen(
-    navController: NavController,
-    ruleIndex: Int,
-) {
+fun EditRoutingRuleScreen(navController: NavController, ruleIndex: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scaffoldPadding = LocalScaffoldPadding.current
 
+    var outboundTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var profileRuleSets by remember { mutableStateOf<List<String>>(emptyList()) }
+    var availableRuleSets by remember { mutableStateOf<List<String>>(emptyList()) }
+    var ruleSetMenu by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var domain by remember { mutableStateOf("") }
@@ -98,64 +100,90 @@ fun EditRoutingRuleScreen(
 
     LaunchedEffect(ruleIndex) {
         val raw = withContext(Dispatchers.IO) { Settings.routingConfigJson }
+        val profileRoot =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                        io.nekohasekai.sfa.database.ProfileManager.get(Settings.selectedProfile)
+                            ?.typed
+                            ?.path
+                            ?.let { settingsObject(java.io.File(it).readText()) }
+                    }
+                    .getOrNull()
+            }
+        val outbounds = profileRoot?.optJSONArray("outbounds") ?: JSONArray()
+        outboundTags =
+            (0 until outbounds.length())
+                .mapNotNull { outbounds.optJSONObject(it) }
+                .filter { it.optString("type") !in setOf("direct", "block", "dns") }
+                .map { it.optString("tag") }
+                .filter(String::isNotBlank)
+        val custom = settingsObject(raw).optJSONArray("ruleSets") ?: JSONArray()
+        val supplied = profileRoot?.optJSONObject("route")?.optJSONArray("rule_set") ?: JSONArray()
+        profileRuleSets =
+            (0 until supplied.length()).mapNotNull { supplied.optJSONObject(it)?.optString("tag") }
+        availableRuleSets =
+            ((0 until custom.length()).mapNotNull { custom.optJSONObject(it)?.optString("tag") } +
+                    (0 until supplied.length()).mapNotNull {
+                        supplied.optJSONObject(it)?.optString("tag")
+                    })
+                .distinct()
         val rules = decodeRules(raw)
         if (ruleIndex in rules.indices) {
             val rule = rules[ruleIndex]
             name = rule.name
-            domain = rule.domain.ifBlank {
-                if (rule.type == RoutingRule.Type.DOMAIN) rule.value else ""
-            }
-            domainSuffix = rule.domainSuffix.ifBlank {
-                if (rule.type == RoutingRule.Type.DOMAIN_SUFFIX) rule.value else ""
-            }
-            domainKeyword = rule.domainKeyword.ifBlank {
-                if (rule.type == RoutingRule.Type.DOMAIN_KEYWORD) rule.value else ""
-            }
-            ipCidr = rule.ipCidr.ifBlank {
-                if (rule.type == RoutingRule.Type.IP_CIDR) rule.value else ""
-            }
+            domain =
+                rule.domain.ifBlank { if (rule.type == RoutingRule.Type.DOMAIN) rule.value else "" }
+            domainSuffix =
+                rule.domainSuffix.ifBlank {
+                    if (rule.type == RoutingRule.Type.DOMAIN_SUFFIX) rule.value else ""
+                }
+            domainKeyword =
+                rule.domainKeyword.ifBlank {
+                    if (rule.type == RoutingRule.Type.DOMAIN_KEYWORD) rule.value else ""
+                }
+            ipCidr =
+                rule.ipCidr.ifBlank {
+                    if (rule.type == RoutingRule.Type.IP_CIDR) rule.value else ""
+                }
             port = rule.port
             sourceIp = rule.sourceIpCidr
             sourcePort = rule.sourcePort
-            packageName = rule.packageName.ifBlank {
-                if (rule.type == RoutingRule.Type.PACKAGE_NAME) rule.value else ""
-            }
-            ruleSet = rule.ruleSet.ifBlank {
-                when (rule.type) {
-                    RoutingRule.Type.GEOSITE ->
-                        if (rule.value.isNotBlank()) {
-                            "geosite-${rule.value.removePrefix("geosite-")}"
-                        } else {
-                            ""
-                        }
-                    RoutingRule.Type.GEOIP ->
-                        if (rule.value.isNotBlank()) {
-                            "geoip-${rule.value.removePrefix("geoip-")}"
-                        } else {
-                            ""
-                        }
-                    else -> ""
+            packageName =
+                rule.packageName.ifBlank {
+                    if (rule.type == RoutingRule.Type.PACKAGE_NAME) rule.value else ""
                 }
-            }
+            ruleSet =
+                rule.ruleSet.ifBlank {
+                    when (rule.type) {
+                        RoutingRule.Type.GEOSITE ->
+                            if (rule.value.isNotBlank()) {
+                                "geosite-${rule.value.removePrefix("geosite-")}"
+                            } else {
+                                ""
+                            }
+                        RoutingRule.Type.GEOIP ->
+                            if (rule.value.isNotBlank()) {
+                                "geoip-${rule.value.removePrefix("geoip-")}"
+                            } else {
+                                ""
+                            }
+                        else -> ""
+                    }
+                }
             network = rule.network
-            protocol = rule.protocol.ifBlank {
-                if (rule.type == RoutingRule.Type.PROTOCOL) rule.value else ""
-            }
+            protocol =
+                rule.protocol.ifBlank {
+                    if (rule.type == RoutingRule.Type.PROTOCOL) rule.value else ""
+                }
             wifiSsid = rule.wifiSsid
             wifiBssid = rule.wifiBssid
             clashMode = rule.clashMode
             outbound = rule.outbound.ifBlank { RoutingRule.OUTBOUND_PROXY }
             dnsRule = rule.dnsRule
             enabled = rule.enabled
-            showAdvanced = listOf(
-                sourceIp,
-                sourcePort,
-                protocol,
-                wifiSsid,
-                wifiBssid,
-                clashMode,
-                network,
-            ).any { it.isNotBlank() }
+            showAdvanced =
+                listOf(sourceIp, sourcePort, protocol, wifiSsid, wifiBssid, clashMode, network)
+                    .any { it.isNotBlank() }
         }
         loaded = true
     }
@@ -163,37 +191,39 @@ fun EditRoutingRuleScreen(
     fun save(delete: Boolean = false) {
         scope.launch(Dispatchers.IO) {
             val raw = Settings.routingConfigJson
-            val root = if (raw.isBlank()) {
-                JSONObject()
-            } else {
-                runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
-            }
+            val root =
+                if (raw.isBlank()) {
+                    JSONObject()
+                } else {
+                    runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
+                }
             val rules = decodeRules(raw).toMutableList()
             if (delete) {
                 if (ruleIndex in rules.indices) {
                     rules.removeAt(ruleIndex)
                 }
             } else {
-                val rule = RoutingRule(
-                    name = name.trim(),
-                    domain = domain.trim(),
-                    domainSuffix = domainSuffix.trim(),
-                    domainKeyword = domainKeyword.trim(),
-                    ipCidr = ipCidr.trim(),
-                    port = port.trim(),
-                    sourceIpCidr = sourceIp.trim(),
-                    sourcePort = sourcePort.trim(),
-                    packageName = packageName.trim(),
-                    ruleSet = ruleSet.trim(),
-                    network = network.trim(),
-                    protocol = protocol.trim(),
-                    wifiSsid = wifiSsid.trim(),
-                    wifiBssid = wifiBssid.trim(),
-                    clashMode = clashMode.trim(),
-                    outbound = outbound,
-                    dnsRule = dnsRule,
-                    enabled = enabled,
-                )
+                val rule =
+                    RoutingRule(
+                        name = name.trim(),
+                        domain = domain.trim(),
+                        domainSuffix = domainSuffix.trim(),
+                        domainKeyword = domainKeyword.trim(),
+                        ipCidr = ipCidr.trim(),
+                        port = port.trim(),
+                        sourceIpCidr = sourceIp.trim(),
+                        sourcePort = sourcePort.trim(),
+                        packageName = packageName.trim(),
+                        ruleSet = ruleSet.trim(),
+                        network = network.trim(),
+                        protocol = protocol.trim(),
+                        wifiSsid = wifiSsid.trim(),
+                        wifiBssid = wifiBssid.trim(),
+                        clashMode = clashMode.trim(),
+                        outbound = outbound,
+                        dnsRule = dnsRule,
+                        enabled = enabled,
+                    )
                 if (ruleIndex in rules.indices) {
                     rules[ruleIndex] = rule
                 } else {
@@ -207,10 +237,33 @@ fun EditRoutingRuleScreen(
             if (!root.has("geo")) {
                 root.put("geo", JSONObject().put("sourceId", ""))
             }
-            Settings.routingConfigJson = root.toString()
-            withContext(Dispatchers.Main) {
-                navController.navigateUp()
+            val validation = runCatching {
+                val profile =
+                    io.nekohasekai.sfa.database.ProfileManager.get(Settings.selectedProfile)
+                if (profile != null) {
+                    val compiled =
+                        io.nekohasekai.sfa.utils.UserRoutingConfig.applyToConfig(
+                            java.io.File(profile.typed.path).readText(),
+                            root.toString(),
+                        )
+                    io.nekohasekai.libbox.Libbox.checkConfig(
+                        io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
+                            compiled,
+                            Settings.routingBlockIpv6,
+                            Settings.tunStack,
+                            Settings.coreOptionsJson,
+                        )
+                    )
+                }
             }
+            if (validation.isFailure) {
+                withContext(Dispatchers.Main) {
+                    saveError = validation.exceptionOrNull()?.message ?: "Проверьте условия правила"
+                }
+                return@launch
+            }
+            Settings.routingConfigJson = root.toString()
+            withContext(Dispatchers.Main) { navController.navigateUp() }
         }
     }
 
@@ -237,15 +290,28 @@ fun EditRoutingRuleScreen(
                 }
                 IconButton(
                     onClick = {
-                        val hasMatch = listOf(
-                            domain, domainSuffix, domainKeyword, ipCidr, port,
-                            sourceIp, sourcePort, packageName, ruleSet, protocol,
-                            wifiSsid, wifiBssid, clashMode,
-                        ).any { it.isNotBlank() }
+                        val hasMatch =
+                            listOf(
+                                    domain,
+                                    domainSuffix,
+                                    domainKeyword,
+                                    ipCidr,
+                                    port,
+                                    sourceIp,
+                                    sourcePort,
+                                    packageName,
+                                    ruleSet,
+                                    protocol,
+                                    network,
+                                    wifiSsid,
+                                    wifiBssid,
+                                    clashMode,
+                                )
+                                .any { it.isNotBlank() }
                         if (hasMatch) {
                             save(delete = false)
                         }
-                    },
+                    }
                 ) {
                     Icon(Icons.Default.Check, contentDescription = "Сохранить")
                 }
@@ -258,16 +324,16 @@ fun EditRoutingRuleScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .verticalScroll(rememberScrollState())
-            .padding(
-                top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
-                start = 16.dp,
-                end = 16.dp,
-            ),
+        modifier =
+            Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                    bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
+                    start = 16.dp,
+                    end = 16.dp,
+                )
     ) {
         SectionTitle("Основное")
         Field(value = name, onChange = { name = it }, label = "Название")
@@ -275,32 +341,39 @@ fun EditRoutingRuleScreen(
         ExposedDropdownMenuBox(
             expanded = outboundMenuOpen,
             onExpandedChange = { outboundMenuOpen = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         ) {
             OutlinedTextField(
-                value = when (outbound) {
-                    RoutingRule.OUTBOUND_DIRECT -> "Напрямую"
-                    RoutingRule.OUTBOUND_BLOCK -> "Блок"
-                    else -> "Прокси"
-                },
+                value =
+                    when (outbound) {
+                        RoutingRule.OUTBOUND_DIRECT -> "Напрямую"
+                        RoutingRule.OUTBOUND_BLOCK -> "Блок"
+                        RoutingRule.OUTBOUND_PROXY -> "Прокси · выбранный сервер"
+                        else -> outbound
+                    },
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Выход") },
                 trailingIcon = {
                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = outboundMenuOpen)
                 },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
             )
             ExposedDropdownMenu(
                 expanded = outboundMenuOpen,
                 onDismissRequest = { outboundMenuOpen = false },
             ) {
+                outboundTags.forEach { tag ->
+                    DropdownMenuItem(
+                        text = { Text(tag) },
+                        onClick = {
+                            outbound = tag
+                            outboundMenuOpen = false
+                        },
+                    )
+                }
                 DropdownMenuItem(
-                    text = { Text("Прокси") },
+                    text = { Text("Прокси · выбранный сервер") },
                     onClick = {
                         outbound = RoutingRule.OUTBOUND_PROXY
                         outboundMenuOpen = false
@@ -331,10 +404,9 @@ fun EditRoutingRuleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            trailingContent = {
-                Switch(checked = enabled, onCheckedChange = { enabled = it })
-            },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            trailingContent = { Switch(checked = enabled, onCheckedChange = { enabled = it }) },
+            colors =
+                ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
         ListItem(
             headlineContent = { Text("DNS-правило") },
@@ -344,10 +416,9 @@ fun EditRoutingRuleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            trailingContent = {
-                Switch(checked = dnsRule, onCheckedChange = { dnsRule = it })
-            },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            trailingContent = { Switch(checked = dnsRule, onCheckedChange = { dnsRule = it }) },
+            colors =
+                ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
 
         SectionTitle("Условие")
@@ -367,9 +438,27 @@ fun EditRoutingRuleScreen(
         Field(
             value = ruleSet,
             onChange = { ruleSet = it },
-            label = "Rule-set",
-            placeholderText = "geosite-category-ru или geoip-ru",
+            label = "Geosite / GeoIP / SRS",
+            placeholderText = "geosite:ru, geoip:ru или имя своего списка",
         )
+        TextButton(
+            onClick = {
+                val custom =
+                    settingsObject(Settings.routingConfigJson).optJSONArray("ruleSets")
+                        ?: JSONArray()
+                availableRuleSets =
+                    ((0 until custom.length()).mapNotNull {
+                            custom.optJSONObject(it)?.optString("tag")
+                        } + profileRuleSets)
+                        .distinct()
+                ruleSetMenu = true
+            }
+        ) {
+            Text("Выбрать список из файлов или подписки")
+        }
+        TextButton(onClick = { navController.navigate("settings/rule-sets") }) {
+            Text("Добавить файл маршрутизации")
+        }
         Field(value = port, onChange = { port = it }, label = "Порт")
 
         ListItem(
@@ -380,31 +469,30 @@ fun EditRoutingRuleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
+            modifier =
+                Modifier.fillMaxWidth().clickable {
                     scope.launch(Dispatchers.IO) {
                         val pm = context.packageManager
-                        val list = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                            .map { app ->
-                                val label = runCatching {
-                                    pm.getApplicationLabel(app).toString()
-                                }.getOrDefault(app.packageName)
-                                app.packageName to label
-                            }
-                            .sortedBy { it.second.lowercase() }
+                        val list =
+                            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                                .map { app ->
+                                    val label =
+                                        runCatching { pm.getApplicationLabel(app).toString() }
+                                            .getOrDefault(app.packageName)
+                                    app.packageName to label
+                                }
+                                .sortedBy { it.second.lowercase() }
                         withContext(Dispatchers.Main) {
                             apps = list
                             showAppPicker = true
                         }
                     }
                 },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            colors =
+                ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
         if (packageName.isNotBlank()) {
-            TextButton(onClick = { packageName = "" }) {
-                Text("Сбросить приложения")
-            }
+            TextButton(onClick = { packageName = "" }) { Text("Сбросить приложения") }
         }
 
         ListItem(
@@ -416,7 +504,8 @@ fun EditRoutingRuleScreen(
                 )
             },
             modifier = Modifier.clickable { showAdvanced = !showAdvanced },
-            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            colors =
+                ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         )
 
         if (showAdvanced) {
@@ -425,22 +514,12 @@ fun EditRoutingRuleScreen(
                 onChange = { domainKeyword = it },
                 label = "Ключевое слово домена",
             )
-            Field(
-                value = sourceIp,
-                onChange = { sourceIp = it },
-                label = "Исходный IP / CIDR",
-            )
-            Field(
-                value = sourcePort,
-                onChange = { sourcePort = it },
-                label = "Исходный порт",
-            )
+            Field(value = sourceIp, onChange = { sourceIp = it }, label = "Исходный IP / CIDR")
+            Field(value = sourcePort, onChange = { sourcePort = it }, label = "Исходный порт")
             ExposedDropdownMenuBox(
                 expanded = networkMenuOpen,
                 onExpandedChange = { networkMenuOpen = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             ) {
                 OutlinedTextField(
                     value = network.ifBlank { "Любая" },
@@ -450,9 +529,7 @@ fun EditRoutingRuleScreen(
                     trailingIcon = {
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = networkMenuOpen)
                     },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
+                    modifier = Modifier.menuAnchor().fillMaxWidth(),
                 )
                 ExposedDropdownMenu(
                     expanded = networkMenuOpen,
@@ -485,17 +562,52 @@ fun EditRoutingRuleScreen(
         Spacer(modifier = Modifier.height(16.dp))
     }
 
+    if (saveError != null)
+        AlertDialog(
+            onDismissRequest = { saveError = null },
+            title = { Text("Правило не сохранено") },
+            text = { Text(saveError!!) },
+            confirmButton = { TextButton(onClick = { saveError = null }) { Text("OK") } },
+        )
+    if (ruleSetMenu)
+        AlertDialog(
+            onDismissRequest = { ruleSetMenu = false },
+            title = { Text("Выбрать список") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    availableRuleSets.forEach { tag ->
+                        TextButton(
+                            onClick = {
+                                ruleSet =
+                                    (ruleSet
+                                            .split(',', ';', '\n')
+                                            .map(String::trim)
+                                            .filter(String::isNotBlank) + tag)
+                                        .distinct()
+                                        .joinToString(",")
+                                ruleSetMenu = false
+                            }
+                        ) {
+                            Text(tag)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { ruleSetMenu = false }) { Text("Закрыть") } },
+        )
     if (showAppPicker) {
-        val selected = packageName
-            .split(',', '\n', ';')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .toMutableSet()
-        val filtered = apps.filter {
-            appQuery.isBlank() ||
-                it.first.contains(appQuery, ignoreCase = true) ||
-                it.second.contains(appQuery, ignoreCase = true)
-        }
+        val selected =
+            packageName
+                .split(',', '\n', ';')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toMutableSet()
+        val filtered =
+            apps.filter {
+                appQuery.isBlank() ||
+                    it.first.contains(appQuery, ignoreCase = true) ||
+                    it.second.contains(appQuery, ignoreCase = true)
+            }
         AlertDialog(
             onDismissRequest = { showAppPicker = false },
             title = { Text("Приложения") },
@@ -529,30 +641,27 @@ fun EditRoutingRuleScreen(
                                         },
                                     )
                                 },
-                                modifier = Modifier.clickable {
-                                    if (checked) {
-                                        selected.remove(pkg)
-                                    } else {
-                                        selected.add(pkg)
-                                    }
-                                    packageName = selected.sorted().joinToString(",")
-                                },
+                                modifier =
+                                    Modifier.clickable {
+                                        if (checked) {
+                                            selected.remove(pkg)
+                                        } else {
+                                            selected.add(pkg)
+                                        }
+                                        packageName = selected.sorted().joinToString(",")
+                                    },
                             )
                         }
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showAppPicker = false }) {
-                    Text("Готово")
-                }
-            },
+            confirmButton = { TextButton(onClick = { showAppPicker = false }) { Text("Готово") } },
             dismissButton = {
                 TextButton(
                     onClick = {
                         packageName = ""
                         showAppPicker = false
-                    },
+                    }
                 ) {
                     Text("Сбросить")
                 }
@@ -582,15 +691,14 @@ private fun Field(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
-        placeholder = if (placeholderText != null) {
-            { Text(placeholderText) }
-        } else {
-            null
-        },
+        placeholder =
+            if (placeholderText != null) {
+                { Text(placeholderText) }
+            } else {
+                null
+            },
         singleLine = true,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     )
 }
 
@@ -613,11 +721,12 @@ private fun decodeRules(raw: String): List<RoutingRule> {
 }
 
 private fun ruleFromJson(obj: JSONObject): RoutingRule {
-    val type = try {
-        RoutingRule.Type.valueOf(obj.optString("type", RoutingRule.Type.DOMAIN.name))
-    } catch (_: Exception) {
-        RoutingRule.Type.DOMAIN
-    }
+    val type =
+        try {
+            RoutingRule.Type.valueOf(obj.optString("type", RoutingRule.Type.DOMAIN.name))
+        } catch (_: Exception) {
+            RoutingRule.Type.DOMAIN
+        }
     return RoutingRule(
         name = obj.optString("name"),
         domain = obj.optString("domain"),
@@ -634,8 +743,10 @@ private fun ruleFromJson(obj: JSONObject): RoutingRule {
         wifiSsid = obj.optString("wifiSsid"),
         wifiBssid = obj.optString("wifiBssid"),
         clashMode = obj.optString("clashMode"),
-        outbound = obj.optString("outbound", RoutingRule.OUTBOUND_PROXY)
-            .ifBlank { RoutingRule.OUTBOUND_PROXY },
+        outbound =
+            obj.optString("outbound", RoutingRule.OUTBOUND_PROXY).ifBlank {
+                RoutingRule.OUTBOUND_PROXY
+            },
         dnsRule = obj.optBoolean("dnsRule", false),
         enabled = obj.optBoolean("enabled", true),
         type = type,
@@ -667,7 +778,7 @@ private fun encodeRules(rules: List<RoutingRule>): JSONArray {
                 .put("dnsRule", rule.dnsRule)
                 .put("enabled", rule.enabled)
                 .put("type", rule.type.name)
-                .put("value", rule.value),
+                .put("value", rule.value)
         )
     }
     return arr

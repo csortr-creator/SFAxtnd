@@ -257,7 +257,7 @@ class UserRoutingConfigTest {
     }
 
     @Test
-    fun blockOutbound_createdWhenNeeded() {
+    fun blockingUsesRejectAction() {
         val user = JSONObject()
             .put(
                 "rules",
@@ -274,6 +274,8 @@ class UserRoutingConfigTest {
         val tags = (0 until out.getJSONArray("outbounds").length()).map {
             out.getJSONArray("outbounds").getJSONObject(it).optString("tag")
         }
-        assertTrue(tags.contains("block"))
+        assertFalse(tags.contains("block"))
+        val rules = out.getJSONObject("route").getJSONArray("rules")
+        assertTrue((0 until rules.length()).any { rules.optJSONObject(it)?.optString("action") == "reject" })
     }
 }

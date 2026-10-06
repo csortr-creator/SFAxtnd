@@ -21,7 +21,7 @@ object OutboundProfileState {
         return root.toString()
     }
 
-    fun runtimeConfig(content: String, blockIpv6: Boolean, tunStack: String): String {
+    fun runtimeConfig(content: String, blockIpv6: Boolean, tunStack: String, optionsJson: String = "{}"): String {
         val root = JSONObject(content)
         root.optJSONObject("dns")?.remove("independent_cache")
         val inbounds = root.optJSONArray("inbounds") ?: JSONArray()
@@ -40,6 +40,7 @@ object OutboundProfileState {
             if (!ipv6Block) updated.put(rule)
         }
         route.put("rules", updated)
+        ClientSettingsConfig.applyCore(root, JSONObject(optionsJson.ifBlank { "{}" }))
         return root.toString()
     }
 

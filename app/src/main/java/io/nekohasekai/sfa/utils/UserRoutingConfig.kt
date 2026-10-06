@@ -8,26 +8,34 @@ import org.json.JSONObject
 
 object UserRoutingConfig {
 
-    fun applyToConfig(jsonStr: String, userConfigJson: String): String = try {
-        val root = JSONObject(jsonStr)
-        val raw = userConfigJson.trim()
-        if (raw.isNotBlank()) {
-            val user = JSONObject(raw)
-            applyDns(root, user.optJSONObject("dns"))
-            applyRules(root, user.optJSONArray("rules"))
-            applyGeo(root, user.optJSONObject("geo"))
+    fun applyToConfig(jsonStr: String, userConfigJson: String): String =
+        try {
+            val root = JSONObject(jsonStr)
+            val raw = userConfigJson.trim()
+            if (raw.isNotBlank()) {
+                val user = JSONObject(raw)
+                applyDns(root, user.optJSONObject("dns"))
+                applyRules(root, user.optJSONArray("rules"))
+                applyGeo(root, user.optJSONObject("geo"))
+                ClientSettingsConfig.applyDns(root, user.optJSONObject("dns"))
+                ClientSettingsConfig.applyRuleSets(root, user.optJSONArray("ruleSets"))
+            }
+            finalizeRemoteRuleSets(root)
+            root.toString(2)
+        } catch (error: Exception) {
+            throw IllegalArgumentException(
+                "Некорректные настройки маршрутизации или DNS: ${error.message}",
+                error,
+            )
         }
-        finalizeRemoteRuleSets(root)
-        root.toString(2)
-    } catch (_: Exception) {
-        jsonStr
-    }
 
     private fun applyDns(root: JSONObject, dnsUser: JSONObject?) {
         if (dnsUser == null) return
         val dns = root.optJSONObject("dns") ?: JSONObject().also { root.put("dns", it) }
         val strategyName = dnsUser.optString("strategy", DnsConfig.Strategy.AUTO.name)
-        val strategy = runCatching { DnsConfig.Strategy.valueOf(strategyName) }.getOrDefault(DnsConfig.Strategy.AUTO)
+        val strategy =
+            runCatching { DnsConfig.Strategy.valueOf(strategyName) }
+                .getOrDefault(DnsConfig.Strategy.AUTO)
         when (strategy) {
             DnsConfig.Strategy.AUTO -> dns.remove("strategy")
             DnsConfig.Strategy.PREFER_IPV4 -> dns.put("strategy", "prefer_ipv4")
@@ -36,11 +44,13 @@ object UserRoutingConfig {
             DnsConfig.Strategy.IPV6_ONLY -> dns.put("strategy", "ipv6_only")
         }
         if (dnsUser.has("cacheEnabled")) {
-            if (dnsUser.optBoolean("cacheEnabled", true)) dns.remove("disable_cache") else dns.put("disable_cache", true)
+            if (dnsUser.optBoolean("cacheEnabled", true)) dns.remove("disable_cache")
+            else dns.put("disable_cache", true)
         }
         dns.remove("independent_cache")
         if (dnsUser.has("reverseMapping")) {
-            if (dnsUser.optBoolean("reverseMapping", false)) dns.put("reverse_mapping", true) else dns.remove("reverse_mapping")
+            if (dnsUser.optBoolean("reverseMapping", false)) dns.put("reverse_mapping", true)
+            else dns.remove("reverse_mapping")
         }
         val finalServer = dnsUser.optString("finalServer", "").trim()
         if (finalServer.isNotEmpty()) dns.put("final", finalServer)
@@ -109,7 +119,13 @@ object UserRoutingConfig {
             if (tag.isNotEmpty() && type in setOf("selector", "urltest")) return tag
         }
         val routeFinal = root.optJSONObject("route")?.optString("final")?.trim().orEmpty()
-        if (routeFinal.isNotEmpty() && routeFinal != "direct" && routeFinal != "block" && outboundTagExists(root, routeFinal)) return routeFinal
+        if (
+            routeFinal.isNotEmpty() &&
+                routeFinal != "direct" &&
+                routeFinal != "block" &&
+                outboundTagExists(root, routeFinal)
+        )
+            return routeFinal
         for (i in 0 until outbounds.length()) {
             val item = outbounds.optJSONObject(i) ?: continue
             val type = item.optString("type")
@@ -135,19 +151,31 @@ object UserRoutingConfig {
                 server.put("type", "https")
                 val clean = address.removePrefix("https://")
                 server.put("server", clean.substringBefore("/").substringBefore(":"))
-                server.put("path", if (clean.contains("/")) "/" + clean.substringAfter("/") else "/dns-query")
+                server.put(
+                    "path",
+                    if (clean.contains("/")) "/" + clean.substringAfter("/") else "/dns-query",
+                )
             }
             address.startsWith("tls://") -> {
                 server.put("type", "tls")
-                server.put("server", address.removePrefix("tls://").substringBefore("/").substringBefore(":"))
+                server.put(
+                    "server",
+                    address.removePrefix("tls://").substringBefore("/").substringBefore(":"),
+                )
             }
             address.startsWith("quic://") -> {
                 server.put("type", "quic")
-                server.put("server", address.removePrefix("quic://").substringBefore("/").substringBefore(":"))
+                server.put(
+                    "server",
+                    address.removePrefix("quic://").substringBefore("/").substringBefore(":"),
+                )
             }
             address.startsWith("h3://") -> {
                 server.put("type", "h3")
-                server.put("server", address.removePrefix("h3://").substringBefore("/").substringBefore(":"))
+                server.put(
+                    "server",
+                    address.removePrefix("h3://").substringBefore("/").substringBefore(":"),
+                )
             }
             address.startsWith("udp://") -> {
                 server.put("type", "udp")
@@ -171,11 +199,13 @@ object UserRoutingConfig {
         val customGeosite = geoUser.optString("geositeUrl", "").trim()
         val customGeoip = geoUser.optString("geoipUrl", "").trim()
         val source = if (sourceId.isNotEmpty()) GeoFileSources.find(sourceId) else null
-        val geositeBase = customGeosite.ifBlank { source?.geosite_url?.trim().orEmpty() }.trimEnd('/')
+        val geositeBase =
+            customGeosite.ifBlank { source?.geosite_url?.trim().orEmpty() }.trimEnd('/')
         val geoipBase = customGeoip.ifBlank { source?.geoip_url?.trim().orEmpty() }.trimEnd('/')
         if (geositeBase.isEmpty() && geoipBase.isEmpty()) return
         val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
-        val ruleSet = route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
+        val ruleSet =
+            route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
         for (i in 0 until ruleSet.length()) {
             val item = ruleSet.optJSONObject(i) ?: continue
             val tag = item.optString("tag")
@@ -208,8 +238,20 @@ object UserRoutingConfig {
             val item = rulesUser.optJSONObject(i) ?: continue
             if (!item.optBoolean("enabled", true)) continue
             val rule = buildSingBoxRule(item) ?: continue
-            if (item.optString("outbound", "proxy") == "proxy") rule.put("outbound", findProxyOutboundTag(root))
-            if (rule.optString("outbound") == "block") needBlock = true
+            if (item.optString("outbound", "proxy") == "proxy")
+                rule.put("outbound", findProxyOutboundTag(root))
+            if (rule.optString("outbound") == "block") {
+                rule.remove("outbound")
+                rule.put("action", "reject")
+            }
+            val target = rule.optString("outbound")
+            if (
+                target.isNotBlank() &&
+                    target !in setOf("direct", "proxy") &&
+                    !outboundTagExists(root, target)
+            ) {
+                rule.put("outbound", findProxyOutboundTag(root))
+            }
             merged.put(rule)
             val rs = rule.optJSONArray("rule_set")
             if (rs != null) {
@@ -227,7 +269,9 @@ object UserRoutingConfig {
         fun essential(rule: JSONObject): Boolean =
             rule.optString("action") in setOf("sniff", "hijack-dns") ||
                 (rule.optBoolean("ip_is_private") && rule.optString("outbound") == "direct") ||
-                (rule.optJSONArray("ip_cidr")?.let { it.length() == 1 && it.optString(0) == "::/0" } == true &&
+                (rule.optJSONArray("ip_cidr")?.let {
+                    it.length() == 1 && it.optString(0) == "::/0"
+                } == true &&
                     (rule.optString("outbound") == "block" || rule.optString("action") == "reject"))
         // DNS interception and sniffing must run before a Whitelist catch-all route.
         for (i in 0 until existing.length()) {
@@ -248,27 +292,32 @@ object UserRoutingConfig {
 
     private fun ensureRuleSetEntries(route: JSONObject, tags: Set<String>) {
         if (tags.isEmpty()) return
-        val ruleSet = route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
-        val existing = (0 until ruleSet.length()).mapNotNull {
-            ruleSet.optJSONObject(it)?.optString("tag")?.takeIf { tag -> tag.isNotBlank() }
-        }.toHashSet()
+        val ruleSet =
+            route.optJSONArray("rule_set") ?: JSONArray().also { route.put("rule_set", it) }
+        val existing =
+            (0 until ruleSet.length())
+                .mapNotNull {
+                    ruleSet.optJSONObject(it)?.optString("tag")?.takeIf { tag -> tag.isNotBlank() }
+                }
+                .toHashSet()
         val geositeBase = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set"
         val geoipBase = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set"
         for (tag in tags) {
             if (tag in existing) continue
             val customUrl = RoutingPresets.remoteRuleSets[tag]
-            val base = when {
-                tag.startsWith("geosite") -> geositeBase
-                tag.startsWith("geoip") -> geoipBase
-                else -> if (customUrl == null) continue else ""
-            }
+            val base =
+                when {
+                    tag.startsWith("geosite") -> geositeBase
+                    tag.startsWith("geoip") -> geoipBase
+                    else -> if (customUrl == null) continue else ""
+                }
             ruleSet.put(
                 JSONObject()
                     .put("type", "remote")
                     .put("tag", tag)
                     .put("format", "binary")
                     .put("url", customUrl ?: "$base/$tag.srs")
-                    .put("download_detour", "direct"),
+                    .put("download_detour", "direct")
             )
             existing.add(tag)
         }
@@ -288,19 +337,32 @@ object UserRoutingConfig {
         putList("domain", item.optString("domain"))
         putList("domain_suffix", item.optString("domainSuffix"))
         putList("domain_keyword", item.optString("domainKeyword"))
-        putList("rule_set", item.optString("ruleSet"))
+        putList(
+            "rule_set",
+            splitValues(item.optString("ruleSet")).map { geoToRuleSet(it) ?: it }.joinToString(","),
+        )
         if (!hasMatch) {
             val value = item.optString("value").trim()
             if (value.isEmpty()) return null
-            when (runCatching { RoutingRule.Type.valueOf(item.optString("type", RoutingRule.Type.DOMAIN.name)) }.getOrDefault(RoutingRule.Type.DOMAIN)) {
+            when (
+                runCatching {
+                        RoutingRule.Type.valueOf(
+                            item.optString("type", RoutingRule.Type.DOMAIN.name)
+                        )
+                    }
+                    .getOrDefault(RoutingRule.Type.DOMAIN)
+            ) {
                 RoutingRule.Type.DOMAIN -> dnsRule.put("domain", JSONArray().put(value))
-                RoutingRule.Type.DOMAIN_SUFFIX -> dnsRule.put("domain_suffix", JSONArray().put(value))
-                RoutingRule.Type.DOMAIN_KEYWORD -> dnsRule.put("domain_keyword", JSONArray().put(value))
+                RoutingRule.Type.DOMAIN_SUFFIX ->
+                    dnsRule.put("domain_suffix", JSONArray().put(value))
+                RoutingRule.Type.DOMAIN_KEYWORD ->
+                    dnsRule.put("domain_keyword", JSONArray().put(value))
                 else -> return null
             }
         }
         val outbound = mapOutbound(item.optString("outbound", RoutingRule.OUTBOUND_PROXY))
-        dnsRule.put("server", resolveDnsRuleServer(root, outbound))
+        if (outbound == "block") dnsRule.put("action", "reject")
+        else dnsRule.put("server", resolveDnsRuleServer(root, outbound))
         return dnsRule
     }
 
@@ -321,10 +383,12 @@ object UserRoutingConfig {
                 }
             }
         }
-        val prefer = when (outbound) {
-            "direct", "block" -> listOf("dns-direct", "local")
-            else -> listOf("dns-proxy", "dns-remote", "dns-direct")
-        }
+        val prefer =
+            when (outbound) {
+                "direct",
+                "block" -> listOf("dns-direct", "local")
+                else -> listOf("dns-proxy", "dns-remote", "dns-direct")
+            }
         for (p in prefer) if (p in tags) return p
         return tags.firstOrNull() ?: "dns-direct"
     }
@@ -348,16 +412,6 @@ object UserRoutingConfig {
             ruleSetTags.add(clean)
             hasMatch = true
         }
-        fun geoToRuleSet(raw: String): String? {
-            val v = raw.trim()
-            if (v.isEmpty()) return null
-            return when {
-                v.startsWith("geoip:", ignoreCase = true) -> "geoip-" + v.substringAfter(':').trim()
-                v.startsWith("geosite:", ignoreCase = true) -> "geosite-" + v.substringAfter(':').trim()
-                v.startsWith("geoip-", ignoreCase = true) || v.startsWith("geosite-", ignoreCase = true) -> v
-                else -> null
-            }
-        }
         fun putStringList(key: String, raw: String) {
             val values = splitValues(raw)
             if (values.isEmpty()) return
@@ -366,7 +420,7 @@ object UserRoutingConfig {
                 val asRuleSet = geoToRuleSet(value)
                 if (asRuleSet != null) {
                     addRuleSet(asRuleSet)
-                } else if (!(key == "ip_cidr" && !value.contains('/'))) {
+                } else {
                     arr.put(value)
                 }
             }
@@ -384,27 +438,44 @@ object UserRoutingConfig {
         putStringList("rule_set", item.optString("ruleSet"))
         putStringList("wifi_ssid", item.optString("wifiSsid"))
         putStringList("wifi_bssid", item.optString("wifiBssid"))
-        val port = item.optString("port").trim()
-        if (port.isNotEmpty()) {
-            rule.put("port", port)
-            hasMatch = true
+        fun putPorts(key: String, raw: String) {
+            val entries = splitValues(raw)
+            val ports =
+                entries
+                    .filter { !it.contains(':') }
+                    .map { it.toInt().also { port -> require(port in 1..65535) } }
+            val ranges =
+                entries
+                    .filter { it.contains(':') }
+                    .onEach {
+                        val limits = it.split(':')
+                        require(limits.size == 2)
+                        val start = limits[0].toInt()
+                        val end = limits[1].toInt()
+                        require(start in 1..65535 && end in start..65535)
+                    }
+            if (ports.isNotEmpty()) {
+                rule.put(key, JSONArray(ports))
+                hasMatch = true
+            }
+            if (ranges.isNotEmpty()) {
+                rule.put("${key}_range", JSONArray(ranges))
+                hasMatch = true
+            }
         }
-        val sourcePort = item.optString("sourcePort").trim()
-        if (sourcePort.isNotEmpty()) {
-            rule.put("source_port", sourcePort)
-            hasMatch = true
-        }
+        putPorts("port", item.optString("port"))
+        putPorts("source_port", item.optString("sourcePort"))
         val network = item.optString("network").trim()
         if (network.isNotEmpty() && network != "tcp,udp" && !network.equals("TCP и UDP", true)) {
             val nets = splitValues(network.replace("и", ",").lowercase())
             if (nets.isNotEmpty()) {
-                rule.put("network", nets.joinToString(","))
+                rule.put("network", JSONArray(nets))
                 hasMatch = true
             }
         }
         val protocol = item.optString("protocol").trim()
         if (protocol.isNotEmpty()) {
-            rule.put("protocol", JSONArray().put(protocol))
+            rule.put("protocol", JSONArray(splitValues(protocol)))
             hasMatch = true
         }
         val clashMode = item.optString("clashMode").trim()
@@ -414,11 +485,20 @@ object UserRoutingConfig {
         }
         val value = item.optString("value").trim()
         if (!hasMatch && value.isNotEmpty()) {
-            when (runCatching { RoutingRule.Type.valueOf(item.optString("type", RoutingRule.Type.DOMAIN.name)) }.getOrDefault(RoutingRule.Type.DOMAIN)) {
+            when (
+                runCatching {
+                        RoutingRule.Type.valueOf(
+                            item.optString("type", RoutingRule.Type.DOMAIN.name)
+                        )
+                    }
+                    .getOrDefault(RoutingRule.Type.DOMAIN)
+            ) {
                 RoutingRule.Type.DOMAIN -> rule.put("domain", JSONArray().put(value))
                 RoutingRule.Type.DOMAIN_SUFFIX -> rule.put("domain_suffix", JSONArray().put(value))
-                RoutingRule.Type.DOMAIN_KEYWORD -> rule.put("domain_keyword", JSONArray().put(value))
-                RoutingRule.Type.GEOSITE -> addRuleSet(geoToRuleSet(value) ?: ("geosite-" + value.removePrefix("geosite-")))
+                RoutingRule.Type.DOMAIN_KEYWORD ->
+                    rule.put("domain_keyword", JSONArray().put(value))
+                RoutingRule.Type.GEOSITE ->
+                    addRuleSet(geoToRuleSet(value) ?: ("geosite-" + value.removePrefix("geosite-")))
                 RoutingRule.Type.IP_CIDR -> {
                     val asRuleSet = geoToRuleSet(value)
                     if (asRuleSet != null) {
@@ -427,7 +507,8 @@ object UserRoutingConfig {
                         rule.put("ip_cidr", JSONArray().put(value))
                     }
                 }
-                RoutingRule.Type.GEOIP -> addRuleSet(geoToRuleSet(value) ?: ("geoip-" + value.removePrefix("geoip-")))
+                RoutingRule.Type.GEOIP ->
+                    addRuleSet(geoToRuleSet(value) ?: ("geoip-" + value.removePrefix("geoip-")))
                 RoutingRule.Type.PACKAGE_NAME -> rule.put("package_name", JSONArray().put(value))
                 RoutingRule.Type.PROTOCOL -> rule.put("protocol", JSONArray().put(value))
             }
@@ -439,18 +520,39 @@ object UserRoutingConfig {
             rule.put("rule_set", arr)
         }
         if (!hasMatch && ruleSetTags.isEmpty()) return null
-        rule.put("outbound", mapOutbound(item.optString("outbound", RoutingRule.OUTBOUND_PROXY).trim()))
+        rule.put(
+            "outbound",
+            mapOutbound(item.optString("outbound", RoutingRule.OUTBOUND_PROXY).trim()),
+        )
         return rule
     }
 
-    private fun splitValues(raw: String): List<String> = raw.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }
-
-    private fun mapOutbound(raw: String): String = when (raw.lowercase()) {
-        RoutingRule.OUTBOUND_DIRECT, "direct" -> "direct"
-        RoutingRule.OUTBOUND_BLOCK, "block", "reject" -> "block"
-        RoutingRule.OUTBOUND_PROXY, "proxy" -> "proxy"
-        else -> raw.ifBlank { "direct" }
+    private fun geoToRuleSet(raw: String): String? {
+        val v = raw.trim()
+        if (v.isEmpty()) return null
+        return when {
+            v.startsWith("geoip:", ignoreCase = true) -> "geoip-" + v.substringAfter(':').trim()
+            v.startsWith("geosite:", ignoreCase = true) -> "geosite-" + v.substringAfter(':').trim()
+            v.startsWith("geoip-", ignoreCase = true) ||
+                v.startsWith("geosite-", ignoreCase = true) -> v
+            else -> null
+        }
     }
+
+    private fun splitValues(raw: String): List<String> =
+        raw.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }
+
+    private fun mapOutbound(raw: String): String =
+        when (raw.lowercase()) {
+            RoutingRule.OUTBOUND_DIRECT,
+            "direct" -> "direct"
+            RoutingRule.OUTBOUND_BLOCK,
+            "block",
+            "reject" -> "block"
+            RoutingRule.OUTBOUND_PROXY,
+            "proxy" -> "proxy"
+            else -> raw.ifBlank { "direct" }
+        }
 
     private fun finalizeRemoteRuleSets(root: JSONObject) {
         ensureDirectOutbound(root)
@@ -462,14 +564,16 @@ object UserRoutingConfig {
             val url = item.optString("url").trim()
             if (type == "remote" || url.startsWith("http://") || url.startsWith("https://")) {
                 item.put("type", "remote")
-                if (!item.has("format") || item.optString("format").isBlank()) item.put("format", "binary")
+                if (!item.has("format") || item.optString("format").isBlank())
+                    item.put("format", "binary")
                 item.put("download_detour", "direct")
             }
         }
     }
 
     private fun ensureDirectOutbound(root: JSONObject) {
-        val outbounds = root.optJSONArray("outbounds") ?: JSONArray().also { root.put("outbounds", it) }
+        val outbounds =
+            root.optJSONArray("outbounds") ?: JSONArray().also { root.put("outbounds", it) }
         for (i in 0 until outbounds.length()) {
             if (outbounds.optJSONObject(i)?.optString("tag") == "direct") return
         }
@@ -477,7 +581,8 @@ object UserRoutingConfig {
     }
 
     private fun ensureBlockOutbound(root: JSONObject) {
-        val outbounds = root.optJSONArray("outbounds") ?: JSONArray().also { root.put("outbounds", it) }
+        val outbounds =
+            root.optJSONArray("outbounds") ?: JSONArray().also { root.put("outbounds", it) }
         for (i in 0 until outbounds.length()) {
             if (outbounds.optJSONObject(i)?.optString("tag") == "block") return
         }

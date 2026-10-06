@@ -105,7 +105,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private fun sanitizeRuntimeConfig(content: String): String =
         io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
-            content, Settings.routingBlockIpv6, Settings.tunStack,
+            content, Settings.routingBlockIpv6, Settings.tunStack, Settings.coreOptionsJson,
         )
 
     private suspend fun startService() {

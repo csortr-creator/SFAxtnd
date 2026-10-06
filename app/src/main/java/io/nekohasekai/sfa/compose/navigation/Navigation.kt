@@ -27,6 +27,10 @@ import io.nekohasekai.sfa.compose.screen.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.compose.screen.log.LogScreen
 import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
+import io.nekohasekai.sfa.compose.screen.settings.RuleSetsScreen
+import io.nekohasekai.sfa.compose.screen.settings.DnsSettingsScreen
+import io.nekohasekai.sfa.compose.screen.settings.AppearanceSettingsScreen
+import io.nekohasekai.sfa.compose.screen.settings.NetworkOptionsScreen
 import io.nekohasekai.sfa.compose.screen.settings.AppSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.CoreSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.EditRoutingRuleScreen
@@ -275,6 +279,10 @@ fun NavHost(
                 }
             }
         }
+        composable("settings/rule-sets") { RuleSetsScreen(navController) }
+        composable("settings/dns") { DnsSettingsScreen(navController) }
+        composable("settings/appearance") { AppearanceSettingsScreen(navController) }
+        composable("settings/network-options") { NetworkOptionsScreen(navController) }
         composable(Screen.Settings.route) { SettingsScreen(navController = navController) }
 
         // Settings subscreens with slide animations

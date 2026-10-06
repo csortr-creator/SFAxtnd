@@ -343,10 +343,11 @@ fun NavHost(
             popEnterTransition = slideInFromLeft,
             popExitTransition = slideOutToRight,
         ) { entry ->
-            RoutingSettingsScreen(
-                navController,
-                section = entry.arguments?.getString("section") ?: "overview",
-            )
+            when (val section = entry.arguments?.getString("section") ?: "overview") {
+                "dns" -> DnsSettingsScreen(navController)
+                "connection" -> CoreSettingsScreen(navController)
+                else -> RoutingSettingsScreen(navController, section)
+            }
         }
 
         composable(

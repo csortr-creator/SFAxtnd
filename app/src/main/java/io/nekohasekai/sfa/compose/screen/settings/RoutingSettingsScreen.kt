@@ -92,10 +92,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 )
             },
             navigationIcon = {
-                if (
-                    section != "overview" ||
-                        navController.currentDestination?.route == "settings/routing"
-                ) {
+                run {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,

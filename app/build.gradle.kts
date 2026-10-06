@@ -204,6 +204,7 @@ dependencies {
     val coreVersion21 = "1.17.0"
     val materialVersion21 = "1.13.0"
 
+    implementation("org.yaml:snakeyaml:2.5")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("androidx.navigation:navigation-fragment-ktx:2.9.8")

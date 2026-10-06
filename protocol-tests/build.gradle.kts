@@ -6,6 +6,7 @@ repositories { mavenCentral() }
 
 dependencies {
     implementation("org.json:json:20240303")
+    implementation("org.yaml:snakeyaml:2.5")
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -19,6 +20,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ProfileLatencyCache.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionContentParser.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/ForeignSubscriptionParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionImportReport.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionRouting.kt")
     kotlin.include("io/nekohasekai/sfa/utils/OutboundProfileState.kt")

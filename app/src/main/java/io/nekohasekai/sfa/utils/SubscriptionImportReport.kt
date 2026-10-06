@@ -10,22 +10,29 @@ internal data class SubscriptionImportReport(
     val received: Int,
     val imported: Int,
     val issues: List<SubscriptionImportIssue>,
+    val warnings: List<String> = emptyList(),
+    val format: String = "Список ссылок",
 ) {
     fun summary(): String =
         "Получено: $received · Импортировано: $imported · Пропущено: ${issues.size}"
 
-    fun displayText(): String =
-        summary() +
-            if (issues.isEmpty()) ""
-            else
-                "\n\n" +
-                    issues.joinToString("\n\n") { "Строка ${it.line} · ${it.name}\n${it.reason}" }
+    fun displayText(): String = buildString {
+        append("Формат: $format\n")
+        append(summary())
+        if (warnings.isNotEmpty()) append("\n\n" + warnings.joinToString("\n\n"))
+        for (issue in issues) {
+            val location = if (format == "Список ссылок") "Строка" else "Запись"
+            append("\n\n$location ${issue.line} · ${issue.name}\n${issue.reason}")
+        }
+    }
 
     fun save(configPath: String) {
         val json =
             JSONObject()
                 .put("received", received)
                 .put("imported", imported)
+                .put("warnings", JSONArray(warnings))
+                .put("format", format)
                 .put(
                     "issues",
                     JSONArray(
@@ -56,6 +63,8 @@ internal data class SubscriptionImportReport(
                                 issue.getString("reason"),
                             )
                         },
+                        json.optJSONArray("warnings")?.let { list -> (0 until list.length()).map { list.getString(it) } }.orEmpty(),
+                        json.optString("format", "Список ссылок"),
                     )
                 }
                 .getOrNull()

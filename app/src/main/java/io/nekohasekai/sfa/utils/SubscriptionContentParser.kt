@@ -10,6 +10,18 @@ internal class SubscriptionContentParser(
     private val blockIpv6: Boolean = true,
     private val validateNode: (JSONObject) -> Unit = {},
 ) {
+    companion object {
+        fun supports(text: String): Boolean {
+            val trimmed = text.trim().removePrefix("\uFEFF").trim()
+            if (ForeignSubscriptionParser.looksLike(trimmed) || Regex("(?im)^(vless|vmess|trojan|ss|hysteria|hysteria2|hy2|tuic|anytls|socks|socks5)://").containsMatchIn(trimmed)) return true
+            if (trimmed.length !in 20..(8 * 1024 * 1024) || !Regex("[A-Za-z0-9+/=_\\-\\s]+").matches(trimmed)) return false
+            val decoded = runCatching { Base64.getDecoder().decode(trimmed.filterNot { it.isWhitespace() }).toString(Charsets.UTF_8) }.getOrElse {
+                runCatching { Base64.getUrlDecoder().decode(trimmed.filterNot { it.isWhitespace() }).toString(Charsets.UTF_8) }.getOrDefault("")
+            }
+            return decoded.contains("://") || ForeignSubscriptionParser.looksLike(decoded)
+        }
+    }
+
     private fun decodeBase64(value: String): ByteArray {
         val compact = value.filterNot { it.isWhitespace() }
         return try {
@@ -20,10 +32,13 @@ internal class SubscriptionContentParser(
     }
 
     fun parse(raw: String): SubscriptionImportResult {
-        val trimmed = raw.trim()
+        val trimmed = raw.trim().removePrefix("\uFEFF").trim()
+        require(trimmed.length <= 8 * 1024 * 1024) { "Подписка превышает допустимый размер (8 МиБ)" }
         val mode = SubscriptionRouting.detectMode(trimmed)
         val content = tryDecodeBase64(trimmed)
-        if (content.startsWith("{")) {
+        require(!content.trimStart().startsWith('<')) { "Сервер вернул HTML вместо подписки. Проверьте прямой URL подписки и доступ к нему." }
+        val foreign = ForeignSubscriptionParser.decode(content)
+        if (foreign == null && content.startsWith("{")) {
             val root = JSONObject(content)
             require(root.has("outbounds")) { "Expected a sing-box configuration with outbounds" }
             val nodes = root.getJSONArray("outbounds")
@@ -37,6 +52,7 @@ internal class SubscriptionContentParser(
                 SubscriptionImportReport(count, count, emptyList()),
             )
         }
+        val warnings = foreign?.warnings.orEmpty().toMutableList()
         val nodes = mutableListOf<JSONObject>()
         val issues = mutableListOf<SubscriptionImportIssue>()
         var received = 0
@@ -65,7 +81,10 @@ internal class SubscriptionContentParser(
             }
             nodes.add(node)
         }
-        if (content.startsWith("[")) {
+        if (foreign != null) {
+            require(foreign.servers.size <= 10000) { "Подписка содержит слишком много серверов" }
+            for (server in foreign.servers) accept(server.position, server.name) { server.convert() }
+        } else if (content.startsWith("[")) {
             val array = JSONArray(content)
             for (i in 0 until array.length()) accept(i + 1, "Сервер ${i + 1}", independent = false) {
                 array.optJSONObject(i) ?: error("Expected a server object")
@@ -80,12 +99,16 @@ internal class SubscriptionContentParser(
                         .getOrDefault("Сервер ${index + 1}")
                         .take(120)
                 accept(index + 1, name) {
-                    parseUriLines(line).singleOrNull()
-                        ?: error("Invalid or unsupported server link")
+                    val node = parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
+                    if (Regex("[?&](spx|spiderX)=").containsMatchIn(line)) {
+                        val warning = "Параметр Reality spiderX не переносится: используется реализация Reality ядра sing-box."
+                        if (warning !in warnings) warnings.add(warning)
+                    }
+                    node
                 }
             }
         }
-        val report = SubscriptionImportReport(received, nodes.size, issues)
+        val report = SubscriptionImportReport(received, nodes.size, issues, warnings, foreign?.format ?: "Список ссылок")
         require(nodes.isNotEmpty()) {
             "Нет пригодных серверов. ${report.summary()}\n${issues.take(5).joinToString("\n") { "Строка ${it.line}: ${it.reason}" }}"
         }
@@ -283,7 +306,7 @@ internal class SubscriptionContentParser(
             if (
                 decodedStr.contains("://") ||
                     decodedStr.startsWith("{") ||
-                    decodedStr.startsWith("[")
+                    decodedStr.startsWith("[") || ForeignSubscriptionParser.looksLike(decodedStr)
             ) {
                 return decodedStr
             }
@@ -458,7 +481,8 @@ internal class SubscriptionContentParser(
                     trimmed.startsWith("vmess://") -> parseVmess(trimmed)
                     trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
                     trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
-                    trimmed.startsWith("hysteria://") ||
+                    trimmed.startsWith("tuic://") || trimmed.startsWith("anytls://") || trimmed.startsWith("socks://") || trimmed.startsWith("socks5://") || trimmed.startsWith("http://") || trimmed.startsWith("https://") -> ProxyLinkParser.additional(trimmed)
+                trimmed.startsWith("hysteria://") ||
                         trimmed.startsWith("hysteria2://") ||
                         trimmed.startsWith("hy2://") -> ProxyLinkParser.hysteria(trimmed)
                     else -> null
@@ -483,8 +507,8 @@ internal class SubscriptionContentParser(
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = main.substringAfter('?', "")
-        val params = ProxyLinkParser.query(query)
-        checkParameters(params, transportParameters + setOf("encryption", "flow", "pbk", "sid"))
+        val params = ProxyLinkParser.connectionQuery(query)
+        checkParameters(params, transportParameters + setOf("encryption", "flow", "pbk", "sid", "packetEncoding"))
 
         val endpoint = ProxyLinkParser.endpoint(hostPort)
         require(endpoint.ports.size == 1 && ":" !in endpoint.ports.first()) {
@@ -500,6 +524,7 @@ internal class SubscriptionContentParser(
         outbound.put("server", host)
         outbound.put("server_port", port)
         outbound.put("uuid", uuid)
+        params["packetEncoding"]?.let { outbound.put("packet_encoding", it) }
         val flow = params["flow"]
         if (!flow.isNullOrBlank()) outbound.put("flow", flow)
 
@@ -509,6 +534,8 @@ internal class SubscriptionContentParser(
         require(params["encryption"].isNullOrEmpty() || params["encryption"] == "none") {
             "Unsupported VLESS encryption"
         }
+        require(security == "reality" || listOf("pbk", "sid").none { !params[it].isNullOrBlank() }) { "Invalid Reality options without Reality security" }
+        require(security != "none" || listOf("sni", "fp", "alpn", "allowInsecure").none { !params[it].isNullOrBlank() }) { "Invalid TLS options without TLS security" }
         if (security == "reality") {
             val key = params["pbk"].orEmpty()
             require(
@@ -568,7 +595,7 @@ internal class SubscriptionContentParser(
         outbound.optJSONObject("tls")?.let { tls ->
             if (!alpn.isNullOrBlank()) tls.put("alpn", JSONArray(alpn.split(',')))
             params["allowInsecure"]?.let {
-                tls.put("insecure", it == "1" || it.equals("true", true))
+                tls.put("insecure", ProxyLinkParser.boolean(it))
             }
             if (security == "tls" && !params["fp"].isNullOrBlank()) {
                 tls.put(
@@ -626,11 +653,13 @@ internal class SubscriptionContentParser(
         outbound.put("server_port", port)
         outbound.put("uuid", uuid)
         outbound.put("security", vmessJson.optString("scy", "auto"))
-        val aid = vmessJson.optInt("aid", 0)
+        val aid = if (vmessJson.has("aid")) vmessJson.optString("aid").toIntOrNull()?.takeIf { it >= 0 } ?: error("Invalid VMess alter ID") else 0
         if (aid > 0) outbound.put("alter_id", aid)
 
         val network = vmessJson.optString("net", "tcp")
-        val tlsFlag = vmessJson.optString("tls")
+        require(!vmessJson.has("security")) { "Unsupported VMess security alias; use scy and tls" }
+        val tlsFlag = vmessJson.optString("tls").lowercase()
+        require(tlsFlag in setOf("", "none", "tls")) { "Unsupported VMess TLS mode" }
         val sni =
             vmessJson.optString("sni").ifEmpty { vmessJson.optString("host").ifEmpty { host } }
 
@@ -645,7 +674,7 @@ internal class SubscriptionContentParser(
                         .takeIf { it.isNotBlank() }
                         ?.let { put("alpn", JSONArray(it.split(','))) }
                     if (vmessJson.has("allowInsecure"))
-                        put("insecure", vmessJson.optString("allowInsecure") in setOf("true", "1"))
+                        put("insecure", ProxyLinkParser.boolean(vmessJson.optString("allowInsecure")))
                     vmessJson
                         .optString("fp")
                         .takeIf { it.isNotBlank() }
@@ -682,9 +711,9 @@ internal class SubscriptionContentParser(
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = main.substringAfter('?', "")
-        val params = ProxyLinkParser.query(query)
+        val params = ProxyLinkParser.connectionQuery(query)
         checkParameters(params, transportParameters + setOf("pbk", "sid"))
-        require(params["security"].isNullOrEmpty() || params["security"] == "tls") {
+        require(params["security"].isNullOrEmpty() || params["security"] in setOf("tls", "reality")) {
             "Unsupported Trojan security"
         }
 
@@ -713,7 +742,7 @@ internal class SubscriptionContentParser(
                     ?.takeIf { it.isNotBlank() }
                     ?.let { put("alpn", JSONArray(it.split(','))) }
                 params["allowInsecure"]?.let {
-                    put("insecure", it == "1" || it.equals("true", true))
+                    put("insecure", ProxyLinkParser.boolean(it))
                 }
                 params["fp"]
                     ?.takeIf { it.isNotBlank() }
@@ -721,6 +750,10 @@ internal class SubscriptionContentParser(
             },
         )
 
+        require(params["security"] == "reality" || listOf("pbk", "sid").none { !params[it].isNullOrBlank() }) { "Invalid Reality options without Reality security" }
+        if (params["security"] == "reality") {
+            ProxyLinkParser.applyReality(outbound.getJSONObject("tls"), params["pbk"].orEmpty(), params["sid"].orEmpty())
+        }
         val network = params["type"] ?: "tcp"
         ProxyLinkParser.transport(network, params, sni)?.let { outbound.put("transport", it) }
 

@@ -6,7 +6,7 @@ import java.net.URLDecoder
 import java.util.Base64
 
 internal object ProxyLinkParser {
-    private val schemes = setOf("vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "hy2")
+    private val schemes = setOf("vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "hy2", "tuic", "anytls", "socks", "socks5")
 
     fun isShareLink(text: String): Boolean = text.trim().substringBefore("://").lowercase() in schemes
 
@@ -24,11 +24,24 @@ internal object ProxyLinkParser {
         return result
     }
 
+    fun connectionQuery(value: String?): Map<String, String> {
+        val source = query(value).toMutableMap()
+        for ((alias, canonical) in mapOf("peer" to "sni", "serverName" to "sni", "insecure" to "allowInsecure", "skip-cert-verify" to "allowInsecure", "fingerprint" to "fp", "publicKey" to "pbk", "shortId" to "sid", "network" to "type", "service_name" to "serviceName")) {
+            source.remove(alias)?.let { converted ->
+                require(!source.containsKey(canonical) || source[canonical] == converted) { "Invalid conflicting share-link aliases" }
+                source[canonical] = converted
+            }
+        }
+        source.remove("spx")
+        source.remove("spiderX")
+        return source
+    }
+
     data class Endpoint(val host: String, val ports: List<String>) {
         val port: Int get() = ports.first().substringBefore(':').toInt()
     }
 
-    fun endpoint(authority: String): Endpoint {
+    fun endpoint(authority: String, defaultPort: Int = 443): Endpoint {
         val value = authority.trimEnd('/')
         val host: String
         val portText: String
@@ -38,13 +51,14 @@ internal object ProxyLinkParser {
             host = value.substring(1, end)
             val suffix = value.substring(end + 1)
             require(suffix.isEmpty() || suffix.startsWith(':')) { "Invalid server port" }
-            portText = suffix.removePrefix(":").ifEmpty { "443" }
+            portText = suffix.removePrefix(":").ifEmpty { defaultPort.toString() }
         } else {
             require(value.count { it == ':' } <= 1) { "IPv6 addresses must be enclosed in brackets" }
             host = value.substringBefore(':')
-            portText = value.substringAfter(':', "443")
+            portText = value.substringAfter(':', defaultPort.toString())
         }
         require(host.isNotBlank()) { "Missing server address" }
+        require(host.none { it.isWhitespace() || it in "/?@#" }) { "Invalid server address" }
         val ports = portText.split(',').map { range ->
             val ends = range.split('-', ':')
             require(ends.size in 1..2) { "Invalid server port range" }
@@ -53,6 +67,77 @@ internal object ProxyLinkParser {
             numbers.joinToString(":")
         }
         return Endpoint(host, ports)
+    }
+
+    fun certificatePin(value: String): String {
+        val hex = value.replace(":", "").trim()
+        val bytes = if (hex.length == 64 && hex.all { it in "0123456789abcdefABCDEF" }) hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        else try { Base64.getDecoder().decode(value) } catch (_: IllegalArgumentException) { error("Invalid certificate SHA-256 fingerprint") }
+        require(bytes.size == 32) { "Invalid certificate SHA-256 fingerprint" }
+        return Base64.getEncoder().encodeToString(bytes)
+    }
+
+    fun applyReality(tls: JSONObject, publicKey: String, shortId: String) {
+        require(publicKey.isNotBlank() && runCatching { Base64.getUrlDecoder().decode(publicKey).size == 32 }.getOrDefault(false)) { "Reality requires a valid public key" }
+        require(shortId.length <= 16 && shortId.length % 2 == 0 && shortId.all { it in "0123456789abcdefABCDEF" }) { "Invalid Reality short ID" }
+        if (!tls.has("utls")) tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome"))
+        tls.put("reality", JSONObject().put("enabled", true).put("public_key", publicKey).put("short_id", shortId))
+    }
+
+    fun additional(line: String): JSONObject {
+        val scheme = line.substringBefore("://").lowercase()
+        val main = line.substringAfter("://").substringBefore('#')
+        val authority = main.substringBefore('?').trimEnd('/')
+        val params = query(main.substringAfter('?', ""))
+        val tlsParameters = setOf("sni", "peer", "insecure", "allowInsecure", "alpn", "disable_sni")
+        val allowed = when (scheme) {
+            "tuic" -> tlsParameters + setOf("congestion_control", "congestion-control", "udp_relay_mode", "udp-relay-mode", "zero_rtt_handshake", "reduce-rtt", "heartbeat")
+            "anytls" -> tlsParameters + setOf("fp", "idle_session_check_interval", "idle_session_timeout", "min_idle_session")
+            "https" -> tlsParameters + "fp"
+            else -> emptySet()
+        }
+        require(params.keys.all { it in allowed }) { "Unsupported share-link parameter" }
+        for ((alias, canonical) in mapOf("peer" to "sni", "insecure" to "allowInsecure", "congestion-control" to "congestion_control", "udp-relay-mode" to "udp_relay_mode", "reduce-rtt" to "zero_rtt_handshake")) {
+            require(params[alias] == null || params[canonical] == null || params[alias] == params[canonical]) { "Invalid conflicting share-link aliases" }
+        }
+        val userInfo = if ('@' in authority) authority.substringBeforeLast('@') else ""
+        val server = endpoint(authority.substringAfterLast('@'), when (scheme) { "http" -> 80; "socks", "socks5" -> 1080; else -> 443 })
+        require(server.ports.size == 1 && ':' !in server.ports.first()) { "Invalid server port" }
+        val type = when (scheme) { "socks", "socks5" -> "socks"; "https" -> "http"; else -> scheme }
+        val node = JSONObject().put("type", type).put("tag", decode(line.substringAfter('#', "Proxy")))
+            .put("server", server.host).put("server_port", server.port)
+        when (type) {
+            "tuic" -> {
+                require(':' in userInfo) { "Missing TUIC UUID and password" }
+                node.put("uuid", decode(userInfo.substringBefore(':'))).put("password", decode(userInfo.substringAfter(':')))
+                for ((from, to) in mapOf("congestion_control" to "congestion_control", "congestion-control" to "congestion_control", "udp_relay_mode" to "udp_relay_mode", "udp-relay-mode" to "udp_relay_mode", "heartbeat" to "heartbeat")) params[from]?.let { node.put(to, it) }
+                (params["zero_rtt_handshake"] ?: params["reduce-rtt"])?.let { node.put("zero_rtt_handshake", boolean(it)) }
+            }
+            "anytls" -> {
+                require(userInfo.isNotEmpty()) { "Missing AnyTLS password" }
+                node.put("password", decode(userInfo))
+                for (key in listOf("idle_session_check_interval", "idle_session_timeout")) params[key]?.let { node.put(key, it) }
+                params["min_idle_session"]?.let { node.put("min_idle_session", it.toIntOrNull() ?: error("Invalid AnyTLS session limit")) }
+            }
+            "http", "socks" -> {
+                if (userInfo.isNotEmpty()) {
+                    require(':' in userInfo) { "Missing proxy username and password" }
+                    node.put("username", decode(userInfo.substringBefore(':'))).put("password", decode(userInfo.substringAfter(':')))
+                }
+                if (type == "socks") node.put("version", "5")
+                require(type != "socks" || params.isEmpty()) { "Unsupported SOCKS share-link parameter" }
+            }
+            else -> error("Unsupported proxy protocol")
+        }
+        if (type in setOf("tuic", "anytls") || scheme == "https") {
+            val tls = JSONObject().put("enabled", true).put("server_name", params["sni"] ?: params["peer"] ?: server.host)
+            (params["insecure"] ?: params["allowInsecure"])?.let { tls.put("insecure", boolean(it)) }
+            params["alpn"]?.let { tls.put("alpn", JSONArray(it.split(','))) }
+            params["fp"]?.let { tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", it)) }
+            params["disable_sni"]?.let { tls.put("disable_sni", boolean(it)) }
+            node.put("tls", tls)
+        } else require(params.isEmpty()) { "Unsupported TLS options for plain HTTP proxy" }
+        return node
     }
 
     fun shadowsocks(line: String): JSONObject {
@@ -200,7 +285,7 @@ internal object ProxyLinkParser {
         }
     }
 
-    private fun boolean(value: String): Boolean = when (value.lowercase()) {
+    fun boolean(value: String): Boolean = when (value.lowercase()) {
         "1", "true" -> true
         "0", "false" -> false
         else -> error("Invalid boolean share-link parameter")
@@ -210,6 +295,7 @@ internal object ProxyLinkParser {
         "", "tcp", "raw" -> null
         "ws" -> JSONObject().put("type", "ws").put("path", params["path"] ?: "/")
             .put("headers", JSONObject().put("Host", params["host"]?.takeIf { it.isNotBlank() } ?: defaultHost))
+        "http", "h2" -> JSONObject().put("type", "http").put("host", JSONArray(params["host"]?.split(',') ?: listOf(defaultHost))).put("path", params["path"] ?: "/")
         "grpc" -> JSONObject().put("type", "grpc")
             .put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
         "httpupgrade" -> JSONObject().put("type", "httpupgrade").put("path", params["path"] ?: "/")

@@ -935,10 +935,10 @@ private fun SubscriptionMetadata(profile: Profile) {
         }
     report?.let {
         Text(
-            it.summary(),
+            it.summary() + if (it.warnings.isEmpty()) "" else " · Есть замечания",
             style = MaterialTheme.typography.bodySmall,
             color =
-                if (it.issues.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
+                if (it.issues.isEmpty() && it.warnings.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.error,
         )
     }

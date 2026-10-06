@@ -5,7 +5,6 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.ProfileContent
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
@@ -62,7 +61,7 @@ class ProfileImportHandler(private val context: Context) {
             // Try to decode as ProfileContent (the old way)
             val content =
                 try {
-                    ProfileContentDecoder.decode(data)
+                    ProfileContentDecoder.decodeWithReport(data)
                 } catch (e: Exception) {
                     // If it fails, try one more time as JSON
                     if (dataString.trimStart().startsWith("{") || dataString.trimStart().startsWith("[")) {
@@ -177,7 +176,7 @@ class ProfileImportHandler(private val context: Context) {
                 // Try to decode as profile content
                 val content =
                     try {
-                        ProfileContentDecoder.decode(data.toByteArray())
+                        ProfileContentDecoder.decodeWithReport(data.toByteArray())
                     } catch (e: Exception) {
                         return@withContext ImportResult.Error(
                             context.getString(R.string.error_decode_profile, e.message),
@@ -208,7 +207,7 @@ class ProfileImportHandler(private val context: Context) {
     suspend fun importFromQRSData(data: ByteArray): ImportResult = withContext(Dispatchers.IO) {
         try {
             val content = try {
-                ProfileContentDecoder.decode(data)
+                ProfileContentDecoder.decodeWithReport(data)
             } catch (e: Exception) {
                 return@withContext ImportResult.Error(
                     context.getString(R.string.error_decode_profile, e.message),
@@ -220,7 +219,9 @@ class ProfileImportHandler(private val context: Context) {
         }
     }
 
-    private suspend fun importProfile(content: ProfileContent): ImportResult {
+    private suspend fun importProfile(decoded: io.nekohasekai.sfa.utils.DecodedProfileContent): ImportResult {
+        val content = decoded.content
+        Libbox.checkConfig(content.config)
         val typedProfile = TypedProfile()
         val profile = Profile(name = content.name, typed = typedProfile)
         profile.userOrder = ProfileManager.nextOrder()
@@ -246,6 +247,7 @@ class ProfileImportHandler(private val context: Context) {
         val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
         val configFile = File(configDirectory, "$fileID.json")
         configFile.writeText(content.config)
+        decoded.report?.save(configFile.path)
         typedProfile.path = configFile.path
 
         // Create profile in database and select it
@@ -269,11 +271,13 @@ class ProfileImportHandler(private val context: Context) {
                 userOrder = ProfileManager.nextOrder()
             }
 
-        // Create empty config file for remote profile
         val fileID = ProfileManager.nextFileID()
         val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
         val configFile = File(configDirectory, "$fileID.json")
-        configFile.writeText("{}")
+        val result = io.nekohasekai.sfa.utils.HTTPClient().use { it.getSubscription(url) }
+        Libbox.checkConfig(result.config)
+        configFile.writeText(result.config)
+        result.report.save(configFile.path)
         typedProfile.path = configFile.path
 
         // Create profile in database and select it
@@ -347,10 +351,14 @@ class ProfileImportHandler(private val context: Context) {
 
     private suspend fun importJsonConfiguration(jsonContent: String, profileName: String): ImportResult {
         return try {
+            val converted = if (io.nekohasekai.sfa.utils.SubscriptionContentParser.supports(jsonContent)) {
+                io.nekohasekai.sfa.utils.HTTPClient().use { it.parseSubscription(jsonContent) }
+            } else null
+            val config = converted?.config ?: jsonContent
             // Validate the JSON configuration using sing-box
             try {
                 // Try to check the configuration
-                Libbox.checkConfig(jsonContent)
+                Libbox.checkConfig(config)
             } catch (e: Exception) {
                 // Configuration validation failed
                 return ImportResult.Error(
@@ -376,7 +384,8 @@ class ProfileImportHandler(private val context: Context) {
             val fileID = ProfileManager.nextFileID()
             val configDirectory = File(context.filesDir, "configs").also { it.mkdirs() }
             val configFile = File(configDirectory, "$fileID.json")
-            configFile.writeText(jsonContent)
+            configFile.writeText(config)
+            converted?.report?.save(configFile.path)
             typedProfile.path = configFile.path
 
             // Create profile in database and select it

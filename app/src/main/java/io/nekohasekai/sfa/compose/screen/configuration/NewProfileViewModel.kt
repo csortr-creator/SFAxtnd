@@ -241,14 +241,16 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
         val configFile = File(configDirectory, "$fileID.json")
         typedProfile.path = configFile.path
 
+        var importReport: io.nekohasekai.sfa.utils.SubscriptionImportReport? = null
         // Get config content
         val configContent =
             when (state.profileSource) {
                 ProfileSource.CreateNew -> "{}"
                 ProfileSource.Import -> {
                     if (state.qrsData != null) {
-                        val content = ProfileContentDecoder.decode(state.qrsData)
-                        content.config
+                        val decoded = ProfileContentDecoder.decodeWithReport(state.qrsData)
+                        importReport = decoded.report
+                        decoded.content.config
                     } else {
                         state.importUri?.let { uri ->
                             val sourceURL = uri.toString()
@@ -261,10 +263,10 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                                     File(Uri.parse(sourceURL).path!!).readText()
                                 }
                                 sourceURL.startsWith("http://") || sourceURL.startsWith("https://") -> {
-                                    HTTPClient().use { it.getString(sourceURL) }
+                                    HTTPClient().use { it.getSubscription(sourceURL) }.also { importReport = it.report }.config
                                 }
                                 ProxyLinkParser.isShareLink(sourceURL) -> {
-                                    ProfileContentDecoder.decode(sourceURL.toByteArray(Charsets.UTF_8)).config
+                                    ProfileContentDecoder.decodeWithReport(sourceURL.toByteArray(Charsets.UTF_8)).also { importReport = it.report }.content.config
                                 }
                                 else -> throw Exception("Unsupported source: $sourceURL")
                             }
@@ -274,13 +276,14 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
             }
 
         // Files may contain share links just like QR/clipboard imports.
-        val resolvedConfig = if (ProxyLinkParser.isShareLink(configContent)) {
-            ProfileContentDecoder.decode(configContent.toByteArray(Charsets.UTF_8)).config
+        val resolvedConfig = if (io.nekohasekai.sfa.utils.SubscriptionContentParser.supports(configContent)) {
+            ProfileContentDecoder.decodeWithReport(configContent.toByteArray(Charsets.UTF_8)).also { importReport = it.report }.content.config
         } else {
             configContent
         }
         Libbox.checkConfig(resolvedConfig)
         configFile.writeText(resolvedConfig)
+        importReport?.save(configFile.path)
 
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)

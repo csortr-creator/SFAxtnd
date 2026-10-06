@@ -127,12 +127,12 @@ class HTTPClient : Closeable {
         return result.config
     }
 
-    private fun parseSubscription(raw: String): SubscriptionImportResult =
+    internal fun parseSubscription(raw: String): SubscriptionImportResult =
         SubscriptionContentParser(
                 io.nekohasekai.sfa.database.Settings.tunStack,
                 io.nekohasekai.sfa.database.Settings.routingBlockIpv6,
             ) { node ->
-                val minimal = JSONObject().put("outbounds", JSONArray().put(node))
+                val minimal = JSONObject().put("outbounds", JSONArray().put(node)).put("dns", JSONObject().put("servers", JSONArray().put(JSONObject().put("type", "local").put("tag", "dns-direct"))))
                 Libbox.checkConfig(minimal.toString())
             }
             .parse(raw)

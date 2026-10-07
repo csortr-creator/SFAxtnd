@@ -97,6 +97,27 @@ internal object ProxyLinkParser {
         return source
     }
 
+    /**
+     * Split share-link params into known (allowed) and optional unknown keys.
+     * Unknown keys no longer abort import; callers record PARTIAL compatibility.
+     */
+    fun partitionParameters(
+        params: Map<String, String>,
+        allowed: Set<String>,
+    ): Pair<Map<String, String>, List<String>> {
+        val known = linkedMapOf<String, String>()
+        val unknown = mutableListOf<String>()
+        for ((key, value) in params) {
+            if (key in allowed) known[key] = value else unknown.add(key)
+        }
+        params["allowInsecure"]?.let {
+            require(it.lowercase() in setOf("0", "1", "false", "true")) {
+                "Invalid TLS verification flag"
+            }
+        }
+        return known to unknown
+    }
+
     data class Endpoint(val host: String, val ports: List<String>) {
         val port: Int
             get() = ports.first().substringBefore(':').toInt()

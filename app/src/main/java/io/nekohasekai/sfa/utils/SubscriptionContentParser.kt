@@ -10,6 +10,8 @@ internal class SubscriptionContentParser(
     private val blockIpv6: Boolean = true,
     private val validateNode: (JSONObject) -> Unit = {},
 ) {
+    /** Unknown optional share-link keys for one parse (A+ tolerant mode). */
+    private val shareLinkWarnings = mutableListOf<String>()
     companion object {
         fun supports(text: String): Boolean {
             val trimmed = text.trim().removePrefix("\uFEFF").trim()
@@ -52,6 +54,7 @@ internal class SubscriptionContentParser(
                 SubscriptionImportReport(count, count, emptyList()),
             )
         }
+        shareLinkWarnings.clear()
         val warnings = foreign?.warnings.orEmpty().toMutableList()
         val nodes = mutableListOf<JSONObject>()
         val issues = mutableListOf<SubscriptionImportIssue>()
@@ -103,6 +106,10 @@ internal class SubscriptionContentParser(
                 }
             }
         }
+        for (w in shareLinkWarnings) {
+            if (w !in warnings) warnings.add(w)
+        }
+        shareLinkWarnings.clear()
         val report = SubscriptionImportReport(received, nodes.size, issues, warnings, foreign?.format ?: "Список ссылок")
         require(nodes.isNotEmpty()) {
             "Нет пригодных серверов. ${report.summary()}\n${issues.take(5).joinToString("\n") { "Строка ${it.line}: ${it.reason}" }}"
@@ -438,6 +445,18 @@ internal class SubscriptionContentParser(
         }
     }
 
+    private fun tolerateParameters(
+        params: Map<String, String>,
+        allowed: Set<String>,
+        warnings: MutableList<String>? = null,
+    ): Map<String, String> {
+        val (known, unknown) = ProxyLinkParser.partitionParameters(params, allowed)
+        XrayCompatibility.unknownOptionalNote(unknown)?.let { note ->
+            if (warnings != null && note !in warnings) warnings.add(note)
+        }
+        return known
+    }
+
     private val transportParameters =
         setOf(
             "type",
@@ -513,8 +532,9 @@ internal class SubscriptionContentParser(
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = main.substringAfter('?', "")
-        val params = ProxyLinkParser.connectionQuery(query)
-        checkParameters(params, transportParameters + setOf("encryption", "flow", "pbk", "sid", "packetEncoding"))
+        val rawParams = ProxyLinkParser.connectionQuery(query)
+        val params =
+            tolerateParameters(rawParams, XrayCompatibility.vlessShareKnown, shareLinkWarnings)
 
         val endpoint = ProxyLinkParser.endpoint(hostPort)
         require(endpoint.ports.size == 1 && ":" !in endpoint.ports.first()) {
@@ -566,25 +586,16 @@ internal class SubscriptionContentParser(
             val tls = JSONObject()
             tls.put("enabled", true)
             tls.put("server_name", sni)
-            tls.put(
-                "utls",
-                JSONObject().apply {
-                    put("enabled", true)
-                    put("fingerprint", fp)
-                },
-            )
-            val pbk = params["pbk"]
-            val sid = params["sid"]
-            if (!pbk.isNullOrBlank()) {
-                tls.put(
-                    "reality",
-                    JSONObject().apply {
-                        put("enabled", true)
-                        put("public_key", pbk)
-                        if (!sid.isNullOrBlank()) put("short_id", sid)
-                    },
-                )
+            if (!alpn.isNullOrBlank()) {
+                tls.put("alpn", JSONArray(alpn.split(",")))
             }
+            ProxyLinkParser.applyReality(
+                tls,
+                params["pbk"].orEmpty(),
+                params["sid"].orEmpty(),
+                spiderX = params["spiderX"] ?: params["spx"],
+                fingerprint = params["fp"] ?: fp,
+            )
             outbound.put("tls", tls)
         } else if (security == "tls") {
             val tls = JSONObject()
@@ -611,7 +622,13 @@ internal class SubscriptionContentParser(
             }
         }
 
-        ProxyLinkParser.transport(network, params, sni)?.let { outbound.put("transport", it) }
+        ProxyLinkParser.transport(network, params, sni)?.let { transport ->
+            val spider = (params["spiderX"] ?: params["spx"]).orEmpty().trim()
+            if (spider.isNotEmpty() && spider != "/" && !transport.has("path")) {
+                transport.put("path", if (spider.startsWith("/")) spider else "/$spider")
+            }
+            outbound.put("transport", transport)
+        }
 
         applyMultiplex(outbound, params)
         return outbound
@@ -721,8 +738,12 @@ internal class SubscriptionContentParser(
         val qIdx = rest.indexOf("?")
         val hostPort = if (qIdx >= 0) rest.substring(0, qIdx) else rest
         val query = main.substringAfter('?', "")
-        val params = ProxyLinkParser.connectionQuery(query)
-        checkParameters(params, transportParameters + setOf("pbk", "sid"))
+        val params =
+            tolerateParameters(
+                ProxyLinkParser.connectionQuery(query),
+                XrayCompatibility.vlessShareKnown,
+                shareLinkWarnings,
+            )
         require(params["security"].isNullOrEmpty() || params["security"] in setOf("tls", "reality")) {
             "Unsupported Trojan security"
         }

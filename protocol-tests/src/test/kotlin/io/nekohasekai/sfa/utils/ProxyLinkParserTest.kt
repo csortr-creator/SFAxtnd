@@ -425,6 +425,27 @@ class ProxyLinkParserTest {
         assertFalse(chrome.optBoolean("disable_chrome_parrot", true))
     }
 
+
+    @Test
+    fun vlessRealityAppliesSpiderXViaApplyReality() {
+        val tls = org.json.JSONObject().put("enabled", true).put("server_name", "www.example.com")
+        val key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ProxyLinkParser.applyReality(tls, key, "abcd", spiderX = "/client-path", fingerprint = "firefox")
+        assertEquals("/client-path", tls.getJSONObject("reality").getString("spider_x"))
+        assertEquals("firefox", tls.getJSONObject("utls").getString("fingerprint"))
+    }
+
+    @Test
+    fun partitionParametersKeepsUnknownOptional() {
+        val (known, unknown) =
+            ProxyLinkParser.partitionParameters(
+                mapOf("sni" to "a.com", "futureFlag" to "1", "fp" to "chrome"),
+                setOf("sni", "fp"),
+            )
+        assertEquals("a.com", known["sni"])
+        assertEquals(listOf("futureFlag"), unknown)
+    }
+
     fun allSupportedShareSchemesReachLocalImport() {
         for (scheme in
             listOf("hy2", "hysteria2", "hysteria", "vless", "vmess", "trojan", "ss")) assertTrue(

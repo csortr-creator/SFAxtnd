@@ -162,9 +162,11 @@ internal object ForeignSubscriptionParser {
         }
 
     private fun fields(source: JSONObject, supported: Set<String>) {
-        val unknown = source.keys().asSequence().firstOrNull { it !in supported }
-        require(unknown == null) { "Unsupported server field: ${unknown.orEmpty().take(50)}" }
+        // A+: optional unknown keys ignored (PARTIAL). Required keys still via required().
     }
+
+    private fun unknownFields(source: JSONObject, supported: Set<String>): List<String> =
+        source.keys().asSequence().filter { it !in supported }.toList()
 
     private fun bool(source: JSONObject, key: String, fallback: Boolean = false): Boolean {
         if (!source.has(key)) return fallback
@@ -752,7 +754,7 @@ internal object ForeignSubscriptionParser {
             "Xray JSON",
             servers,
             listOf(
-                "Из Xray импортируются серверы. Inbounds, маршрутизация, DNS, группы, Reality spiderX/show и системные настройки Xray не переносятся; используются настройки SFAxtnd.",
+                "Из Xray импортируются только outbound-серверы. Inbounds, routing, DNS, groups и policy Xray не переносятся — используются настройки SFAxtnd. Reality spiderX/fingerprint маппятся в sing-box при наличии.",
             ),
         )
     }

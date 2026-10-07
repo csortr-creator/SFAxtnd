@@ -1,0 +1,86 @@
+diff --git a/common/tls/reality_client.go b/common/tls/reality_client.go
+index 13f88e3..4f6b8f8 100644
+--- a/common/tls/reality_client.go
++++ b/common/tls/reality_client.go
+@@ -49,6 +49,7 @@ type RealityClientConfig struct {
+ 	uClient   *UTLSClientConfig
+ 	publicKey []byte
+ 	shortID   [8]byte
++	spiderX   string
+ }
+ 
+ func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
+@@ -84,7 +85,15 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
+ 		return nil, E.New("invalid short_id")
+ 	}
+ 
+-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID}
++	spiderX := options.Reality.SpiderX
++	if spiderX == "" {
++		spiderX = "/"
++	}
++	if spiderX[0] != '/' {
++		spiderX = "/" + spiderX
++	}
++
++	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, spiderX}
+ 	if options.KernelRx || options.KernelTx {
+ 		if !C.IsLinux {
+ 			return nil, E.New("kTLS is only supported on Linux")
+@@ -234,15 +243,21 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
+ 	}
+ 
+ 	if !verifier.verified {
+-		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
++		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id, e.spiderX)
+ 		return nil, E.New("reality verification failed")
+ 	}
+ 
+ 	return &realityClientConnWrapper{uConn}, nil
+ }
+ 
+-func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {
++func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID, spiderX string) {
+ 	defer uConn.Close()
++	if spiderX == "" {
++		spiderX = "/"
++	}
++	if spiderX[0] != '/' {
++		spiderX = "/" + spiderX
++	}
+ 	client := &http.Client{
+ 		Transport: &http2.Transport{
+ 			DialTLSContext: func(ctx context.Context, network, addr string, config *tls.Config) (net.Conn, error) {
+@@ -254,7 +269,11 @@ func realityClientFallback(ctx context.Context, uConn net.Conn, serverName strin
+ 			},
+ 		},
+ 	}
+-	request, _ := http.NewRequest("GET", "https://"+serverName, nil)
++	// Xray-compatible spider: start from spider_x path on the camouflage host.
++	request, err := http.NewRequest("GET", "https://"+serverName+spiderX, nil)
++	if err != nil {
++		return
++	}
+ 	request.Header.Set("User-Agent", fingerprint.Client)
+ 	request.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", mRand.Intn(32)+30)})
+ 	response, err := client.Do(request)
+@@ -271,6 +290,7 @@ func (e *RealityClientConfig) Clone() Config {
+ 		e.uClient.Clone().(*UTLSClientConfig),
+ 		e.publicKey,
+ 		e.shortID,
++		e.spiderX,
+ 	}
+ }
+ 
+diff --git a/option/tls.go b/option/tls.go
+index 5c807d6..5ca15ca 100644
+--- a/option/tls.go
++++ b/option/tls.go
+@@ -253,4 +253,7 @@ type OutboundRealityOptions struct {
+ 	Enabled   bool   `json:"enabled,omitempty"`
+ 	PublicKey string `json:"public_key,omitempty"`
+ 	ShortID   string `json:"short_id,omitempty"`
++	// SpiderX is the initial crawler path used when Reality verification fails
++	// and the client falls back to browsing the camouflage site (Xray-compatible).
++	SpiderX string `json:"spider_x,omitempty"`
+ }

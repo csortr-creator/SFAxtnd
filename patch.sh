@@ -71,6 +71,15 @@ else
     git -C sing-box-core apply "$PWD/$RULE_SET_FALLBACK_PATCH"
 fi
 
+REALITY_SPIDER_PATCH=patches/sing-box-1.14.2-reality-spider-x.patch
+if git -C sing-box-core apply --reverse --check "$PWD/$REALITY_SPIDER_PATCH" 2>/dev/null; then
+    echo "Reality spider_x patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$REALITY_SPIDER_PATCH"
+    git -C sing-box-core apply "$PWD/$REALITY_SPIDER_PATCH"
+fi
+
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

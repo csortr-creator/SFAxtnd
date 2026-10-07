@@ -17,8 +17,10 @@ import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -228,35 +230,95 @@ class DashboardViewModel :
 
     fun selectProfile(profileId: Long) {
         if (currentState.isLoading || profileId == Settings.selectedProfile ||
-            _serviceStatus.value !in setOf(Status.Started, Status.Stopped)) return
+            _serviceStatus.value !in setOf(Status.Started, Status.Stopped)
+        ) {
+            return
+        }
         updateState { copy(isLoading = true) }
         val previousProfileId = Settings.selectedProfile
+        val wasRunning = _serviceStatus.value == Status.Started
 
         viewModelScope.launch(Dispatchers.IO) {
-            var startRequested = false
             try {
                 ProfileManager.get(profileId) ?: return@launch
+                // Persist target before rebuild/start so BoxService reads the new profile.
                 Settings.selectedProfile = profileId
-                if (_serviceStatus.value == Status.Started) {
+                Log.i(TAG, "SELECT_REQUEST target=$profileId previous=$previousProfileId running=$wasRunning")
+
+                if (wasRunning) {
                     BoxService.stop()
-                    kotlinx.coroutines.withTimeout(10000L) {
-                        while (_serviceStatus.value != Status.Stopped) delay(100L)
+                    Log.i(TAG, "STOP_OLD requested")
+                    val stopped =
+                        withTimeoutOrNull(STOP_TIMEOUT_MS) {
+                            while (_serviceStatus.value != Status.Stopped) {
+                                delay(50L)
+                            }
+                            true
+                        } == true
+                    if (!stopped) {
+                        Log.e(TAG, "STOP_OLD timeout status=${_serviceStatus.value}")
+                        Settings.selectedProfile = previousProfileId
+                        sendError(IllegalStateException("VPN stop timeout while switching subscription"))
+                        return@launch
                     }
+                    Log.i(TAG, "OLD_STOPPED")
+
                     Settings.rebuildServiceMode()
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                     sendGlobalEvent(UiEvent.RequestStartService)
-                    startRequested = true
+                    Log.i(TAG, "START_NEW requested")
+
+                    // Wait until start leaves Stopped (Starting/Started), then until terminal.
+                    val leftStopped =
+                        withTimeoutOrNull(START_BEGIN_TIMEOUT_MS) {
+                            while (_serviceStatus.value == Status.Stopped) {
+                                delay(50L)
+                            }
+                            true
+                        } == true
+                    if (!leftStopped) {
+                        Log.e(TAG, "START_NEW never left Stopped")
+                        Settings.selectedProfile = previousProfileId
+                        sendError(IllegalStateException("VPN start did not begin after subscription switch"))
+                        return@launch
+                    }
+
+                    val terminal =
+                        withTimeoutOrNull(START_TIMEOUT_MS) {
+                            while (_serviceStatus.value == Status.Starting) {
+                                delay(50L)
+                            }
+                            _serviceStatus.value
+                        }
+                    if (terminal != Status.Started) {
+                        Log.e(TAG, "START_NEW failed terminal=$terminal")
+                        Settings.selectedProfile = previousProfileId
+                        sendError(
+                            IllegalStateException(
+                                "VPN failed to start with the selected subscription (status=$terminal)",
+                            ),
+                        )
+                        return@launch
+                    }
+                    Log.i(TAG, "CONNECTED target=$profileId")
                 }
+
                 withContext(Dispatchers.Main) { loadProfiles() }
             } catch (e: Exception) {
-                if (!startRequested && _serviceStatus.value == Status.Started) {
-                    Settings.selectedProfile = previousProfileId
-                }
+                Settings.selectedProfile = previousProfileId
+                Log.e(TAG, "SELECT_FAILED target=$profileId", e)
                 sendError(e)
             } finally {
                 updateState { copy(isLoading = false) }
             }
         }
+    }
+
+    private companion object {
+        private const val TAG = "SFA.Switch"
+        private const val STOP_TIMEOUT_MS = 15_000L
+        private const val START_BEGIN_TIMEOUT_MS = 10_000L
+        private const val START_TIMEOUT_MS = 45_000L
     }
 
     fun editProfile(profile: Profile) {

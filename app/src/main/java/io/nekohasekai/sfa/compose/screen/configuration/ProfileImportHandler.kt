@@ -73,7 +73,8 @@ class ProfileImportHandler(private val context: Context) {
                 }
 
             importProfile(content)
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -109,7 +110,8 @@ class ProfileImportHandler(private val context: Context) {
         }
     }
 
-    suspend fun parseQRCode(data: String): QRCodeParseResult = withContext(Dispatchers.IO) {
+    suspend fun parseQRCode(rawData: String): QRCodeParseResult = withContext(Dispatchers.IO) {
+        val data = rawData.trim()
         try {
             // Check if it's a sing-box remote profile import link
             if (data.startsWith("sing-box://import-remote-profile")) {
@@ -153,7 +155,8 @@ class ProfileImportHandler(private val context: Context) {
         }
     }
 
-    suspend fun importFromQRCode(data: String): ImportResult = withContext(Dispatchers.IO) {
+    suspend fun importFromQRCode(rawData: String): ImportResult = withContext(Dispatchers.IO) {
+        val data = rawData.trim()
         try {
             // Check if it's a sing-box remote profile import link
             if (data.startsWith("sing-box://import-remote-profile")) {
@@ -184,7 +187,8 @@ class ProfileImportHandler(private val context: Context) {
                     }
                 importProfile(content)
             }
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -214,7 +218,8 @@ class ProfileImportHandler(private val context: Context) {
                 )
             }
             importProfile(content)
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -253,6 +258,7 @@ class ProfileImportHandler(private val context: Context) {
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
 
+        if (typedProfile.type == TypedProfile.Type.Remote && typedProfile.autoUpdate) io.nekohasekai.sfa.bg.UpdateProfileWork.reconfigureUpdater()
         io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
         return ImportResult.Success(profile)
     }
@@ -277,6 +283,8 @@ class ProfileImportHandler(private val context: Context) {
         val configFile = File(configDirectory, "$fileID.json")
         val result = io.nekohasekai.sfa.utils.HTTPClient().use { it.getSubscription(url) }
         Libbox.checkConfig(result.config)
+        profile.name = result.profileName ?: name
+        result.updateIntervalMinutes?.let { typedProfile.autoUpdateInterval = it }
         configFile.writeText(result.config)
         result.report.save(configFile.path)
         typedProfile.path = configFile.path
@@ -284,16 +292,13 @@ class ProfileImportHandler(private val context: Context) {
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
 
+        if (typedProfile.type == TypedProfile.Type.Remote && typedProfile.autoUpdate) io.nekohasekai.sfa.bg.UpdateProfileWork.reconfigureUpdater()
         io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
         return ImportResult.Success(profile)
     }
 
     private fun extractProfileNameFromUrl(url: String): String {
-        // Extract name from URL or use default
-        return url.substringAfterLast("/")
-            .substringBeforeLast(".")
-            .takeIf { it.isNotEmpty() }
-            ?: "Remote Profile"
+        return io.nekohasekai.sfa.utils.SubscriptionMetadata.nameFromUrl(url)
     }
 
     private fun extractHostFromUrl(url: String): String = try {
@@ -395,7 +400,8 @@ class ProfileImportHandler(private val context: Context) {
 
             io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
             ImportResult.Success(profile)
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error importing JSON configuration")
         }
     }

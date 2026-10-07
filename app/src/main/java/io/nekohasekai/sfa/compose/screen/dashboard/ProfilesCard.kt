@@ -1,6 +1,8 @@
 package io.nekohasekai.sfa.compose.screen.dashboard
 
 import android.net.Uri
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material3.AlertDialog
@@ -97,7 +100,7 @@ fun ProfilesCard(
     selectedProfileId: Long,
     isLoading: Boolean,
     showAddProfileSheet: Boolean,
-    updatingProfileId: Long? = null,
+    updatingProfileIds: Set<Long> = emptySet(),
     updatedProfileId: Long? = null,
     onProfileSelected: (Long) -> Unit,
     onProfileEdit: (Profile) -> Unit,
@@ -114,6 +117,8 @@ fun ProfilesCard(
     val coroutineScope = rememberCoroutineScope()
 
     val importHandler = remember { ProfileImportHandler(context) }
+
+    var clipboardImporting by remember { mutableStateOf(false) }
 
     var showQRCodeDialog by remember { mutableStateOf(false) }
     var qrCodeProfile by remember { mutableStateOf<Profile?>(null) }
@@ -322,7 +327,7 @@ fun ProfilesCard(
                         }
                         ProfileActionRow(
                             profile = profile,
-                            isUpdating = profile.id == updatingProfileId,
+                            isUpdating = profile.id in updatingProfileIds,
                             showUpdateSuccess = profile.id == updatedProfileId,
                             onEdit = { profile.let { onProfileEdit(it) } },
                             onUpdate = { profile.let { onProfileUpdate(it) } },
@@ -395,6 +400,16 @@ fun ProfilesCard(
         }
     }
 
+    if (clipboardImporting) AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Импорт из буфера обмена") },
+        text = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            CircularProgressIndicator(Modifier.size(24.dp))
+            Text("Загрузка и проверка серверов…")
+        } },
+        confirmButton = {},
+    )
+
     if (showAddProfileSheet) {
         ModalBottomSheet(
             onDismissRequest = onHideAddProfileSheet,
@@ -406,6 +421,32 @@ fun ProfilesCard(
                     text = stringResource(R.string.add_profile),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+
+                ListItem(
+                    modifier = Modifier.clickable(enabled = !clipboardImporting) {
+                        onHideAddProfileSheet()
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val text = clipboard.primaryClip?.let { clip ->
+                            (0 until clip.itemCount).joinToString("\n") { clip.getItemAt(it).coerceToText(context).toString() }
+                        }.orEmpty().trim()
+                        if (text.isBlank()) {
+                            Toast.makeText(context, "Буфер обмена пуст", Toast.LENGTH_SHORT).show()
+                        } else {
+                            clipboardImporting = true
+                            coroutineScope.launch {
+                                try {
+                                    when (val result = importHandler.importFromQRCode(text)) {
+                                        is ProfileImportHandler.ImportResult.Success -> Unit
+                                        is ProfileImportHandler.ImportResult.Error -> context.errorDialogBuilder(Exception(result.message)).show()
+                                    }
+                                } finally { clipboardImporting = false }
+                            }
+                        }
+                    },
+                    leadingContent = { Icon(Icons.Outlined.ContentPaste, null, tint = MaterialTheme.colorScheme.primary) },
+                    headlineContent = { Text("Импорт из буфера обмена") },
+                    supportingContent = { Text("Ссылка на подписку, ссылки на серверы или конфигурация") },
                 )
 
                 ListItem(

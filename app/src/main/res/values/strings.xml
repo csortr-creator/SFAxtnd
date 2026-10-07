@@ -67,7 +67,7 @@
     <string name="status_default">Service not started</string>
     <string name="status_starting">Starting</string>
     <string name="status_stopping">Stopping</string>
-    <string name="status_started">Started</string>
+    <string name="status_started">Active</string>
 
     <!-- Dashboard -->
     <string name="dashboard_items">Dashboard Items</string>

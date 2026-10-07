@@ -15,7 +15,8 @@ object UserRoutingConfig {
             if (raw.isNotBlank()) {
                 val user = JSONObject(raw)
                 applyDns(root, user.optJSONObject("dns"))
-                applyRules(root, RoutingPresets.migrateRules(user.optJSONArray("rules")))
+                applyRules(root, RoutingPresets.migrateRules(user.optJSONArray("rules")), user.optString("finalOutbound", "profile"))
+                applyFinalOutbound(root, user.optString("finalOutbound", "profile"))
                 applyDnsRoutingRules(root, user.optJSONObject("dns"))
                 applyGeo(root, user.optJSONObject("geo"))
                 ClientSettingsConfig.applyDns(root, user.optJSONObject("dns"))
@@ -29,6 +30,23 @@ object UserRoutingConfig {
                 error,
             )
         }
+
+    private fun applyFinalOutbound(root: JSONObject, choice: String) {
+        if (choice == "profile") return
+        val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
+        when (choice) {
+            "proxy" -> route.put("final", requireNotNull(findProxyOutboundTag(root)) { "В профиле нет прокси для трафика вне правил" })
+            "direct" -> {
+                ensureDirectOutbound(root)
+                route.put("final", "direct")
+            }
+            "block" -> {
+                val rules = route.optJSONArray("rules") ?: JSONArray().also { route.put("rules", it) }
+                rules.put(JSONObject().put("action", "reject"))
+            }
+            else -> throw IllegalArgumentException("Неизвестное направление трафика вне правил")
+        }
+    }
 
     private fun applyDns(root: JSONObject, dnsUser: JSONObject?) {
         if (dnsUser == null) return
@@ -267,7 +285,7 @@ object UserRoutingConfig {
         }
     }
 
-    private fun applyRules(root: JSONObject, rulesUser: JSONArray?) {
+    private fun applyRules(root: JSONObject, rulesUser: JSONArray?, finalOutbound: String = "profile") {
         if (rulesUser == null || rulesUser.length() == 0) return
         val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
         val existing = route.optJSONArray("rules") ?: JSONArray()
@@ -320,7 +338,7 @@ object UserRoutingConfig {
             if (essential(rule)) combined.put(rule)
         }
         for (i in 0 until merged.length()) combined.put(merged.get(i))
-        if (whitelistActive) combined.put(JSONObject().put("outbound", findProxyOutboundTag(root)))
+        if (whitelistActive && finalOutbound == "profile") combined.put(JSONObject().put("outbound", findProxyOutboundTag(root)))
         for (i in 0 until existing.length()) {
             val rule = existing.optJSONObject(i) ?: continue
             if (!essential(rule)) combined.put(rule)

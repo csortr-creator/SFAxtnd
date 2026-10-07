@@ -28,7 +28,7 @@ object ProfileContentDecoder {
             }
         val content =
             ProfileContent().apply {
-                this.name = name
+                this.name = SubscriptionMetadata.title(content = text) ?: name
                 type = Libbox.ProfileTypeLocal
                 this.config = result.config
             }

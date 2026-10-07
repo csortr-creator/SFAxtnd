@@ -55,6 +55,14 @@ else
     git -C sing-box-core apply "$PWD/$VLESS_ENCRYPTION_PATCH"
 fi
 
+CLIENT_OPTIONS_PATCH=patches/sing-box-1.14.2-client-options.patch
+if git -C sing-box-core apply --reverse --check "$PWD/$CLIENT_OPTIONS_PATCH" 2>/dev/null; then
+    echo "Client options patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$CLIENT_OPTIONS_PATCH"
+    git -C sing-box-core apply "$PWD/$CLIENT_OPTIONS_PATCH"
+fi
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

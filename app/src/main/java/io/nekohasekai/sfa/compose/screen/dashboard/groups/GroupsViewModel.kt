@@ -115,7 +115,12 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         if (RemoteControlManager.remoteServer.value != null) return
         viewModelScope.launch(Dispatchers.IO) {
             if (force || _serviceStatus.value != Status.Started) {
-                stopProbe()
+                if (probe != null) {
+                    val selected = ProfileManager.get(Settings.selectedProfile)
+                    val content = selected?.let { runCatching { File(it.typed.path).readText() }.getOrNull() }
+                    if (Settings.selectedProfile == loadedFingerprints.first && content == loadedContent) return@launch
+                    stopProbe()
+                }
                 loadGroupsFromSelectedProfile(force)
             }
         }
@@ -347,7 +352,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             .launch(Dispatchers.IO) {
                 try {
                     // Patched core RPC returns after the entire test finishes.
-                    CommandTarget.standaloneClient().urlTestWithMode(testingTag, warmPing())
+                    CommandTarget.standaloneClient().urlTestWithOptions(testingTag, warmPing(), pingTimeoutMs())
                 } catch (e: Exception) {
                     coroutineContext.ensureActive()
                     sendError(e)
@@ -355,6 +360,9 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
             }
             .invokeOnCompletion { finishUrlTest() }
     }
+
+    private fun pingTimeoutMs(): Long =
+        runCatching { JSONObject(Settings.coreOptionsJson).optInt("pingTimeoutSeconds", 12).coerceIn(1, 60).toLong() * 1000 }.getOrDefault(12000L)
 
     private fun warmPing() =
         runCatching { org.json.JSONObject(Settings.coreOptionsJson).optBoolean("pingWarm", false) }
@@ -396,7 +404,7 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                                     ensureActive()
                                                     val delay =
                                                         runCatching {
-                                                                session.urlTestWithMode(tag, warm)
+                                                                session.urlTestWithOptions(tag, warm, pingTimeoutMs())
                                                             }
                                                             .getOrDefault(0)
                                                     ensureActive()

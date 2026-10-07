@@ -65,7 +65,7 @@ fun DashboardScreen(
                     enabled =
                         !isRemote &&
                             !uiState.isUpdatingAll &&
-                            uiState.updatingProfileId == null &&
+                            uiState.updatingProfileIds.isEmpty() &&
                             uiState.profiles.any {
                                 it.typed.type ==
                                     io.nekohasekai.sfa.database.TypedProfile.Type.Remote
@@ -134,7 +134,7 @@ fun DashboardScreen(
                     selectedProfileId = uiState.selectedProfileId,
                     isLoading = uiState.isLoading,
                     showAddProfileSheet = uiState.showAddProfileSheet,
-                    updatingProfileId = uiState.updatingProfileId,
+                    updatingProfileIds = uiState.updatingProfileIds,
                     updatedProfileId = uiState.updatedProfileId,
                     onProfileSelected = viewModel::selectProfile,
                     onProfileEdit = viewModel::editProfile,

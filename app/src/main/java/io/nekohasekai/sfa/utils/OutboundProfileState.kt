@@ -30,7 +30,8 @@ object OutboundProfileState {
         val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
         val rules = route.optJSONArray("rules") ?: JSONArray()
         val updated = JSONArray()
-        if (blockIpv6) updated.put(JSONObject().put("ip_cidr", JSONArray().put("::/0")).put("action", "reject"))
+        val options = JSONObject(optionsJson.ifBlank { "{}" })
+        if (blockIpv6 || options.optString("ipMode") == "ipv4") updated.put(JSONObject().put("ip_cidr", JSONArray().put("::/0")).put("action", "reject"))
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             val ips = rule.optJSONArray("ip_cidr")
@@ -39,7 +40,7 @@ object OutboundProfileState {
             if (!ipv6Block) updated.put(rule)
         }
         route.put("rules", updated)
-        ClientSettingsConfig.applyCore(root, JSONObject(optionsJson.ifBlank { "{}" }))
+        ClientSettingsConfig.applyCore(root, options)
         return root.toString()
     }
 

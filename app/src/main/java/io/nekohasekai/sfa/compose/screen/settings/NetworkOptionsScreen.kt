@@ -63,23 +63,17 @@ internal fun NetworkOptionsContent(core: Boolean) {
                     { set("mtu", it) },
                     "байт",
                 )
-            SettingChoice(
-                "Адреса туннеля",
-                options.optString("ipMode", "profile"),
-                listOf("profile" to "Из подписки", "ipv4" to "IPv4", "dual" to "IPv4 и IPv6"),
-            ) {
-                set("ipMode", it)
-            }
             SettingToggle(
-                "Блокировать IPv6",
-                "Отклонять IPv6-трафик; не изменяет стратегию DNS",
-                ipv6Block,
+                "IPv6",
+                "Включено: IPv4 и IPv6. Выключено: только IPv4; IPv6-трафик отклоняется. Стратегия DNS настраивается отдельно.",
+                !ipv6Block && options.optString("ipMode", "profile") != "ipv4",
             ) {
-                ipv6Block = it
-                Settings.routingBlockIpv6 = it
+                ipv6Block = !it
+                Settings.routingBlockIpv6 = !it
+                set("ipMode", if (it) "dual" else "ipv4")
             }
             SettingChoice(
-                "Строгая маршрутизация · strict_route",
+                "Строгая маршрутизация",
                 if (options.has("strictRoute")) options.optBoolean("strictRoute").toString()
                 else "profile",
                 listOf("profile" to "Из подписки", "true" to "Включить", "false" to "Выключить"),
@@ -92,12 +86,19 @@ internal fun NetworkOptionsContent(core: Boolean) {
                 } else set("strictRoute", it.toBoolean())
             }
             Text(
-                "В Android strict_route запрещает приложениям обходить активный VPN. Исключения маршрутов и приложений сохраняются. Для блокировки сети после остановки VPN включите «Блокировать соединения без VPN» в системных настройках Android.",
+                "В Android строгая маршрутизация запрещает приложениям обходить активный VPN. Исключения маршрутов и приложений сохраняются. Для блокировки сети после остановки VPN включите «Блокировать соединения без VPN» в системных настройках Android.",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         PreferenceSection("Проверка задержки", Icons.Outlined.Speed) {
+            SettingNumber(
+                "Тайм-аут проверки сервера",
+                options.optInt("pingTimeoutSeconds", 12),
+                1..60,
+                { set("pingTimeoutSeconds", it) },
+                "с",
+            )
             SettingToggle(
                 "Мерить по прогретому соединению",
                 "Два HTTP-запроса: первый прогревает соединение, измеряется второй. Выключено: один запрос с установкой соединения.",

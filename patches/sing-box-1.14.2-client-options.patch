@@ -1,0 +1,206 @@
+diff --git a/daemon/started_service.go b/daemon/started_service.go
+--- a/daemon/started_service.go
++++ b/daemon/started_service.go
+@@ -6,6 +6,7 @@
+ 	"os"
+ 	"runtime"
+ 	runtimeDebug "runtime/debug"
++	"strconv"
+ 	"sync"
+ 	"time"
+ 
+@@ -723,6 +724,12 @@
+ 	defer stop()
+ 	defer cancel()
+ 	if headers, ok := metadata.FromIncomingContext(ctx); ok {
++		if values := headers.Get("x-sfa-probe-timeout-ms"); len(values) > 0 {
++			timeout, err := strconv.ParseInt(values[0], 10, 64)
++			if err == nil {
++				ctx = urltest.WithProbeTimeout(ctx, timeout)
++			}
++		}
+ 		if modes := headers.Get("x-sfa-probe-warm"); len(modes) > 0 {
+ 			ctx = urltest.WithProbeMode(ctx, modes[0] == "true")
+ 		}
+diff --git a/experimental/libbox/outbound_probe.go b/experimental/libbox/outbound_probe.go
+--- a/experimental/libbox/outbound_probe.go
++++ b/experimental/libbox/outbound_probe.go
+@@ -3,7 +3,6 @@
+ import (
+ 	"context"
+ 	"sync"
+-	"time"
+ 
+ 	box "github.com/sagernet/sing-box"
+ 	"github.com/sagernet/sing-box/adapter"
+@@ -67,7 +66,12 @@
+ }
+ 
+ func (p *OutboundProbe) URLTestWithMode(outboundTag string, warm bool) (int32, error) {
+-	return p.urlTestContext(urltest.WithProbeMode(p.ctx, warm), outboundTag, "")
++	return p.URLTestWithOptions(outboundTag, warm, 12000)
++}
++
++func (p *OutboundProbe) URLTestWithOptions(outboundTag string, warm bool, timeoutMilliseconds int64) (int32, error) {
++	ctx := urltest.WithProbeTimeout(urltest.WithProbeMode(p.ctx, warm), timeoutMilliseconds)
++	return p.urlTestContext(ctx, outboundTag, "")
+ }
+ 
+ func (p *OutboundProbe) urlTest(outboundTag, testURL string) (int32, error) {
+@@ -79,7 +83,7 @@
+ 	if !loaded {
+ 		return 0, E.New("outbound not found: ", outboundTag)
+ 	}
+-	ctx, cancel := context.WithTimeout(parent, 12*time.Second)
++	ctx, cancel := context.WithTimeout(parent, urltest.ProbeTimeout(parent))
+ 	defer cancel()
+ 	delay, err := urltest.URLTest(ctx, testURL, outbound)
+ 	if err != nil {
+diff --git a/experimental/libbox/command_client.go b/experimental/libbox/command_client.go
+--- a/experimental/libbox/command_client.go
++++ b/experimental/libbox/command_client.go
+@@ -610,12 +610,16 @@
+ 
+ // URLTestWithMode waits for all requested probes and passes the client measurement mode.
+ func (c *CommandClient) URLTestWithMode(outboundTag string, warm bool) error {
++	return c.URLTestWithOptions(outboundTag, warm, 12000)
++}
++
++func (c *CommandClient) URLTestWithOptions(outboundTag string, warm bool, timeoutMilliseconds int64) error {
+ 	mode := "false"
+ 	if warm {
+ 		mode = "true"
+ 	}
+ 	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+-		ctx = metadata.AppendToOutgoingContext(ctx, "x-sfa-probe-warm", mode)
++		ctx = metadata.AppendToOutgoingContext(ctx, "x-sfa-probe-warm", mode, "x-sfa-probe-timeout-ms", strconv.FormatInt(timeoutMilliseconds, 10))
+ 		return client.URLTest(ctx, &daemon.URLTestRequest{OutboundTag: outboundTag})
+ 	})
+ 	if err != nil {
+diff --git a/experimental/libbox/http.go b/experimental/libbox/http.go
+--- a/experimental/libbox/http.go
++++ b/experimental/libbox/http.go
+@@ -53,6 +53,7 @@
+ }
+ 
+ type HTTPResponse interface {
++	GetHeader(name string) string
+ 	GetContent() (*StringBox, error)
+ 	WriteTo(path string) error
+ 	WriteToWithProgress(path string, handler HTTPResponseWriteToProgressHandler) error
+@@ -238,6 +239,10 @@
+ 	return fmt.Sprint("HTTP ", h.Status, ": ", content)
+ }
+ 
++func (h *httpResponse) GetHeader(name string) string {
++	return h.Header.Get(name)
++}
++
+ func (h *httpResponse) GetContent() (*StringBox, error) {
+ 	h.getContentOnce.Do(func() {
+ 		defer h.Body.Close()
+diff --git a/common/urltest/urltest.go b/common/urltest/urltest.go
+--- a/common/urltest/urltest.go
++++ b/common/urltest/urltest.go
+@@ -79,6 +79,21 @@
+ }
+ 
+ type probeModeKey struct{}
++type probeTimeoutKey struct{}
++
++func WithProbeTimeout(ctx context.Context, milliseconds int64) context.Context {
++	if milliseconds < 1000 || milliseconds > 60000 {
++		milliseconds = 12000
++	}
++	return context.WithValue(ctx, probeTimeoutKey{}, time.Duration(milliseconds)*time.Millisecond)
++}
++
++func ProbeTimeout(ctx context.Context) time.Duration {
++	if timeout, ok := ctx.Value(probeTimeoutKey{}).(time.Duration); ok {
++		return timeout
++	}
++	return C.TCPTimeout
++}
+ 
+ // WithProbeMode selects an explicit cold or same-connection warm measurement.
+ func WithProbeMode(ctx context.Context, warm bool) context.Context {
+@@ -86,6 +101,8 @@
+ }
+ 
+ func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
++	ctx, cancel := context.WithTimeout(ctx, ProbeTimeout(ctx))
++	defer cancel()
+ 	if warm, explicit := ctx.Value(probeModeKey{}).(bool); explicit {
+ 		return urlTestMode(ctx, link, detour, warm)
+ 	}
+@@ -154,7 +171,7 @@
+ 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+ 			return http.ErrUseLastResponse
+ 		},
+-		Timeout: C.TCPTimeout,
++		Timeout: ProbeTimeout(ctx),
+ 	}
+ 	defer client.CloseIdleConnections()
+ 	resp, err := client.Do(req.WithContext(ctx))
+diff --git a/protocol/group/urltest.go b/protocol/group/urltest.go
+--- a/protocol/group/urltest.go
++++ b/protocol/group/urltest.go
+@@ -450,7 +450,7 @@
+ 			}
+ 			b.checked[tag] = true
+ 			b.batch.Go(tag, func() (any, error) {
+-				testCtx, cancel := context.WithTimeout(b.ctx, C.TCPTimeout)
++				testCtx, cancel := context.WithTimeout(b.ctx, urltest.ProbeTimeout(b.ctx))
+ 				defer cancel()
+ 				testChan := make(chan urlTestResult, 1)
+ 				go func() {
+diff --git a/common/urltest/sfa_probe_timeout_test.go b/common/urltest/sfa_probe_timeout_test.go
+new file mode 100644
+--- /dev/null
++++ b/common/urltest/sfa_probe_timeout_test.go
+@@ -0,0 +1,45 @@
++package urltest
++
++import (
++	"context"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++)
++
++func TestSFAProbeTimeoutIncludesWarmRequest(t *testing.T) {
++	for _, warm := range []bool{false, true} {
++		t.Run(map[bool]string{false: "cold", true: "warm"}[warm], func(t *testing.T) {
++			calls := 0
++			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				calls++
++				if warm && calls == 1 {
++					w.WriteHeader(204)
++					return
++				}
++				<-r.Context().Done()
++			}))
++			defer server.Close()
++			start := time.Now()
++			ctx := WithProbeTimeout(WithProbeMode(context.Background(), warm), 1000)
++			_, err := URLTest(ctx, server.URL, &probeTestDialer{})
++			if err == nil {
++				t.Fatal("stalled endpoint was accepted")
++			}
++			if elapsed := time.Since(start); elapsed < 800*time.Millisecond || elapsed > 3*time.Second {
++				t.Fatalf("timeout not applied: %s", elapsed)
++			}
++		})
++	}
++}
++func TestSFAProbeTimeoutBounds(t *testing.T) {
++	for _, value := range []int64{0, -1, 999, 60001} {
++		if ProbeTimeout(WithProbeTimeout(context.Background(), value)) != 12*time.Second {
++			t.Fatal("invalid timeout was not normalized")
++		}
++	}
++	if ProbeTimeout(WithProbeTimeout(context.Background(), 60000)) != time.Minute {
++		t.Fatal("configured timeout ignored")
++	}
++}

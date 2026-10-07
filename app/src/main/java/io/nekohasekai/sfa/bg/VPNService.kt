@@ -53,7 +53,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
     override fun openTun(options: TunOptions): Int {
         if (prepare(this) != null) error("android: missing vpn permission")
 
-        val builder = Builder().setSession("sing-box").setMtu(options.mtu)
+        val builder = Builder().setSession(getString(io.nekohasekai.sfa.R.string.app_name)).setMtu(options.mtu)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)

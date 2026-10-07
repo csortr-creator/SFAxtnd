@@ -74,4 +74,6 @@ internal data class SubscriptionImportReport(
 internal data class SubscriptionImportResult(
     val config: String,
     val report: SubscriptionImportReport,
+    val profileName: String? = null,
+    val updateIntervalMinutes: Int? = null,
 )

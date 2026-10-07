@@ -54,3 +54,8 @@ closes blocked transport I/O. Unsupported profiles and Vision combinations
 are rejected. Tests use the pinned Xray binary, verify ticket reuse and
 concurrent connections, reject corrupt records/handshakes, and cover encrypted
 VLESS over all three XHTTP upload modes. CI runs them with the race detector.
+
+The client-options patch exposes subscription response headers for profile names and
+refresh intervals. It passes a bounded per-server probe timeout through libbox and
+the command RPC; automatic URL tests keep the core default. Probes remain parallel
+within each batch and duplicate batch requests remain rejected.

@@ -315,6 +315,20 @@ class ClientSettingsConfigTest {
         export(root, "explicit-dns-routes.json")
     }
 
+    @Test
+    fun finalOutboundAndIpv6GenerateValidNativeSettings() {
+        for (choice in listOf("profile", "proxy", "direct", "block")) {
+            val root = JSONObject(UserRoutingConfig.applyToConfig(profile, JSONObject().put("finalOutbound", choice).toString()))
+            export(root, "final-$choice.json")
+        }
+        val v4 = JSONObject(OutboundProfileState.runtimeConfig(profile, false, "system", """{"ipMode":"ipv4"}"""))
+        assertEquals("reject", v4.getJSONObject("route").getJSONArray("rules").getJSONObject(0).getString("action"))
+        export(v4, "ipv6-off.json")
+        val dual = JSONObject(OutboundProfileState.runtimeConfig(profile, false, "system", """{"ipMode":"dual"}"""))
+        assertEquals(2, dual.getJSONArray("inbounds").getJSONObject(0).getJSONArray("address").length())
+        export(dual, "ipv6-on.json")
+    }
+
     private fun export(root: JSONObject, name: String) {
         val target = File("build/native-configs").apply { mkdirs() }
         File(target, name).writeText(root.toString(2))

@@ -123,6 +123,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
     var updateInterval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
     var intervalMenuOpen by remember { mutableStateOf(false) }
     var rules by remember { mutableStateOf<List<RoutingRule>>(emptyList()) }
+    var finalOutbound by remember { mutableStateOf(settingsObject(Settings.routingConfigJson).optString("finalOutbound", "profile")) }
     var loaded by remember { mutableStateOf(false) }
     var showResetRules by remember { mutableStateOf(false) }
 
@@ -211,6 +212,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                             }
                         }
                     val parsed = decodeRoutingConfig(raw)
+                    finalOutbound = settingsObject(raw).optString("finalOutbound", "profile")
                     strategy = parsed.strategy
                     cacheEnabled = parsed.cacheEnabled
                     independentCache = parsed.independentCache
@@ -271,6 +273,14 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 Icons.Outlined.Route,
                 "Ваши правила дополняют настройки подписки",
             ) {
+                SettingChoice(
+                    "Трафик вне правил",
+                    finalOutbound,
+                    listOf("profile" to "Из подписки", "proxy" to "Через VPN", "direct" to "Напрямую", "block" to "Блокировать"),
+                ) {
+                    finalOutbound = it
+                    Settings.routingConfigJson = settingsObject(Settings.routingConfigJson).put("finalOutbound", it).toString()
+                }
                 FlowRow(
                     Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -292,7 +302,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     )
                 }
                 Text(
-                    "Напрямую — без VPN. Для остальных сайтов действуют правила подписки, если не включён Whitelist.",
+                    "Направление вне правил применяется после ваших правил и правил подписки. «Из подписки» сохраняет её поведение; при включённом белом списке остальные сайты идут через VPN.",
                     Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -606,6 +616,14 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     modifier = Modifier.padding(start = 16.dp, top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                SettingChoice(
+                    "Трафик вне правил",
+                    finalOutbound,
+                    listOf("profile" to "Из подписки", "proxy" to "Через VPN", "direct" to "Напрямую", "block" to "Блокировать"),
+                ) {
+                    finalOutbound = it
+                    Settings.routingConfigJson = settingsObject(Settings.routingConfigJson).put("finalOutbound", it).toString()
+                }
                 FlowRow(
                     Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

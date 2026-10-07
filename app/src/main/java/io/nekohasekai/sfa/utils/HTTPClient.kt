@@ -65,7 +65,10 @@ class HTTPClient : Closeable {
         val response = request.execute()
         val rawContent = response.content.unwrap
 
-        return parseSubscription(rawContent)
+        return parseSubscription(rawContent).copy(
+            profileName = SubscriptionMetadata.title(response.getHeader("profile-title"), rawContent),
+            updateIntervalMinutes = SubscriptionMetadata.intervalMinutes(response.getHeader("profile-update-interval")),
+        )
     }
 
     private fun getOrCreateHwid(url: String): String {

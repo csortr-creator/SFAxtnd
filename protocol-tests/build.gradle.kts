@@ -5,6 +5,7 @@ plugins {
 repositories { mavenCentral() }
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.json:json:20240303")
     implementation("org.yaml:snakeyaml:2.5")
     testImplementation("junit:junit:4.13.2")
@@ -13,6 +14,8 @@ dependencies {
 // Exercise the production parser without loading Android or the native libbox.
 sourceSets.main {
     kotlin.srcDir("../app/src/main/java")
+    kotlin.include("io/nekohasekai/sfa/utils/ParallelTasks.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/SubscriptionMetadata.kt")
     kotlin.include("io/nekohasekai/sfa/utils/NotificationTitle.kt")
     kotlin.include("io/nekohasekai/sfa/utils/NotificationUpdateGate.kt")
     kotlin.include("io/nekohasekai/sfa/utils/PowerUsagePolicy.kt")

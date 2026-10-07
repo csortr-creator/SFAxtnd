@@ -58,7 +58,7 @@ data class DashboardUiState(
     val connectionsCount: Int = 0,
     val serviceStartTime: Long? = null,
     val showAddProfileSheet: Boolean = false,
-    val updatingProfileId: Long? = null,
+    val updatingProfileIds: Set<Long> = emptySet(),
     val updatedProfileId: Long? = null,
     val isUpdatingAll: Boolean = false,
     // Status
@@ -301,8 +301,8 @@ class DashboardViewModel :
     }
 
     fun updateProfile(profile: Profile) {
-        if (profile.typed.type != TypedProfile.Type.Remote || currentState.updatingProfileId != null || currentState.isUpdatingAll) return
-        updateState { copy(updatingProfileId = profile.id) }
+        if (profile.typed.type != TypedProfile.Type.Remote || profile.id in currentState.updatingProfileIds || currentState.isUpdatingAll) return
+        updateState { copy(updatingProfileIds = updatingProfileIds + profile.id) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 refreshProfile(profile)
@@ -310,30 +310,29 @@ class DashboardViewModel :
                 updateState { copy(updatedProfileId = profile.id) }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { sendErrorMessage("Не удалось обновить подписку ${profile.name}: ${e.message}") }
-            finally { updateState { copy(updatingProfileId = null) } }
+            finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
             delay(1500)
             updateState { if (updatedProfileId == profile.id) copy(updatedProfileId = null) else this }
         }
     }
 
     fun updateAllProfiles() {
-        if (currentState.isUpdatingAll || currentState.updatingProfileId != null) return
+        if (currentState.isUpdatingAll || currentState.updatingProfileIds.isNotEmpty()) return
         val profiles = currentState.profiles.filter { it.typed.type == TypedProfile.Type.Remote }
         if (profiles.isEmpty()) return
-        updateState { copy(isUpdatingAll = true) }
+        updateState { copy(isUpdatingAll = true, updatingProfileIds = profiles.map { it.id }.toSet()) }
         viewModelScope.launch(Dispatchers.IO) {
-            val reports = mutableListOf<String>()
             try {
-                for (profile in profiles) {
-                    updateState { copy(updatingProfileId = profile.id) }
+                val reports = io.nekohasekai.sfa.utils.parallelTasks(profiles) { profile ->
                     try {
                         refreshProfile(profile)
-                        reports.add("${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile)}")
+                        "${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile)}"
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                    catch (e: Exception) { reports.add("${profile.name}\nНе удалось обновить: ${e.message}") }
+                    catch (e: Exception) { "${profile.name}\nНе удалось обновить: ${e.message}" }
+                    finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
                 }
                 io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(UiEvent.ImportReport("Обновление всех подписок", reports.joinToString("\n\n")))
-            } finally { updateState { copy(isUpdatingAll = false, updatingProfileId = null) } }
+            } finally { updateState { copy(isUpdatingAll = false, updatingProfileIds = emptySet()) } }
         }
     }
 

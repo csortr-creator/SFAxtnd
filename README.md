@@ -2,7 +2,7 @@
 
 Android-клиент на базе **sing-box** для подключения к своим прокси-серверам, работы с подписками и настройки маршрутизации. Форк [sing-box-for-android](https://github.com/SagerNet/sing-box-for-android) с расширенным импортом, поддержкой XHTTP и интерфейсом Material Design 3.
 
-**[Скачать приложение](https://github.com/csortr-creator/SFAxtnd/releases/latest)** · **[Изменения в 1.1.0](RELEASE_NOTES.md)** · **[Все релизы](https://github.com/csortr-creator/SFAxtnd/releases)**
+**[Скачать приложение](https://github.com/csortr-creator/SFAxtnd/releases/latest)** · **[Изменения в 1.1.1](RELEASE_NOTES.md)** · **[Все релизы](https://github.com/csortr-creator/SFAxtnd/releases)**
 
 ## Возможности
 

@@ -87,8 +87,13 @@ internal object ProxyLinkParser {
                 source[canonical] = converted
             }
         }
-        source.remove("spx")
-        source.remove("spiderX")
+        // Normalize Reality spider path aliases used by Xray share links.
+        val spider =
+            source.remove("spx")?.takeIf { it.isNotBlank() }
+                ?: source.remove("spiderX")?.takeIf { it.isNotBlank() }
+        if (spider != null) {
+            source["spiderX"] = spider
+        }
         return source
     }
 
@@ -229,7 +234,13 @@ internal object ProxyLinkParser {
         }
     }
 
-    fun applyReality(tls: JSONObject, publicKey: String, shortId: String) {
+    fun applyReality(
+        tls: JSONObject,
+        publicKey: String,
+        shortId: String,
+        spiderX: String? = null,
+        fingerprint: String? = null,
+    ) {
         require(
             publicKey.isNotBlank() &&
                 runCatching { Base64.getUrlDecoder().decode(publicKey).size == 32 }
@@ -244,12 +255,19 @@ internal object ProxyLinkParser {
         ) {
             "Invalid Reality short ID"
         }
-        if (!tls.has("utls"))
-            tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome"))
-        tls.put(
-            "reality",
-            JSONObject().put("enabled", true).put("public_key", publicKey).put("short_id", shortId),
-        )
+        val fp = fingerprint?.takeIf { it.isNotBlank() } ?: "chrome"
+        // Reality in sing-box requires uTLS; always apply fingerprint from the share link.
+        tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", fp))
+        val reality =
+            JSONObject()
+                .put("enabled", true)
+                .put("public_key", publicKey)
+                .put("short_id", shortId)
+        // Persist spider path for core consumers / future Reality spider support.
+        // Empty and "/" are the Xray defaults (same behaviour).
+        val spider = spiderX?.trim().orEmpty().ifEmpty { "/" }
+        reality.put("spider_x", if (spider.startsWith("/")) spider else "/$spider")
+        tls.put("reality", reality)
     }
 
     fun additional(line: String): JSONObject {
@@ -554,10 +572,11 @@ internal object ProxyLinkParser {
             ?.let { tls.put("alpn", JSONArray(it.split(','))) }
         params["fp"]
             ?.takeIf { it.isNotBlank() }
-            ?.let {
+            ?.let { fp ->
+                // Applied to tls.utls; for QUIC the core also uses chrome parrot for Chrome-like fingerprints.
                 tls.put(
                     "utls",
-                    JSONObject().put("enabled", true).put("fingerprint", it),
+                    JSONObject().put("enabled", true).put("fingerprint", fp),
                 )
             }
         params["ech"]
@@ -590,6 +609,15 @@ internal object ProxyLinkParser {
         }
         if (v2) {
             result.put("password", auth)
+            val fp = params["fp"]?.takeIf { it.isNotBlank() }?.lowercase()
+            if (fp != null) {
+                // Chrome-like fingerprints keep QUIC chrome parrot (default); others disable it.
+                val chromeLike =
+                    fp == "chrome" ||
+                        fp.startsWith("chrome") ||
+                        fp in setOf("edge", "safari", "ios", "android", "firefox", "qq", "360")
+                result.put("disable_chrome_parrot", !chromeLike)
+            }
             params["obfs"]
                 ?.takeIf { it.isNotBlank() && it != "none" }
                 ?.let { type ->

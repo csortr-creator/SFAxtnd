@@ -99,20 +99,7 @@ internal class SubscriptionContentParser(
                         .getOrDefault("Сервер ${index + 1}")
                         .take(120)
                 accept(index + 1, name) {
-                    val node = parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
-                    val query = ProxyLinkParser.query(line.substringBefore('#').substringAfter('?', ""))
-                    // Hysteria2 fp is mapped to tls.utls when present (QUIC path still uses core TLS).
-                    val spiderMatch = Regex("[?&](?:spx|spiderX)=([^&#]*)").find(line)
-                    val spiderValue = spiderMatch?.groupValues?.getOrNull(1)?.let {
-                        java.net.URLDecoder.decode(it, "UTF-8")
-                    }.orEmpty()
-                    // Default Xray spiderX is empty or "/"; only warn for custom paths (not supported by sing-box Reality).
-                    if (spiderValue.isNotBlank() && spiderValue != "/") {
-                        val warning =
-                            "Параметр Reality spiderX ($spiderValue) не поддерживается ядром sing-box и пропущен."
-                        if (warning !in warnings) warnings.add(warning)
-                    }
-                    node
+                    parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
                 }
             }
         }
@@ -777,10 +764,23 @@ internal class SubscriptionContentParser(
         require(params["security"] != "reality" || listOf("pcs", "vcn").none { !params[it].isNullOrBlank() }) { "Invalid certificate verification options with Reality" }
         ProxyLinkParser.applyXrayVerification(outbound.getJSONObject("tls"), params["pcs"], params["vcn"])
         if (params["security"] == "reality") {
-            ProxyLinkParser.applyReality(outbound.getJSONObject("tls"), params["pbk"].orEmpty(), params["sid"].orEmpty())
+            ProxyLinkParser.applyReality(
+                outbound.getJSONObject("tls"),
+                params["pbk"].orEmpty(),
+                params["sid"].orEmpty(),
+                spiderX = params["spiderX"] ?: params["spx"],
+                fingerprint = params["fp"],
+            )
         }
         val network = params["type"] ?: "tcp"
-        ProxyLinkParser.transport(network, params, sni)?.let { outbound.put("transport", it) }
+        ProxyLinkParser.transport(network, params, sni)?.let { transport ->
+            val spider = (params["spiderX"] ?: params["spx"]).orEmpty().trim()
+            if (spider.isNotEmpty() && spider != "/" && !transport.has("path")) {
+                val path = if (spider.startsWith("/")) spider else "/$spider"
+                transport.put("path", path)
+            }
+            outbound.put("transport", transport)
+        }
 
         applyMultiplex(outbound, params)
         return outbound

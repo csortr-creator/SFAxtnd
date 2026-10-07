@@ -559,11 +559,15 @@ internal object ForeignSubscriptionParser {
                     )
                 }
             source.optJSONObject("reality-opts")?.let { reality ->
-                fields(reality, setOf("public-key", "short-id"))
+                fields(reality, setOf("public-key", "short-id", "spider-x"))
                 ProxyLinkParser.applyReality(
                     tls,
                     required(reality, "public-key"),
                     reality.optString("short-id"),
+                    spiderX = reality.optString("spider-x").ifBlank { null },
+                    fingerprint = source.optString("client-fingerprint").ifBlank {
+                        source.optString("fingerprint")
+                    }.ifBlank { null },
                 )
             }
             node.put("tls", tls)
@@ -923,7 +927,7 @@ internal object ForeignSubscriptionParser {
             fields(
                 options,
                 setOf("serverName", "allowInsecure", "alpn", "fingerprint") +
-                    if (security == "reality") setOf("publicKey", "shortId", "spiderX", "show")
+                    if (security == "reality") setOf("publicKey", "shortId", "spiderX", "show", "fingerprint", "serverName")
                     else
                         setOf(
                             "pinnedPeerCertSha256",
@@ -959,6 +963,8 @@ internal object ForeignSubscriptionParser {
                     tls,
                     required(options, "publicKey"),
                     options.optString("shortId"),
+                    spiderX = options.optString("spiderX").ifBlank { null },
+                    fingerprint = options.optString("fingerprint").ifBlank { null },
                 )
             node.put("tls", tls)
         }

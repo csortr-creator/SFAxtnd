@@ -343,9 +343,11 @@ internal object ForeignSubscriptionParser {
                     node.put("security", source.optString("cipher", "auto"))
                     if (source.has("alterId")) node.put("alter_id", source.getInt("alterId"))
                 } else {
-                    require(source.optString("encryption") in setOf("", "none")) {
-                        "Unsupported VLESS encryption"
-                    }
+                    ProxyLinkParser.applyVlessEncryption(
+                        node,
+                        source.optString("encryption"),
+                        source.optString("flow"),
+                    )
                     source
                         .optString("flow")
                         .takeIf { it.isNotBlank() }
@@ -857,9 +859,11 @@ internal object ForeignSubscriptionParser {
                 )
                 node.put("uuid", required(user, "id"))
                 if (protocol == "vless") {
-                    require(user.optString("encryption") in setOf("", "none")) {
-                        "Unsupported VLESS encryption"
-                    }
+                    ProxyLinkParser.applyVlessEncryption(
+                        node,
+                        user.optString("encryption"),
+                        user.optString("flow"),
+                    )
                     user.optString("flow").takeIf { it.isNotBlank() }?.let { node.put("flow", it) }
                 } else {
                     node.put("security", user.optString("security", "auto"))

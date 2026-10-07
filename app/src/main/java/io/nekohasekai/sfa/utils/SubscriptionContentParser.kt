@@ -546,9 +546,7 @@ internal class SubscriptionContentParser(
         val network = params["type"] ?: "tcp"
         val security = (params["security"] ?: "none").lowercase()
         require(security in setOf("none", "tls", "reality")) { "Unsupported VLESS security" }
-        require(params["encryption"].isNullOrEmpty() || params["encryption"] == "none") {
-            "Unsupported VLESS encryption"
-        }
+        ProxyLinkParser.applyVlessEncryption(outbound, params["encryption"], flow)
         require(security == "reality" || listOf("pbk", "sid").none { !params[it].isNullOrBlank() }) { "Invalid Reality options without Reality security" }
         require(security != "none" || listOf("sni", "fp", "alpn", "allowInsecure", "pcs", "vcn").none { !params[it].isNullOrBlank() }) { "Invalid TLS options without TLS security" }
         if (security == "reality") {

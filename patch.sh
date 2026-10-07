@@ -47,6 +47,14 @@ else
     git -C sing-box-core apply "$PWD/$COMPAT_PATCH"
 fi
 
+VLESS_ENCRYPTION_PATCH=patches/sing-box-1.14.2-vless-encryption.patch
+if git -C sing-box-core apply --reverse --check "$PWD/$VLESS_ENCRYPTION_PATCH" 2>/dev/null; then
+    echo "VLESS encryption patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$VLESS_ENCRYPTION_PATCH"
+    git -C sing-box-core apply "$PWD/$VLESS_ENCRYPTION_PATCH"
+fi
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

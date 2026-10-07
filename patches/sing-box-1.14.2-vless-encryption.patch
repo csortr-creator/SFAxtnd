@@ -1,0 +1,1052 @@
+diff --git a/option/vless.go b/option/vless.go
+--- a/option/vless.go
++++ b/option/vless.go
+@@ -17,9 +17,10 @@
+ type VLESSOutboundOptions struct {
+ 	DialerOptions
+ 	ServerOptions
+-	UUID    string      `json:"uuid"`
+-	Flow    string      `json:"flow,omitempty"`
+-	Network NetworkList `json:"network,omitempty"`
++	Encryption string      `json:"encryption,omitempty"`
++	UUID       string      `json:"uuid"`
++	Flow       string      `json:"flow,omitempty"`
++	Network    NetworkList `json:"network,omitempty"`
+ 	OutboundTLSOptionsContainer
+ 	Multiplex      *OutboundMultiplexOptions `json:"multiplex,omitempty"`
+ 	Transport      *V2RayTransportOptions    `json:"transport,omitempty"`
+diff --git a/protocol/vless/outbound.go b/protocol/vless/outbound.go
+--- a/protocol/vless/outbound.go
++++ b/protocol/vless/outbound.go
+@@ -13,6 +13,7 @@
+ 	"github.com/sagernet/sing-box/log"
+ 	"github.com/sagernet/sing-box/option"
+ 	"github.com/sagernet/sing-box/transport/v2ray"
++	"github.com/sagernet/sing-box/transport/vlessenc"
+ 	"github.com/sagernet/sing-vmess/packetaddr"
+ 	"github.com/sagernet/sing-vmess/vless"
+ 	"github.com/sagernet/sing/common"
+@@ -33,6 +34,7 @@
+ 	outbound.Adapter
+ 	logger          logger.ContextLogger
+ 	dialer          N.Dialer
++	encryption      *vlessenc.ClientInstance
+ 	client          *vless.Client
+ 	serverAddr      M.Socksaddr
+ 	multiplexDialer *mux.Client
+@@ -53,6 +55,13 @@
+ 		logger:     logger,
+ 		dialer:     outboundDialer,
+ 		serverAddr: options.ServerOptions.Build(),
++	}
++	outbound.encryption, err = vlessenc.NewClient(options.Encryption)
++	if err != nil {
++		return nil, err
++	}
++	if outbound.encryption != nil && options.Flow != "" {
++		return nil, E.New("VLESS encryption with Vision flow is not supported")
+ 	}
+ 	if options.TLS != nil {
+ 		outbound.tlsConfig, err = tls.NewClientWithOptions(tls.ClientOptions{
+@@ -163,6 +172,12 @@
+ 	}
+ 	if err != nil {
+ 		return nil, err
++	}
++	if h.encryption != nil {
++		conn, err = h.encryption.Wrap(ctx, conn)
++		if err != nil {
++			return nil, err
++		}
+ 	}
+ 	switch N.NetworkName(network) {
+ 	case N.NetworkTCP:
+@@ -207,6 +222,12 @@
+ 		common.Close(conn)
+ 		return nil, err
+ 	}
++	if h.encryption != nil {
++		conn, err = h.encryption.Wrap(ctx, conn)
++		if err != nil {
++			return nil, err
++		}
++	}
+ 	if h.xudp {
+ 		return h.client.DialEarlyXUDPPacketConn(conn, destination)
+ 	} else if h.packetAddr {
+diff --git a/transport/vlessenc/client.go b/transport/vlessenc/client.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/client.go
+@@ -0,0 +1,215 @@
++// Derived from XTLS/Xray-core v26.3.27, proxy/vless/encryption.
++// Copyright Xray contributors. Licensed under MPL-2.0.
++
++package vlessenc
++
++import (
++	"crypto/cipher"
++	"crypto/ecdh"
++	"crypto/mlkem"
++	"crypto/rand"
++	"io"
++	"net"
++	"sync"
++	"time"
++
++	"errors"
++	"golang.org/x/sys/cpu"
++	"lukechampine.com/blake3"
++)
++
++type ClientInstance struct {
++	NfsPKeys      []any
++	NfsPKeysBytes [][]byte
++	Hash32s       [][32]byte
++	RelaysLength  int
++	XorMode       uint32
++	Seconds       uint32
++	PaddingLens   [][3]int
++	PaddingGaps   [][3]int
++
++	RWLock sync.RWMutex
++	Expire time.Time
++	PfsKey []byte
++	Ticket []byte
++}
++
++func (i *ClientInstance) Init(nfsPKeysBytes [][]byte, xorMode, seconds uint32, padding string) (err error) {
++	if i.NfsPKeys != nil {
++		return errors.New("already initialized")
++	}
++	l := len(nfsPKeysBytes)
++	if l == 0 {
++		return errors.New("empty nfsPKeysBytes")
++	}
++	i.NfsPKeys = make([]any, l)
++	i.NfsPKeysBytes = nfsPKeysBytes
++	i.Hash32s = make([][32]byte, l)
++	for j, k := range nfsPKeysBytes {
++		if len(k) == 32 {
++			if i.NfsPKeys[j], err = ecdh.X25519().NewPublicKey(k); err != nil {
++				return
++			}
++			i.RelaysLength += 32 + 32
++		} else {
++			if i.NfsPKeys[j], err = mlkem.NewEncapsulationKey768(k); err != nil {
++				return
++			}
++			i.RelaysLength += 1088 + 32
++		}
++		i.Hash32s[j] = blake3.Sum256(k)
++	}
++	i.RelaysLength -= 32
++	i.XorMode = xorMode
++	i.Seconds = seconds
++	return ParsePadding(padding, &i.PaddingLens, &i.PaddingGaps)
++}
++
++func (i *ClientInstance) Handshake(conn net.Conn) (*CommonConn, error) {
++	if i.NfsPKeys == nil {
++		return nil, errors.New("uninitialized")
++	}
++	c := NewCommonConn(conn, cpu.X86.HasAES && cpu.X86.HasPCLMULQDQ || cpu.ARM64.HasAES && cpu.ARM64.HasPMULL)
++
++	ivAndRealysLength := 16 + i.RelaysLength
++	pfsKeyExchangeLength := 18 + 1184 + 32 + 16
++	paddingLength, paddingLens, paddingGaps := CreatPadding(i.PaddingLens, i.PaddingGaps)
++	clientHello := make([]byte, ivAndRealysLength+pfsKeyExchangeLength+paddingLength)
++
++	iv := clientHello[:16]
++	rand.Read(iv)
++	relays := clientHello[16:ivAndRealysLength]
++	var nfsKey []byte
++	var lastCTR cipher.Stream
++	for j, k := range i.NfsPKeys {
++		var index = 32
++		if k, ok := k.(*ecdh.PublicKey); ok {
++			privateKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
++			copy(relays, privateKey.PublicKey().Bytes())
++			var err error
++			nfsKey, err = privateKey.ECDH(k)
++			if err != nil {
++				return nil, err
++			}
++		}
++		if k, ok := k.(*mlkem.EncapsulationKey768); ok {
++			var ciphertext []byte
++			nfsKey, ciphertext = k.Encapsulate()
++			copy(relays, ciphertext)
++			index = 1088
++		}
++		if i.XorMode > 0 { // this xor can (others can't) be recovered by client's config, revealing an X25519 public key / ML-KEM-768 ciphertext, that's why "native" values
++			NewCTR(i.NfsPKeysBytes[j], iv).XORKeyStream(relays, relays[:index]) // make X25519 public key / ML-KEM-768 ciphertext distinguishable from random bytes
++		}
++		if lastCTR != nil {
++			lastCTR.XORKeyStream(relays, relays[:32]) // make this relay irreplaceable
++		}
++		if j == len(i.NfsPKeys)-1 {
++			break
++		}
++		lastCTR = NewCTR(nfsKey, iv)
++		lastCTR.XORKeyStream(relays[index:], i.Hash32s[j+1][:])
++		relays = relays[index+32:]
++	}
++	nfsAEAD := NewAEAD(iv, nfsKey, c.UseAES)
++
++	if i.Seconds > 0 {
++		i.RWLock.RLock()
++		if time.Now().Before(i.Expire) {
++			c.Client = i
++			c.UnitedKey = append(i.PfsKey, nfsKey...) // different unitedKey for each connection
++			nfsAEAD.Seal(clientHello[:ivAndRealysLength], nil, EncodeLength(32), nil)
++			nfsAEAD.Seal(clientHello[:ivAndRealysLength+18], nil, i.Ticket, nil)
++			i.RWLock.RUnlock()
++			c.PreWrite = clientHello[:ivAndRealysLength+18+32]
++			c.AEAD = NewAEAD(clientHello[ivAndRealysLength+18:ivAndRealysLength+18+32], c.UnitedKey, c.UseAES)
++			if i.XorMode == 2 {
++				c.Conn = NewXorConn(conn, NewCTR(c.UnitedKey, iv), nil, len(c.PreWrite), 16)
++			}
++			return c, nil
++		}
++		i.RWLock.RUnlock()
++	}
++
++	pfsKeyExchange := clientHello[ivAndRealysLength : ivAndRealysLength+pfsKeyExchangeLength]
++	nfsAEAD.Seal(pfsKeyExchange[:0], nil, EncodeLength(pfsKeyExchangeLength-18), nil)
++	mlkem768DKey, _ := mlkem.GenerateKey768()
++	x25519SKey, _ := ecdh.X25519().GenerateKey(rand.Reader)
++	pfsPublicKey := append(mlkem768DKey.EncapsulationKey().Bytes(), x25519SKey.PublicKey().Bytes()...)
++	nfsAEAD.Seal(pfsKeyExchange[:18], nil, pfsPublicKey, nil)
++
++	padding := clientHello[ivAndRealysLength+pfsKeyExchangeLength:]
++	nfsAEAD.Seal(padding[:0], nil, EncodeLength(paddingLength-18), nil)
++	nfsAEAD.Seal(padding[:18], nil, padding[18:paddingLength-16], nil)
++
++	paddingLens[0] = ivAndRealysLength + pfsKeyExchangeLength + paddingLens[0]
++	for i, l := range paddingLens { // sends padding in a fragmented way, to create variable traffic pattern, before inner VLESS flow takes control
++		if l > 0 {
++			if err := writeFull(conn, clientHello[:l]); err != nil {
++				return nil, err
++			}
++			clientHello = clientHello[l:]
++		}
++		if len(paddingGaps) > i {
++			time.Sleep(paddingGaps[i])
++		}
++	}
++
++	encryptedPfsPublicKey := make([]byte, 1088+32+16)
++	if _, err := io.ReadFull(conn, encryptedPfsPublicKey); err != nil {
++		return nil, err
++	}
++	if _, err := nfsAEAD.Open(encryptedPfsPublicKey[:0], MaxNonce, encryptedPfsPublicKey, nil); err != nil {
++		return nil, err
++	}
++	mlkem768Key, err := mlkem768DKey.Decapsulate(encryptedPfsPublicKey[:1088])
++	if err != nil {
++		return nil, err
++	}
++	peerX25519PKey, err := ecdh.X25519().NewPublicKey(encryptedPfsPublicKey[1088 : 1088+32])
++	if err != nil {
++		return nil, err
++	}
++	x25519Key, err := x25519SKey.ECDH(peerX25519PKey)
++	if err != nil {
++		return nil, err
++	}
++	pfsKey := make([]byte, 32+32) // no more capacity
++	copy(pfsKey, mlkem768Key)
++	copy(pfsKey[32:], x25519Key)
++	c.UnitedKey = append(pfsKey, nfsKey...)
++	c.AEAD = NewAEAD(pfsPublicKey, c.UnitedKey, c.UseAES)
++	c.PeerAEAD = NewAEAD(encryptedPfsPublicKey[:1088+32], c.UnitedKey, c.UseAES)
++
++	encryptedTicket := make([]byte, 32)
++	if _, err := io.ReadFull(conn, encryptedTicket); err != nil {
++		return nil, err
++	}
++	if _, err := c.PeerAEAD.Open(encryptedTicket[:0], nil, encryptedTicket, nil); err != nil {
++		return nil, err
++	}
++	seconds := DecodeLength(encryptedTicket)
++
++	if i.Seconds > 0 && seconds > 0 {
++		i.RWLock.Lock()
++		i.Expire = time.Now().Add(time.Duration(seconds) * time.Second)
++		i.PfsKey = pfsKey
++		i.Ticket = encryptedTicket[:16]
++		i.RWLock.Unlock()
++	}
++
++	encryptedLength := make([]byte, 18)
++	if _, err := io.ReadFull(conn, encryptedLength); err != nil {
++		return nil, err
++	}
++	if _, err := c.PeerAEAD.Open(encryptedLength[:0], nil, encryptedLength, nil); err != nil {
++		return nil, err
++	}
++	length := DecodeLength(encryptedLength[:2])
++	c.PeerPadding = make([]byte, length) // important: allows server sends padding slowly, eliminating 1-RTT's traffic pattern
++
++	if i.XorMode == 2 {
++		c.Conn = NewXorConn(conn, NewCTR(c.UnitedKey, iv), NewCTR(c.UnitedKey, encryptedTicket[:16]), 0, length)
++	}
++	return c, nil
++}
+diff --git a/transport/vlessenc/common.go b/transport/vlessenc/common.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/common.go
+@@ -0,0 +1,317 @@
++// Derived from XTLS/Xray-core v26.3.27, proxy/vless/encryption.
++// Copyright Xray contributors. Licensed under MPL-2.0.
++
++package vlessenc
++
++import (
++	"bytes"
++	"crypto/aes"
++	"crypto/cipher"
++	"fmt"
++	"io"
++	"net"
++	"strconv"
++	"strings"
++	"sync"
++	"time"
++
++	"crypto/rand"
++	"errors"
++	"golang.org/x/crypto/chacha20poly1305"
++	"lukechampine.com/blake3"
++	"math/big"
++)
++
++var OutBytesPool = sync.Pool{
++	New: func() any {
++		return make([]byte, 5+8192+16)
++	},
++}
++
++type CommonConn struct {
++	net.Conn
++	UseAES      bool
++	Client      *ClientInstance
++	UnitedKey   []byte
++	PreWrite    []byte
++	AEAD        *AEAD
++	PeerAEAD    *AEAD
++	PeerPadding []byte
++	writeLock   sync.Mutex
++	readLock    sync.Mutex
++	rawInput    bytes.Buffer
++	input       bytes.Reader
++}
++
++func NewCommonConn(conn net.Conn, useAES bool) *CommonConn {
++	return &CommonConn{
++		Conn:   conn,
++		UseAES: useAES,
++	}
++}
++
++func (c *CommonConn) Write(b []byte) (int, error) {
++	c.writeLock.Lock()
++	defer c.writeLock.Unlock()
++	if len(b) == 0 {
++		return 0, nil
++	}
++	outBytes := OutBytesPool.Get().([]byte)
++	defer OutBytesPool.Put(outBytes)
++	written := 0
++	for n := 0; n < len(b); {
++		b := b[n:]
++		if len(b) > 8192 {
++			b = b[:8192] // for avoiding another copy() in peer's Read()
++		}
++		n += len(b)
++		headerAndData := outBytes[:5+len(b)+16]
++		EncodeHeader(headerAndData, len(b)+16)
++		max := false
++		if bytes.Equal(c.AEAD.Nonce[:], MaxNonce) {
++			max = true
++		}
++		c.AEAD.Seal(headerAndData[:5], nil, b, headerAndData[:5])
++		if max {
++			c.AEAD = NewAEAD(headerAndData, c.UnitedKey, c.UseAES)
++		}
++		if c.PreWrite != nil {
++			headerAndData = append(c.PreWrite, headerAndData...)
++			c.PreWrite = nil
++		}
++		if err := writeFull(c.Conn, headerAndData); err != nil {
++			return written, err
++		}
++		written += len(b)
++	}
++	return len(b), nil
++}
++
++func (c *CommonConn) Read(b []byte) (int, error) {
++	c.readLock.Lock()
++	defer c.readLock.Unlock()
++	if len(b) == 0 {
++		return 0, nil
++	}
++	if c.PeerAEAD == nil { // client's 0-RTT
++		serverRandom := make([]byte, 16)
++		if _, err := io.ReadFull(c.Conn, serverRandom); err != nil {
++			return 0, err
++		}
++		c.PeerAEAD = NewAEAD(serverRandom, c.UnitedKey, c.UseAES)
++		if xorConn, ok := c.Conn.(*XorConn); ok {
++			xorConn.PeerCTR = NewCTR(c.UnitedKey, serverRandom)
++		}
++	}
++	if c.PeerPadding != nil { // client's 1-RTT
++		if _, err := io.ReadFull(c.Conn, c.PeerPadding); err != nil {
++			return 0, err
++		}
++		if _, err := c.PeerAEAD.Open(c.PeerPadding[:0], nil, c.PeerPadding, nil); err != nil {
++			return 0, err
++		}
++		c.PeerPadding = nil
++	}
++	if c.input.Len() > 0 {
++		return c.input.Read(b)
++	}
++	peerHeader := [5]byte{}
++	if _, err := io.ReadFull(c.Conn, peerHeader[:]); err != nil {
++		return 0, err
++	}
++	l, err := DecodeHeader(peerHeader[:]) // l: 17~16640
++	if err != nil {
++		if c.Client != nil && strings.Contains(err.Error(), "invalid header: ") { // client's 0-RTT
++			c.Client.RWLock.Lock()
++			if bytes.HasPrefix(c.UnitedKey, c.Client.PfsKey) {
++				c.Client.Expire = time.Now() // expired
++			}
++			c.Client.RWLock.Unlock()
++			return 0, errors.New("new handshake needed")
++		}
++		return 0, err
++	}
++	c.Client = nil
++	if c.rawInput.Cap() < l {
++		c.rawInput.Grow(l) // no need to use sync.Pool, because we are always reading
++	}
++	peerData := c.rawInput.Bytes()[:l]
++	if _, err := io.ReadFull(c.Conn, peerData); err != nil {
++		return 0, err
++	}
++	dst := peerData[:l-16]
++	if len(dst) <= len(b) {
++		dst = b[:len(dst)] // avoids another copy()
++	}
++	var newAEAD *AEAD
++	if bytes.Equal(c.PeerAEAD.Nonce[:], MaxNonce) {
++		newAEAD = NewAEAD(append(peerHeader[:], peerData...), c.UnitedKey, c.UseAES)
++	}
++	_, err = c.PeerAEAD.Open(dst[:0], nil, peerData, peerHeader[:])
++	if newAEAD != nil {
++		c.PeerAEAD = newAEAD
++	}
++	if err != nil {
++		return 0, err
++	}
++	if len(dst) > len(b) {
++		c.input.Reset(dst[copy(b, dst):])
++		dst = b // for len(dst)
++	}
++	return len(dst), nil
++}
++
++type AEAD struct {
++	cipher.AEAD
++	Nonce [12]byte
++}
++
++func NewAEAD(ctx, key []byte, useAES bool) *AEAD {
++	k := make([]byte, 32)
++	blake3.DeriveKey(k, string(ctx), key)
++	var aead cipher.AEAD
++	if useAES {
++		block, _ := aes.NewCipher(k)
++		aead, _ = cipher.NewGCM(block)
++	} else {
++		aead, _ = chacha20poly1305.New(k)
++	}
++	return &AEAD{AEAD: aead}
++}
++
++func (a *AEAD) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
++	if nonce == nil {
++		nonce = IncreaseNonce(a.Nonce[:])
++	}
++	return a.AEAD.Seal(dst, nonce, plaintext, additionalData)
++}
++
++func (a *AEAD) Open(dst, nonce, ciphertext, additionalData []byte) ([]byte, error) {
++	if nonce == nil {
++		nonce = IncreaseNonce(a.Nonce[:])
++	}
++	return a.AEAD.Open(dst, nonce, ciphertext, additionalData)
++}
++
++func IncreaseNonce(nonce []byte) []byte {
++	for i := range 12 {
++		nonce[11-i]++
++		if nonce[11-i] != 0 {
++			break
++		}
++	}
++	return nonce
++}
++
++var MaxNonce = bytes.Repeat([]byte{255}, 12)
++
++func EncodeLength(l int) []byte {
++	return []byte{byte(l >> 8), byte(l)}
++}
++
++func DecodeLength(b []byte) int {
++	return int(b[0])<<8 | int(b[1])
++}
++
++func EncodeHeader(h []byte, l int) {
++	h[0] = 23
++	h[1] = 3
++	h[2] = 3
++	h[3] = byte(l >> 8)
++	h[4] = byte(l)
++}
++
++func DecodeHeader(h []byte) (l int, err error) {
++	l = int(h[3])<<8 | int(h[4])
++	if h[0] != 23 || h[1] != 3 || h[2] != 3 {
++		l = 0
++	}
++	if l < 17 || l > 16640 { // TLS 1.3 max record: 16384 + 256 (RFC 8446 §5.2)
++		err = errors.New("invalid header: " + fmt.Sprintf("%v", h[:5])) // DO NOT CHANGE: relied by client's Read()
++	}
++	return
++}
++
++func ParsePadding(padding string, paddingLens, paddingGaps *[][3]int) (err error) {
++	if padding == "" {
++		return
++	}
++	maxLen := 0
++	for i, s := range strings.Split(padding, ".") {
++		x := strings.Split(s, "-")
++		if len(x) < 3 || x[0] == "" || x[1] == "" || x[2] == "" {
++			return errors.New("invalid padding lenth/gap parameter: " + s)
++		}
++		y := [3]int{}
++		if y[0], err = strconv.Atoi(x[0]); err != nil {
++			return
++		}
++		if y[1], err = strconv.Atoi(x[1]); err != nil {
++			return
++		}
++		if y[2], err = strconv.Atoi(x[2]); err != nil {
++			return
++		}
++		if i == 0 && (y[0] < 100 || y[1] < 18+17 || y[2] < 18+17) {
++			return errors.New("first padding length must not be smaller than 35")
++		}
++		if i%2 == 0 {
++			*paddingLens = append(*paddingLens, y)
++			maxLen += max(y[1], y[2])
++		} else {
++			*paddingGaps = append(*paddingGaps, y)
++		}
++	}
++	if maxLen > 18+65535 {
++		return errors.New("total padding length must not be larger than 65553")
++	}
++	return
++}
++
++func CreatPadding(paddingLens, paddingGaps [][3]int) (length int, lens []int, gaps []time.Duration) {
++	if len(paddingLens) == 0 {
++		paddingLens = [][3]int{{100, 111, 1111}, {50, 0, 3333}}
++		paddingGaps = [][3]int{{75, 0, 111}}
++	}
++	for _, y := range paddingLens {
++		l := 0
++		if y[0] >= int(randBetween(0, 100)) {
++			l = int(randBetween(int64(y[1]), int64(y[2])))
++		}
++		lens = append(lens, l)
++		length += l
++	}
++	for _, y := range paddingGaps {
++		g := 0
++		if y[0] >= int(randBetween(0, 100)) {
++			g = int(randBetween(int64(y[1]), int64(y[2])))
++		}
++		gaps = append(gaps, time.Duration(g)*time.Millisecond)
++	}
++	return
++}
++
++func randBetween(a, b int64) int64 {
++	if a > b {
++		a, b = b, a
++	}
++	n, err := rand.Int(rand.Reader, big.NewInt(b-a+1))
++	if err != nil {
++		panic(err)
++	}
++	return a + n.Int64()
++}
++
++func writeFull(w io.Writer, b []byte) error {
++	for len(b) > 0 {
++		n, err := w.Write(b)
++		if err != nil {
++			return err
++		}
++		if n == 0 {
++			return io.ErrShortWrite
++		}
++		b = b[n:]
++	}
++	return nil
++}
+diff --git a/transport/vlessenc/config.go b/transport/vlessenc/config.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/config.go
+@@ -0,0 +1,53 @@
++package vlessenc
++
++import (
++	"context"
++	"encoding/base64"
++	"errors"
++	"net"
++	"strings"
++	"time"
++)
++
++// NewClient accepts the native single-key profile supported by this build.
++func NewClient(value string) (*ClientInstance, error) {
++	if value == "" || value == "none" {
++		return nil, nil
++	}
++	parts := strings.Split(value, ".")
++	if len(parts) != 4 || parts[0] != "mlkem768x25519plus" || parts[1] != "native" || (parts[2] != "0rtt" && parts[2] != "1rtt") {
++		return nil, errors.New("unsupported VLESS encryption profile; supported: mlkem768x25519plus.native.0rtt/1rtt with one key")
++	}
++	key, err := base64.RawURLEncoding.Strict().DecodeString(parts[3])
++	if err != nil || (len(key) != 32 && len(key) != 1184) {
++		return nil, errors.New("invalid VLESS encryption key")
++	}
++	var seconds uint32
++	if parts[2] == "0rtt" {
++		seconds = 1
++	}
++	client := new(ClientInstance)
++	if err = client.Init([][]byte{key}, 0, seconds, ""); err != nil {
++		return nil, err
++	}
++	return client, nil
++}
++
++func (i *ClientInstance) Wrap(ctx context.Context, conn net.Conn) (net.Conn, error) {
++	handshakeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
++	defer cancel()
++	done := make(chan struct{})
++	stop := context.AfterFunc(handshakeCtx, func() { conn.Close(); close(done) })
++	wrapped, err := i.Handshake(conn)
++	if !stop() {
++		<-done
++	}
++	if handshakeCtx.Err() != nil {
++		err = handshakeCtx.Err()
++	}
++	if err != nil {
++		conn.Close()
++		return nil, err
++	}
++	return wrapped, nil
++}
+diff --git a/transport/vlessenc/interop_test.go b/transport/vlessenc/interop_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/interop_test.go
+@@ -0,0 +1,224 @@
++package vlessenc
++
++import (
++	"bytes"
++	"context"
++	"crypto/ecdh"
++	"crypto/mlkem"
++	"crypto/rand"
++	"encoding/base64"
++	"encoding/json"
++	"io"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-vmess/vless"
++	"github.com/sagernet/sing/common/logger"
++	M "github.com/sagernet/sing/common/metadata"
++)
++
++func TestXrayInterop(t *testing.T) {
++	binary := os.Getenv("XHTTP_XRAY_BINARY")
++	if binary == "" {
++		t.Skip("set XHTTP_XRAY_BINARY for wire interoperability tests")
++	}
++	for _, kind := range []string{"x25519", "mlkem768"} {
++		for _, mode := range []string{"1rtt", "0rtt"} {
++			t.Run(kind+"/"+mode, func(t *testing.T) { testXray(t, binary, kind, mode) })
++		}
++	}
++}
++
++func testXray(t *testing.T, binary, kind, mode string) {
++	var public, private []byte
++	if kind == "x25519" {
++		key, err := ecdh.X25519().GenerateKey(rand.Reader)
++		if err != nil {
++			t.Fatal(err)
++		}
++		public = key.PublicKey().Bytes()
++		private = key.Bytes()
++	} else {
++		key, err := mlkem.GenerateKey768()
++		if err != nil {
++			t.Fatal(err)
++		}
++		public = key.EncapsulationKey().Bytes()
++		private = key.Bytes()
++	}
++	encode := base64.RawURLEncoding.EncodeToString
++	const uuid = "d342d11e-d424-4583-b36e-524ab1f0afa4"
++	ln, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ln.Close()
++	go func() {
++		for {
++			c, e := ln.Accept()
++			if e != nil {
++				return
++			}
++			go func() { defer c.Close(); io.Copy(c, c) }()
++		}
++	}()
++	reserve, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	address := reserve.Addr().String()
++	port := reserve.Addr().(*net.TCPAddr).Port
++	reserve.Close()
++	config := map[string]any{
++		"log":       map[string]any{"loglevel": "none"},
++		"inbounds":  []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "vless", "settings": map[string]any{"clients": []any{map[string]any{"id": uuid}}, "decryption": "mlkem768x25519plus.native.600s." + encode(private)}}},
++		"outbounds": []any{map[string]any{"protocol": "freedom"}},
++	}
++	data, _ := json.Marshal(config)
++	file := filepath.Join(t.TempDir(), "config.json")
++	if err = os.WriteFile(file, data, 0600); err != nil {
++		t.Fatal(err)
++	}
++	cmd := exec.Command(binary, "run", "-config", file)
++	if err = cmd.Start(); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
++	started := false
++	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
++		c, e := net.DialTimeout("tcp", address, 50*time.Millisecond)
++		if e == nil {
++			c.Close()
++			started = true
++			break
++		}
++		time.Sleep(20 * time.Millisecond)
++	}
++	if !started {
++		t.Fatal("Xray did not start")
++	}
++	client, err := NewClient("mlkem768x25519plus.native." + mode + "." + encode(public))
++	if err != nil {
++		t.Fatal(err)
++	}
++	destination := M.SocksaddrFromNet(ln.Addr())
++	roundtrip := func() error {
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		c, e := (&net.Dialer{}).DialContext(ctx, "tcp", address)
++		if e != nil {
++			return e
++		}
++		defer c.Close()
++		c.SetDeadline(time.Now().Add(5 * time.Second))
++		enc, e := client.Wrap(ctx, c)
++		if e != nil {
++			return e
++		}
++		vc, e := vless.NewClient(uuid, "", logger.NOP())
++		if e != nil {
++			return e
++		}
++		wrapped, e := vc.DialEarlyConn(enc, destination)
++		if e != nil {
++			return e
++		}
++		payload := bytes.Repeat([]byte("encrypted-vless-wire"), 2000)
++		// Echo is duplex, so drain while writing to exercise multiple AEAD records.
++		done := make(chan error, 1)
++		go func() { _, e := wrapped.Write(payload); done <- e }()
++		got := make([]byte, len(payload))
++		if _, e = io.ReadFull(wrapped, got); e != nil {
++			return e
++		}
++		if e = <-done; e != nil {
++			return e
++		}
++		if !bytes.Equal(payload, got) {
++			return io.ErrUnexpectedEOF
++		}
++		return nil
++	}
++	if err = roundtrip(); err != nil {
++		t.Fatal(err)
++	}
++	client.RWLock.RLock()
++	ticket := len(client.Ticket)
++	client.RWLock.RUnlock()
++	if mode == "0rtt" && ticket != 16 {
++		t.Fatal("server did not issue resumption ticket")
++	}
++	if mode == "1rtt" && ticket != 0 {
++		t.Fatal("1-RTT unexpectedly cached ticket")
++	}
++	var wg sync.WaitGroup
++	errors := make(chan error, 4)
++	for range 4 {
++		wg.Add(1)
++		go func() { defer wg.Done(); errors <- roundtrip() }()
++	}
++	wg.Wait()
++	close(errors)
++	for e := range errors {
++		if e != nil {
++			t.Fatal(e)
++		}
++	}
++}
++
++func TestRejectProfiles(t *testing.T) {
++	key := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
++	for _, v := range []string{"mlkem768x25519plus.native.0rtt.bad", "mlkem768x25519plus.random.0rtt." + key, "mlkem768x25519plus.native.2rtt." + key, "mlkem768x25519plus.native.0rtt." + key + "." + key} {
++		if _, err := NewClient(v); err == nil {
++			t.Fatal("invalid/unsupported profile accepted")
++		}
++	}
++}
++
++func TestHandshakeCancellation(t *testing.T) {
++	key, _ := ecdh.X25519().GenerateKey(rand.Reader)
++	client, err := NewClient("mlkem768x25519plus.native.1rtt." + base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()))
++	if err != nil {
++		t.Fatal(err)
++	}
++	a, b := net.Pipe()
++	defer b.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
++	defer cancel()
++	if _, err = client.Wrap(ctx, a); err != context.DeadlineExceeded {
++		t.Fatalf("unexpected result: %v", err)
++	}
++}
++
++func TestRejectCorruptRecord(t *testing.T) {
++	a, b := net.Pipe()
++	defer a.Close()
++	defer b.Close()
++	c := NewCommonConn(a, true)
++	c.PeerAEAD = NewAEAD([]byte("context"), []byte("key"), true)
++	go func() { frame := make([]byte, 22); EncodeHeader(frame, 17); b.Write(frame) }()
++	if _, err := c.Read(make([]byte, 32)); err == nil {
++		t.Fatal("unauthenticated record accepted")
++	}
++}
++
++func TestRejectUnauthenticatedHandshake(t *testing.T) {
++	key, _ := ecdh.X25519().GenerateKey(rand.Reader)
++	client, err := NewClient("mlkem768x25519plus.native.1rtt." + base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()))
++	if err != nil {
++		t.Fatal(err)
++	}
++	a, b := net.Pipe()
++	defer b.Close()
++	go func() { go io.Copy(io.Discard, b); b.Write(make([]byte, 1088+32+16)) }()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	if _, err = client.Wrap(ctx, a); err == nil || err == context.DeadlineExceeded {
++		t.Fatalf("peer authentication not rejected: %v", err)
++	}
++}
+diff --git a/transport/vlessenc/xor.go b/transport/vlessenc/xor.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/xor.go
+@@ -0,0 +1,96 @@
++// Derived from XTLS/Xray-core v26.3.27, proxy/vless/encryption.
++// Copyright Xray contributors. Licensed under MPL-2.0.
++
++package vlessenc
++
++import (
++	"crypto/aes"
++	"crypto/cipher"
++	"net"
++
++	"lukechampine.com/blake3"
++)
++
++func NewCTR(key, iv []byte) cipher.Stream {
++	k := make([]byte, 32)
++	blake3.DeriveKey(k, "VLESS", key) // avoids using key directly
++	block, _ := aes.NewCipher(k)
++	return cipher.NewCTR(block, iv)
++	//chacha20.NewUnauthenticatedCipher()
++}
++
++type XorConn struct {
++	net.Conn
++	CTR       cipher.Stream
++	PeerCTR   cipher.Stream
++	OutSkip   int
++	OutHeader []byte
++	InSkip    int
++	InHeader  []byte
++}
++
++func NewXorConn(conn net.Conn, ctr, peerCTR cipher.Stream, outSkip, inSkip int) *XorConn {
++	return &XorConn{
++		Conn:      conn,
++		CTR:       ctr,
++		PeerCTR:   peerCTR,
++		OutSkip:   outSkip,
++		OutHeader: make([]byte, 0, 5), // important
++		InSkip:    inSkip,
++		InHeader:  make([]byte, 0, 5), // important
++	}
++}
++
++func (c *XorConn) Write(b []byte) (int, error) {
++	if len(b) == 0 {
++		return 0, nil
++	}
++	for p := b; ; {
++		if len(p) <= c.OutSkip {
++			c.OutSkip -= len(p)
++			break
++		}
++		p = p[c.OutSkip:]
++		c.OutSkip = 0
++		need := 5 - len(c.OutHeader)
++		if len(p) < need {
++			c.OutHeader = append(c.OutHeader, p...)
++			c.CTR.XORKeyStream(p, p)
++			break
++		}
++		c.OutSkip, _ = DecodeHeader(append(c.OutHeader, p[:need]...))
++		c.OutHeader = c.OutHeader[:0]
++		c.CTR.XORKeyStream(p[:need], p[:need])
++		p = p[need:]
++	}
++	if _, err := c.Conn.Write(b); err != nil {
++		return 0, err
++	}
++	return len(b), nil
++}
++
++func (c *XorConn) Read(b []byte) (int, error) {
++	if len(b) == 0 {
++		return 0, nil
++	}
++	n, err := c.Conn.Read(b)
++	for p := b[:n]; ; {
++		if len(p) <= c.InSkip {
++			c.InSkip -= len(p)
++			break
++		}
++		p = p[c.InSkip:]
++		c.InSkip = 0
++		need := 5 - len(c.InHeader)
++		if len(p) < need {
++			c.PeerCTR.XORKeyStream(p, p)
++			c.InHeader = append(c.InHeader, p...)
++			break
++		}
++		c.PeerCTR.XORKeyStream(p[:need], p[:need])
++		c.InSkip, _ = DecodeHeader(append(c.InHeader, p[:need]...))
++		c.InHeader = c.InHeader[:0]
++		p = p[need:]
++	}
++	return n, err
++}
+diff --git a/transport/v2rayxhttp/vless_encryption_test.go b/transport/v2rayxhttp/vless_encryption_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/v2rayxhttp/vless_encryption_test.go
+@@ -0,0 +1,41 @@
++package v2rayxhttp_test
++
++import (
++	"crypto/ecdh"
++	"crypto/rand"
++	"encoding/base64"
++	"testing"
++
++	"github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++	"github.com/stretchr/testify/require"
++)
++
++func TestXHTTPVlessEncryptionInterop(t *testing.T) {
++	binary := requireXRayBinary(t)
++	for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
++		t.Run(mode, func(t *testing.T) {
++			certificate, key, ca := interopCertificate(t)
++			serverPort, proxyPort := interopPort(t), interopPort(t)
++			targetPort, closeTarget := interopEchoServer(t)
++			defer closeTarget()
++			credential := interopUUID(t)
++			encKey, err := ecdh.X25519().GenerateKey(rand.Reader)
++			require.NoError(t, err)
++			encode := base64.RawURLEncoding.EncodeToString
++			server := xrayOuterServerConfig("vless", serverPort, credential, certificate, key, "h2", mode)
++			inbound := server["inbounds"].([]any)[0].(map[string]any)
++			inbound["settings"].(map[string]any)["decryption"] = "mlkem768x25519plus.native.600s." + encode(encKey.Bytes())
++			startXRay(t, binary, serverPort, server)
++			outbound := interopOuterClientOutbound("vless", serverPort, credential, ca, "h2", mode)
++			outbound.Options.(*option.VLESSOutboundOptions).Encryption = "mlkem768x25519plus.native.0rtt." + encode(encKey.PublicKey().Bytes())
++			startInteropBox(t, option.Options{
++				Inbounds:  []option.Inbound{{Type: constant.TypeSOCKS, Options: &option.SocksInboundOptions{ListenOptions: interopListen(proxyPort)}}},
++				Outbounds: []option.Outbound{outbound},
++			})
++			// First exchange obtains a ticket; the second exercises 0-RTT on the same outbound.
++			interopPingPong(t, proxyPort, targetPort)
++			interopPingPong(t, proxyPort, targetPort)
++		})
++	}
++}

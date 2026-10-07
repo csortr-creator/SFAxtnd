@@ -21,6 +21,34 @@ internal object ProxyLinkParser {
             "socks5",
         )
 
+    fun applyVlessEncryption(node: JSONObject, value: String?, flow: String?) {
+        if (value.isNullOrEmpty() || value == "none") return
+        val parts = value.split('.')
+        require(
+            parts.size == 4 &&
+                parts[0] == "mlkem768x25519plus" &&
+                parts[1] == "native" &&
+                parts[2] in setOf("0rtt", "1rtt")
+        ) {
+            "Unsupported VLESS encryption profile"
+        }
+        require(flow.isNullOrEmpty()) { "Unsupported VLESS encryption with Vision flow" }
+        require(Regex("[A-Za-z0-9_-]+").matches(parts[3])) { "Invalid VLESS encryption key" }
+        val key =
+            try {
+                Base64.getUrlDecoder().decode(parts[3])
+            } catch (_: IllegalArgumentException) {
+                throw IllegalArgumentException("Invalid VLESS encryption key")
+            }
+        require(
+            key.size in setOf(32, 1184) &&
+                Base64.getUrlEncoder().withoutPadding().encodeToString(key) == parts[3]
+        ) {
+            "Invalid VLESS encryption key"
+        }
+        node.put("encryption", value)
+    }
+
     fun isShareLink(text: String): Boolean =
         text.trim().substringBefore("://").lowercase() in schemes
 

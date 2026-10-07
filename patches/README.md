@@ -43,3 +43,14 @@ of SNI. These fields do not replace the existing `certificate_sha256` behavior.
 Handshake tests cover matching and incorrect pins, CA chains, independent names
 and untrusted certificates. Upload tests cover concurrency limits, packet
 splitting, cancellation and worker failure. CI runs them with the race detector.
+
+`sing-box-1.14.2-vless-encryption.patch` applies after the compatibility patch.
+It adds outbound VLESS Encryption for single-key `mlkem768x25519plus.native`
+profiles (0-RTT and 1-RTT, X25519 or ML-KEM-768). The wire implementation is
+adapted from XTLS/Xray-core v26.3.27 under MPL-2.0; the license is retained in
+`Xray-MPL-2.0-LICENSE`. Peer handshake authentication is checked, records are
+authenticated, reads/writes are serialized independently, and cancellation
+closes blocked transport I/O. Unsupported profiles and Vision combinations
+are rejected. Tests use the pinned Xray binary, verify ticket reuse and
+concurrent connections, reject corrupt records/handshakes, and cover encrypted
+VLESS over all three XHTTP upload modes. CI runs them with the race detector.

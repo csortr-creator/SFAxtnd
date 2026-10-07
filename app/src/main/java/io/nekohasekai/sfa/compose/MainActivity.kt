@@ -149,12 +149,20 @@ import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity :
     AppCompatActivity(),
     ServiceConnection.Callback {
+    private companion object {
+        private const val SWITCH_TAG = "SFA.Switch"
+        private const val APPLY_STOP_TIMEOUT_MS = 15_000L
+        private const val APPLY_START_BEGIN_TIMEOUT_MS = 10_000L
+        private const val APPLY_START_TIMEOUT_MS = 45_000L
+    }
+
     private val connection = ServiceConnection(this, this)
     private lateinit var dashboardViewModel: DashboardViewModel
     private var currentServiceStatus by mutableStateOf(Status.Stopped)
@@ -1448,23 +1456,44 @@ class MainActivity :
             return
         }
 
+        Log.i(SWITCH_TAG, "APPLY_CHANGE STOP_OLD")
         BoxService.stop()
-        while (true) {
-            when (currentServiceStatus) {
-                Status.Stopped -> {
-                    startService()
-                    return
+        val stopped =
+            withTimeoutOrNull(APPLY_STOP_TIMEOUT_MS) {
+                while (currentServiceStatus != Status.Stopped) {
+                    delay(50L)
                 }
-
-                Status.Starting -> {
-                    return
-                }
-
-                Status.Started, Status.Stopping -> {
-                    delay(100L)
-                }
-            }
+                true
+            } == true
+        if (!stopped) {
+            Log.e(SWITCH_TAG, "APPLY_CHANGE STOP_OLD timeout status=$currentServiceStatus")
+            return
         }
+        Log.i(SWITCH_TAG, "APPLY_CHANGE OLD_STOPPED -> START_NEW")
+        startService()
+        val leftStopped =
+            withTimeoutOrNull(APPLY_START_BEGIN_TIMEOUT_MS) {
+                while (currentServiceStatus == Status.Stopped) {
+                    delay(50L)
+                }
+                true
+            } == true
+        if (!leftStopped) {
+            Log.e(SWITCH_TAG, "APPLY_CHANGE START_NEW never left Stopped")
+            return
+        }
+        val terminal =
+            withTimeoutOrNull(APPLY_START_TIMEOUT_MS) {
+                while (currentServiceStatus == Status.Starting) {
+                    delay(50L)
+                }
+                currentServiceStatus
+            }
+        if (terminal != Status.Started) {
+            Log.e(SWITCH_TAG, "APPLY_CHANGE START_NEW failed terminal=$terminal")
+            return
+        }
+        Log.i(SWITCH_TAG, "APPLY_CHANGE CONNECTED")
     }
 
     override fun onDestroy() {

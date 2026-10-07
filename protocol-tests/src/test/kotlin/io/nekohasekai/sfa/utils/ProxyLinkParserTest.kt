@@ -393,13 +393,12 @@ class ProxyLinkParserTest {
     }
 
     @Test
-
-    @Test
     fun realityAppliesSpiderXAndFingerprint() {
-        val tls = org.json.JSONObject()
+        val tls = org.json.JSONObject().put("enabled", true).put("server_name", "www.example.com")
+        val key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         ProxyLinkParser.applyReality(
             tls,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // 32 zero bytes url-safe - may fail validation
+            key,
             "abcd",
             spiderX = "/client-a",
             fingerprint = "firefox",
@@ -415,24 +414,20 @@ class ProxyLinkParserTest {
             ProxyLinkParser.hysteria(
                 "hysteria2://secret@example.org:443?sni=example.org&fp=firefox&insecure=1#test",
             )
-        assertEquals("firefox", node.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"))
+        assertEquals(
+            "firefox",
+            node.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
+        )
         assertTrue(node.getBoolean("disable_chrome_parrot"))
         val chrome =
             ProxyLinkParser.hysteria(
                 "hysteria2://secret@example.org:443?sni=example.org&fp=chrome#test",
             )
-        assertEquals("chrome", chrome.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"))
+        assertEquals(
+            "chrome",
+            chrome.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
+        )
         assertFalse(chrome.optBoolean("disable_chrome_parrot", true))
-    }
-
-
-    @Test
-    fun vlessRealityAppliesSpiderXViaApplyReality() {
-        val tls = org.json.JSONObject().put("enabled", true).put("server_name", "www.example.com")
-        val key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        ProxyLinkParser.applyReality(tls, key, "abcd", spiderX = "/client-path", fingerprint = "firefox")
-        assertEquals("/client-path", tls.getJSONObject("reality").getString("spider_x"))
-        assertEquals("firefox", tls.getJSONObject("utls").getString("fingerprint"))
     }
 
     @Test
@@ -446,6 +441,7 @@ class ProxyLinkParserTest {
         assertEquals(listOf("futureFlag"), unknown)
     }
 
+    @Test
     fun allSupportedShareSchemesReachLocalImport() {
         for (scheme in
             listOf("hy2", "hysteria2", "hysteria", "vless", "vmess", "trojan", "ss")) assertTrue(

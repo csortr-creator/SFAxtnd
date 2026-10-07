@@ -633,10 +633,8 @@ internal object ProxyLinkParser {
             val fp = params["fp"]?.takeIf { it.isNotBlank() }?.lowercase()
             if (fp != null) {
                 // Chrome-like fingerprints keep QUIC chrome parrot (default); others disable it.
-                val chromeLike =
-                    fp == "chrome" ||
-                        fp.startsWith("chrome") ||
-                        fp in setOf("edge", "safari", "ios", "android", "firefox", "qq", "360")
+                // Only Chrome ClientHello family uses sing-box QUIC chrome parrot.
+                val chromeLike = fp == "chrome" || fp.startsWith("chrome_") || fp.startsWith("chrome-")
                 result.put("disable_chrome_parrot", !chromeLike)
             }
             params["obfs"]

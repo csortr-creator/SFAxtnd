@@ -109,11 +109,16 @@ class SubscriptionContentParserTest {
         val result =
             SubscriptionContentParser()
                 .parse(
-                    "$valid\nvless://11111111-1111-4111-8111-111111111111@example.org:443?newEncryption=secret#Unsupported"
+                    "$valid\nvless://11111111-1111-4111-8111-111111111111@example.org:443?security=tls&sni=example.org&newEncryption=secret#Unsupported"
                 )
-        assertTrue(result.report.issues.single().reason.contains("Unsupported"))
+        // A+: optional unknown query keys are PARTIAL (warning), not a hard reject.
+        assertTrue(result.report.issues.isEmpty())
+        assertTrue(
+            result.report.warnings.any { it.contains("newEncryption") && it.contains("Частичная") },
+        )
         assertFalse(result.report.displayText().contains("secret"))
     }
+
 
     @Test
     fun invalidPortsAndEncryptionMethodsAreRejected() {

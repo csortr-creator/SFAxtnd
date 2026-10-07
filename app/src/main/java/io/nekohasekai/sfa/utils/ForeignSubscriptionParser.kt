@@ -798,6 +798,12 @@ internal object ForeignSubscriptionParser {
         ) {
             "Unsupported Hysteria session resumption"
         }
+        options
+            .optString("fingerprint")
+            .takeIf { it.isNotBlank() }
+            ?.let { fp ->
+                tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", fp))
+            }
         ProxyLinkParser.applyXrayVerification(
             tls,
             options.optString("pinnedPeerCertSha256"),
@@ -811,6 +817,15 @@ internal object ForeignSubscriptionParser {
                 .put("server_port", port(settings))
                 .put("password", required(hy, "auth"))
                 .put("tls", tls)
+        options
+            .optString("fingerprint")
+            .takeIf { it.isNotBlank() }
+            ?.lowercase()
+            ?.let { fp ->
+                val chromeLike =
+                    fp == "chrome" || fp.startsWith("chrome_") || fp.startsWith("chrome-")
+                node.put("disable_chrome_parrot", !chromeLike)
+            }
         stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
         return node
     }

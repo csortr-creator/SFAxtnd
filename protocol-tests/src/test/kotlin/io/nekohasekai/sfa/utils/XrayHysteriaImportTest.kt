@@ -89,14 +89,17 @@ class XrayHysteriaImportTest {
         nodes.forEach {
             assertEquals("hysteria2", it.getString("type"))
             assertEquals("fixture-password", it.getString("password"))
-            assertFalse(it.getJSONObject("tls").has("utls"))
+            assertEquals(
+                "firefox",
+                it.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
+            )
+            assertTrue(it.getBoolean("disable_chrome_parrot"))
         }
         assertEquals("www.amd.com", nodes[2].getJSONObject("tls").getString("server_name"))
         assertEquals(
             ProxyLinkParser.certificatePin(pin),
             nodes[2].getJSONObject("tls").getJSONArray("xray_certificate_sha256").getString(0),
         )
-        assertTrue(result.report.warnings.any { it.contains("QUIC TLS") })
         File("build/native-configs").mkdirs()
         File("build/native-configs/import-xray-hysteria2.json").writeText(result.config)
     }

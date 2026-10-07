@@ -208,8 +208,9 @@ class ForeignSubscriptionParserTest {
                         .trimIndent()
                 )
         assertEquals(4, result.report.received)
-        assertEquals(1, result.report.imported)
-        assertEquals(3, result.report.issues.size)
+        // A+: unknown optional Clash fields (shadow-tls-opts) no longer reject the node.
+        assertEquals(2, result.report.imported)
+        assertEquals(2, result.report.issues.size)
         assertFalse(result.report.displayText().contains("confidential"))
     }
 

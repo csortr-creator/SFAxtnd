@@ -227,36 +227,31 @@ class DashboardViewModel :
 
 
     fun selectProfile(profileId: Long) {
-        if (currentState.isLoading || profileId == Settings.selectedProfile) return
+        if (currentState.isLoading || profileId == Settings.selectedProfile ||
+            _serviceStatus.value !in setOf(Status.Started, Status.Stopped)) return
         updateState { copy(isLoading = true) }
+        val previousProfileId = Settings.selectedProfile
 
         viewModelScope.launch(Dispatchers.IO) {
+            var startRequested = false
             try {
-                val profile = ProfileManager.get(profileId) ?: return@launch
-
+                ProfileManager.get(profileId) ?: return@launch
                 Settings.selectedProfile = profileId
-
-                // Check if service is running
                 if (_serviceStatus.value == Status.Started) {
-                    val restart = Settings.rebuildServiceMode()
-                    if (restart) {
-                        // Need full restart
-                        BoxService.stop()
-                        sendGlobalEvent(UiEvent.RequestReconnectService)
-                        kotlinx.coroutines.withTimeout(10000L) {
-                            while (_serviceStatus.value != Status.Stopped) delay(100L)
-                        }
-                        sendGlobalEvent(UiEvent.RequestStartService)
-                    } else {
-                        // Just reload
-                        Libbox.newStandaloneCommandClient().serviceReload()
+                    BoxService.stop()
+                    kotlinx.coroutines.withTimeout(10000L) {
+                        while (_serviceStatus.value != Status.Stopped) delay(100L)
                     }
+                    Settings.rebuildServiceMode()
+                    sendGlobalEvent(UiEvent.RequestReconnectService)
+                    sendGlobalEvent(UiEvent.RequestStartService)
+                    startRequested = true
                 }
-
-                withContext(Dispatchers.Main) {
-                    loadProfiles()
-                }
+                withContext(Dispatchers.Main) { loadProfiles() }
             } catch (e: Exception) {
+                if (!startRequested && _serviceStatus.value == Status.Started) {
+                    Settings.selectedProfile = previousProfileId
+                }
                 sendError(e)
             } finally {
                 updateState { copy(isLoading = false) }

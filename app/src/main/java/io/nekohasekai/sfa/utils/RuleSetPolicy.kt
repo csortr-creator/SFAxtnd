@@ -10,7 +10,7 @@ object RuleSetPolicy {
             if (cachedPath != null) entry.put("initial_path", cachedPath)
         } else if (cachedPath != null) {
             entry.put("type", "local").put("path", cachedPath)
-            listOf("url", "initial_path", "download_detour", "http_client", "update_interval")
+            listOf("url", "initial_path", "download_detour", "download_fallback_detour", "http_client", "update_interval")
                 .forEach(entry::remove)
         } else {
             error(

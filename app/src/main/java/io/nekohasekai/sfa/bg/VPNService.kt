@@ -175,6 +175,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
 
         val pfd =
             builder.establish() ?: error("android: the application is not prepared or is revoked")
+        service.fileDescriptor?.close()
         service.fileDescriptor = pfd
         return pfd.fd
     }

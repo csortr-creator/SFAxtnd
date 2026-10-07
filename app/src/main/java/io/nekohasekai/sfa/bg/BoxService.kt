@@ -43,6 +43,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
@@ -102,6 +104,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private var lastProfileName = ""
+    private val reloadMutex = Mutex()
 
     private fun sanitizeRuntimeConfig(content: String): String =
         io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
@@ -209,7 +212,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    suspend fun serviceReload0() {
+    suspend fun serviceReload0() = reloadMutex.withLock {
+        serviceReloadLocked()
+    }
+
+    private suspend fun serviceReloadLocked() {
         val selectedProfileId = Settings.selectedProfile
         if (selectedProfileId == -1L) {
             stopAndAlert(Alert.EmptyConfiguration)
@@ -233,6 +240,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         val runtimeContent = io.nekohasekai.sfa.utils.RuleSetUpdater.ensureRuleSets(Application.application, UserRoutingConfig.applyToConfig(content, Settings.routingConfigJson), Settings.ruleSetUpdateInterval)
         lastProfileName = profile.name
+        status.postValue(Status.Starting)
+        withContext(Dispatchers.Main) {
+            notification.show(lastProfileName, R.string.status_starting)
+        }
+        fileDescriptor?.close()
+        fileDescriptor = null
         try {
             commandServer.startOrReloadService(
                 runtimeContent,
@@ -266,6 +279,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 stopAndAlert(Alert.RequestLocationPermission)
                 return
             }
+        }
+        status.postValue(Status.Started)
+        withContext(Dispatchers.Main) {
+            notification.show(lastProfileName, R.string.status_started)
         }
     }
 

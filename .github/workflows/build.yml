@@ -188,6 +188,7 @@ jobs:
           cp protocol-tests/dns_client_fallback_test.go sing-box-core/dns/sfa_client_fallback_test.go
           cd sing-box-core
           go test -race -timeout 3m -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./dns -run TestSFASequentialDNS
+          go test -race -timeout 3m ./route/rule -run TestSFARuleSet
           go build -ldflags=-checklinkname=0 -tags=with_quic,with_utls -o /tmp/sfa-config-check ./cmd/sing-box
           for config in ../protocol-tests/build/native-configs/*.json; do
             /tmp/sfa-config-check check -c "$config"

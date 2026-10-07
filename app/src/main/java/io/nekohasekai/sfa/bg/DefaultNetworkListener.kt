@@ -161,6 +161,7 @@ object DefaultNetworkListener {
     private var fallback = false
     private val request =
         NetworkRequest.Builder().apply {
+            addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
             if (Build.VERSION.SDK_INT == 23) { // workarounds for OEM bugs

@@ -69,7 +69,7 @@ object RuleSetUpdater {
                                 }
                             }
 
-                            if (shouldDownload) {
+                            if (shouldDownload && updateIntervalMs <= 0) {
                                 downloadFile(urlString, file, format)
                             }
 

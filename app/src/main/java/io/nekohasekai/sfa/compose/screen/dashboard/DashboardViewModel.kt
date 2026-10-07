@@ -227,11 +227,11 @@ class DashboardViewModel :
 
 
     fun selectProfile(profileId: Long) {
-        if (currentState.isLoading) return
+        if (currentState.isLoading || profileId == Settings.selectedProfile) return
+        updateState { copy(isLoading = true) }
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                updateState { copy(isLoading = true) }
                 val profile = ProfileManager.get(profileId) ?: return@launch
 
                 Settings.selectedProfile = profileId
@@ -243,11 +243,8 @@ class DashboardViewModel :
                         // Need full restart
                         BoxService.stop()
                         sendGlobalEvent(UiEvent.RequestReconnectService)
-                        for (i in 0 until 30) {
-                            if (_serviceStatus.value == Status.Stopped) {
-                                break
-                            }
-                            delay(100L)
+                        kotlinx.coroutines.withTimeout(10000L) {
+                            while (_serviceStatus.value != Status.Stopped) delay(100L)
                         }
                         sendGlobalEvent(UiEvent.RequestStartService)
                     } else {

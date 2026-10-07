@@ -628,7 +628,12 @@ object UserRoutingConfig {
                 item.put("type", "remote")
                 if (!item.has("format") || item.optString("format").isBlank())
                     item.put("format", "binary")
-                item.put("download_detour", "direct")
+                if (item.optJSONObject("http_client")?.length()?.let { it > 0 } == true) {
+                    item.remove("download_detour")
+                } else {
+                    item.put("download_detour", "direct")
+                }
+                findProxyOutboundTag(root)?.let { item.put("download_fallback_detour", it) }
             }
         }
     }

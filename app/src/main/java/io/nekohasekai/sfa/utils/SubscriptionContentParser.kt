@@ -464,6 +464,7 @@ internal class SubscriptionContentParser(
             "service_name",
             "mode",
             "extra",
+            "x_padding_bytes",
             "mux",
             "muxProtocol",
             "muxprotocol",

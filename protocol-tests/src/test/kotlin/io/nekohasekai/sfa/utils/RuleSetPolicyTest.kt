@@ -13,6 +13,17 @@ class RuleSetPolicyTest {
         )
 
     @Test
+    fun downloadsRetryThroughSelectedProxyAndDisabledUpdatesRemoveFallback() {
+        val root = JSONObject(UserRoutingConfig.applyToConfig(
+            """{"outbounds":[{"type":"selector","tag":"proxy","outbounds":["server"]},{"type":"vless","tag":"server"}],"route":{"rule_set":[{"type":"remote","tag":"test","format":"binary","url":"https://example.org/test.srs"}]}}""", "{}"))
+        val e = root.getJSONObject("route").getJSONArray("rule_set").getJSONObject(0)
+        assertEquals("direct", e.getString("download_detour"))
+        assertEquals("proxy", e.getString("download_fallback_detour"))
+        RuleSetPolicy.configure(e, "/cache/test.srs", -1)
+        assertFalse(e.has("download_fallback_detour"))
+    }
+
+    @Test
     fun liveRemoteTimerKeepsCachedInitialCopy() {
         val e = entry()
         RuleSetPolicy.configure(e, "/cache/rules.srs", 1800000)

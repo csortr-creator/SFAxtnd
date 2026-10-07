@@ -7,6 +7,22 @@ import org.junit.Test
 
 class ProxyLinkParserTest {
     @Test
+    fun xhttpPaddingUriAliasPreservesRangeAndRejectsConflicts() {
+        val prefix = "vless://11111111-1111-4111-8111-111111111111@example.org:443?type=xhttp&x_padding_bytes=100-1342"
+        val extra = URLEncoder.encode("{\"xPaddingBytes\":\"100-1342\"}", "UTF-8")
+        val result = SubscriptionContentParser().parse("$prefix&extra=$extra#padding")
+        assertEquals(1, result.report.imported)
+        val nodes = JSONObject(result.config).getJSONArray("outbounds")
+        val node = (0 until nodes.length()).map { nodes.getJSONObject(it) }.single { it.has("server") }
+        val range = node.getJSONObject("transport").getJSONObject("x_padding_bytes")
+        assertEquals(100, range.getInt("from"))
+        assertEquals(1342, range.getInt("to"))
+        val conflicting = URLEncoder.encode("{\"xPaddingBytes\":\"200-1400\"}", "UTF-8")
+        assertTrue(runCatching { SubscriptionContentParser().parse("$prefix&extra=$conflicting") }.isFailure)
+        assertTrue(runCatching { SubscriptionContentParser().parse("${prefix.replace("100-1342", "broken")}") }.isFailure)
+    }
+
+    @Test
     fun serializedXhttpNullOptionsUseDefaultsWithoutDroppingTransport() {
         val uuid = "11111111-1111-4111-8111-111111111111"
         for (name in listOf("downloadSettings", "download_settings")) {

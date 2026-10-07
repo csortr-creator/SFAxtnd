@@ -867,6 +867,16 @@ internal object ProxyLinkParser {
             convertExtra(
                 params["extra"]?.takeIf { it.isNotBlank() }?.let { JSONObject(it) } ?: JSONObject()
             )
+        params["x_padding_bytes"]?.let { value ->
+            val padding = range(value)
+            val existing = result.optJSONObject("x_padding_bytes")
+            require(existing == null ||
+                (existing.getInt("from") == padding.getInt("from") &&
+                 existing.getInt("to") == padding.getInt("to"))) {
+                "Conflicting XHTTP padding parameters"
+            }
+            result.put("x_padding_bytes", padding)
+        }
         for (key in listOf("host", "path", "mode")) params[key]
             ?.takeIf { it.isNotBlank() }
             ?.let { result.put(key, it) }

@@ -1,0 +1,180 @@
+diff --git a/option/rule_set.go b/option/rule_set.go
+index a14274b..5fb07dd 100644
+--- a/option/rule_set.go
++++ b/option/rule_set.go
+@@ -179,10 +179,11 @@ type LocalRuleSet struct {
+ }
+ 
+ type RemoteRuleSet struct {
+-	URL            string             `json:"url"`
+-	InitialPath    string             `json:"initial_path,omitempty"`
+-	HTTPClient     *HTTPClientOptions `json:"http_client,omitempty"`
+-	UpdateInterval badoption.Duration `json:"update_interval,omitempty"`
++	DownloadFallbackDetour string             `json:"download_fallback_detour,omitempty" reference:"outbound"`
++	URL                    string             `json:"url"`
++	InitialPath            string             `json:"initial_path,omitempty"`
++	HTTPClient             *HTTPClientOptions `json:"http_client,omitempty"`
++	UpdateInterval         badoption.Duration `json:"update_interval,omitempty"`
+ 	// Deprecated: use http_client instead
+ 	DownloadDetour string `json:"download_detour,omitempty" reference:"outbound" schema:"omit"`
+ }
+diff --git a/route/rule/rule_set_remote.go b/route/rule/rule_set_remote.go
+index 10b1f13..2024228 100644
+--- a/route/rule/rule_set_remote.go
++++ b/route/rule/rule_set_remote.go
+@@ -44,6 +44,7 @@ type RemoteRuleSet struct {
+ 	options        option.RuleSet
+ 	updateInterval time.Duration
+ 	httpClient     *http.Client
++	fallbackClient *http.Client
+ 	access         sync.RWMutex
+ 	rules          []adapter.HeadlessRule
+ 	metadata       adapter.RuleSetMetadata
+@@ -100,6 +101,20 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
+ 	}
+ 	startContext.Register(transport)
+ 	s.httpClient = &http.Client{Transport: transport}
++	s.httpClient.Timeout = 15 * time.Second
++	if detour := s.options.RemoteOptions.DownloadFallbackDetour; detour != "" {
++		manager := service.FromContext[adapter.HTTPClientManager](s.ctx)
++		fallback, resolveErr := manager.ResolveTransport(s.ctx, s.logger, option.HTTPClientOptions{
++			DialerOptions:           option.DialerOptions{Detour: detour},
++			DisableEmptyDirectCheck: true,
++		})
++		if resolveErr != nil {
++			return E.Cause(resolveErr, "create fallback rule-set http client")
++		}
++		startContext.Register(fallback)
++		s.fallbackClient = &http.Client{Transport: fallback, Timeout: 30 * time.Second}
++	}
++
+ 	if s.cacheFile != nil {
+ 		savedSet := s.cacheFile.LoadRuleSet(s.tag)
+ 		if savedSet != nil {
+@@ -234,6 +249,19 @@ func (s *RemoteRuleSet) updateOnce() {
+ }
+ 
+ func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
++	err := s.fetchWithClient(ctx, isStart, s.httpClient)
++	if err == nil || s.fallbackClient == nil || ctx.Err() != nil {
++		return err
++	}
++	s.logger.Info("retry rule-set ", s.tag, " through fallback outbound")
++	fallbackErr := s.fetchWithClient(ctx, isStart, s.fallbackClient)
++	if fallbackErr != nil {
++		return E.Errors(err, E.Cause(fallbackErr, "fallback download"))
++	}
++	return nil
++}
++
++func (s *RemoteRuleSet) fetchWithClient(ctx context.Context, isStart bool, client *http.Client) error {
+ 	s.logger.Debug("updating rule-set ", s.tag, " from URL: ", s.url)
+ 	request, err := http.NewRequest("GET", s.url, nil)
+ 	if err != nil {
+@@ -243,9 +271,9 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
+ 		request.Header.Set("If-None-Match", s.lastEtag)
+ 	}
+ 	if !isStart {
+-		defer s.httpClient.CloseIdleConnections()
++		defer client.CloseIdleConnections()
+ 	}
+-	response, err := s.httpClient.Do(request.WithContext(ctx))
++	response, err := client.Do(request.WithContext(ctx))
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -271,10 +299,13 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
+ 	default:
+ 		return E.New("unexpected status: ", response.Status)
+ 	}
+-	content, err := io.ReadAll(response.Body)
++	content, err := io.ReadAll(io.LimitReader(response.Body, 16*1024*1024+1))
+ 	if err != nil {
+ 		return err
+ 	}
++	if len(content) > 16*1024*1024 {
++		return E.New("rule-set exceeds 16 MiB")
++	}
+ 	err = s.loadBytes(content)
+ 	if err != nil {
+ 		return err
+diff --git a/route/rule/sfa_rule_set_fallback_test.go b/route/rule/sfa_rule_set_fallback_test.go
+new file mode 100644
+index 0000000..ee29f14
+--- /dev/null
++++ b/route/rule/sfa_rule_set_fallback_test.go
+@@ -0,0 +1,74 @@
++package rule
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/stretchr/testify/require"
++)
++
++type ruleSetTestTransport func(*http.Request) (*http.Response, error)
++
++func (f ruleSetTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
++
++func TestSFARuleSetFallbackCommitsOnlyValidDownload(t *testing.T) {
++	for _, failure := range []string{"network", "status", "invalid"} {
++		t.Run(failure, func(t *testing.T) {
++			direct, fallback := 0, 0
++			ctx := context.Background()
++			s := &RemoteRuleSet{ctx: ctx, logger: logger.NOP(), tag: "fixture", url: "https://example.org/rules.json", options: option.RuleSet{Format: C.RuleSetFormatSource}}
++			s.httpClient = &http.Client{Transport: ruleSetTestTransport(func(r *http.Request) (*http.Response, error) {
++				direct++
++				if failure == "network" {
++					return nil, io.ErrUnexpectedEOF
++				}
++				code, body := 200, "invalid"
++				if failure == "status" {
++					code = 503
++				}
++				return &http.Response{StatusCode: code, Status: "fixture", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
++			})}
++			s.fallbackClient = &http.Client{Transport: ruleSetTestTransport(func(r *http.Request) (*http.Response, error) {
++				fallback++
++				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"version":3,"rules":[{"domain":["example.com"]}]}`)), Request: r}, nil
++			})}
++			require.NoError(t, s.fetch(ctx, false))
++			require.Equal(t, 1, direct)
++			require.Equal(t, 1, fallback)
++			require.False(t, s.lastUpdated.IsZero())
++			require.Len(t, s.rules, 1)
++		})
++	}
++}
++
++func TestSFARuleSetDoesNotFallbackAfterCancellationOrSuccess(t *testing.T) {
++	for _, cancel := range []bool{false, true} {
++		ctx, stop := context.WithCancel(context.Background())
++		defer stop()
++		fallback := 0
++		s := &RemoteRuleSet{ctx: ctx, logger: logger.NOP(), tag: "fixture", url: "https://example.org/rules.json", options: option.RuleSet{Format: C.RuleSetFormatSource}}
++		s.httpClient = &http.Client{Transport: ruleSetTestTransport(func(r *http.Request) (*http.Response, error) {
++			if cancel {
++				stop()
++				return nil, context.Canceled
++			}
++			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"version":3,"rules":[]}`)), Request: r}, nil
++		})}
++		s.fallbackClient = &http.Client{Transport: ruleSetTestTransport(func(r *http.Request) (*http.Response, error) { fallback++; return nil, io.ErrUnexpectedEOF })}
++		err := s.fetch(ctx, false)
++		if cancel {
++			require.Error(t, err)
++			require.True(t, s.lastUpdated.Equal(time.Time{}))
++		} else {
++			require.NoError(t, err)
++		}
++		require.Zero(t, fallback)
++	}
++}

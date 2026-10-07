@@ -1,7 +1,6 @@
 package io.nekohasekai.sfa.bg
 
 import android.net.Network
-import android.os.Build
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.sfa.Application
 import kotlinx.coroutines.CoroutineScope
@@ -10,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.net.NetworkInterface
 
 object DefaultNetworkMonitor {
@@ -25,14 +25,14 @@ object DefaultNetworkMonitor {
             defaultNetwork = it
             checkDefaultInterfaceUpdate(it)
         }
-        defaultNetwork = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Application.connectivity.activeNetwork
-        } else {
-            DefaultNetworkListener.get()
-        }
+        defaultNetwork = withTimeout(10000L) { DefaultNetworkListener.get() }
+        checkDefaultInterfaceUpdate(defaultNetwork)
     }
 
     suspend fun stop() {
+        checkJob?.cancel()
+        checkJob = null
+        defaultNetwork = null
         DefaultNetworkListener.stop(this)
     }
 

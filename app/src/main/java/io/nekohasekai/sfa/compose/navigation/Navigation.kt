@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -84,6 +85,22 @@ private val slideOutToLeft:
         )
     }
 
+
+private val bottomTabOrder =
+    listOf(
+        Screen.Dashboard.route,
+        Screen.Subscriptions.route,
+        Screen.Settings.route,
+    )
+
+private fun tabIndex(route: String?): Int {
+    if (route == null) return -1
+    val base = route.substringBefore('/')
+    return bottomTabOrder.indexOf(base)
+}
+
+private val tabTween = tween<IntOffset>(durationMillis = 220)
+
 @Composable
 fun NavHost(
     navController: NavHostController,
@@ -107,10 +124,52 @@ fun NavHost(
     androidx.navigation.compose.NavHost(
         navController = navController,
         startDestination = Screen.Dashboard.route,
-        enterTransition = { fadeIn(tween(220)) },
-        exitTransition = { fadeOut(tween(140)) },
-        popEnterTransition = { fadeIn(tween(220)) },
-        popExitTransition = { fadeOut(tween(140)) },
+        enterTransition = {
+            val from = tabIndex(initialState.destination.route)
+            val to = tabIndex(targetState.destination.route)
+            when {
+                from >= 0 && to >= 0 && to > from ->
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tabTween,
+                    )
+                from >= 0 && to >= 0 && to < from ->
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tabTween,
+                    )
+                else -> fadeIn(tween(160))
+            }
+        },
+        exitTransition = {
+            val from = tabIndex(initialState.destination.route)
+            val to = tabIndex(targetState.destination.route)
+            when {
+                from >= 0 && to >= 0 && to > from ->
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tabTween,
+                    )
+                from >= 0 && to >= 0 && to < from ->
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tabTween,
+                    )
+                else -> fadeOut(tween(120))
+            }
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tabTween,
+            )
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tabTween,
+            )
+        },
         modifier = modifier,
     ) {
         composable(Screen.Dashboard.route) {

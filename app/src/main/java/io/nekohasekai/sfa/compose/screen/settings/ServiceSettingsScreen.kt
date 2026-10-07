@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,7 +31,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -48,11 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import io.nekohasekai.sfa.R
@@ -92,7 +86,6 @@ fun ServiceSettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
-    var allowBypass by remember { mutableStateOf(Settings.allowBypass) }
     val notifyApplyChange = rememberApplyServiceChangeNotifier(serviceStatus)
     val requestBatteryOptimizationLauncher =
         rememberLauncherForActivityResult(
@@ -198,96 +191,6 @@ fun ServiceSettingsScreen(
             }
         }
 
-        // VPN Section
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "VPN",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-        )
-
-        Card(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            colors =
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ),
-        ) {
-            val descriptionText = stringResource(R.string.allow_bypass_description)
-            val linkText = stringResource(R.string.android_documentation)
-            val linkColor = MaterialTheme.colorScheme.primary
-            val textColor = MaterialTheme.colorScheme.onSurfaceVariant
-            val textStyle = MaterialTheme.typography.bodyMedium
-
-            ListItem(
-                headlineContent = {
-                    Text(
-                        stringResource(R.string.allow_bypass),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                },
-                supportingContent = {
-                    val annotatedString = buildAnnotatedString {
-                        withStyle(SpanStyle(color = textColor)) {
-                            append(descriptionText)
-                        }
-                        append("\n\n")
-                        pushStringAnnotation(tag = "URL", annotation = ALLOW_BYPASS_DOC_URL)
-                        withStyle(
-                            SpanStyle(
-                                color = linkColor,
-                                textDecoration = TextDecoration.Underline,
-                            ),
-                        ) {
-                            append(linkText)
-                        }
-                        pop()
-                    }
-                    ClickableText(
-                        text = annotatedString,
-                        style = textStyle,
-                        modifier = Modifier.padding(top = 4.dp),
-                        onClick = { offset ->
-                            annotatedString.getStringAnnotations(
-                                tag = "URL",
-                                start = offset,
-                                end = offset,
-                            ).firstOrNull()?.let {
-                                context.launchCustomTab(it.item)
-                            }
-                        },
-                    )
-                },
-                trailingContent = {
-                    Switch(
-                        checked = allowBypass,
-                        onCheckedChange = { checked ->
-                            allowBypass = checked
-                            scope.launch(Dispatchers.IO) {
-                                Settings.allowBypass = checked
-                                withContext(Dispatchers.Main) {
-                                    notifyApplyChange(UiEvent.ApplyServiceChange.Mode.Reload)
-                                }
-                            }
-                        },
-                    )
-                },
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)),
-                colors =
-                ListItemDefaults.colors(
-                    containerColor = Color.Transparent,
-                ),
-            )
-        }
-
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-
-private const val ALLOW_BYPASS_DOC_URL =
-    "https://developer.android.com/reference/android/net/VpnService.Builder#allowBypass()"

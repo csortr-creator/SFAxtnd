@@ -90,6 +90,15 @@ internal fun NetworkOptionsContent(core: Boolean) {
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
+            var allowBypass by remember { mutableStateOf(Settings.allowBypass) }
+            SettingToggle(
+                "Разрешить обход VPN",
+                "Если включено, приложения могут обойти это VPN-соединение и использовать базовую сеть напрямую (VpnService.allowBypass). При включённой строгой маршрутизации обход всё равно ограничивается.",
+                allowBypass,
+            ) {
+                allowBypass = it
+                Settings.allowBypass = it
+            }
         }
         PreferenceSection("Проверка задержки", Icons.Outlined.Speed) {
             SettingNumber(

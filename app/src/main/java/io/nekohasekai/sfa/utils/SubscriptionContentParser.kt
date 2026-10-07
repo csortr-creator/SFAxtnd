@@ -101,12 +101,15 @@ internal class SubscriptionContentParser(
                 accept(index + 1, name) {
                     val node = parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
                     val query = ProxyLinkParser.query(line.substringBefore('#').substringAfter('?', ""))
-                    if (node.optString("type") == "hysteria2" && query["fp"].orEmpty().isNotBlank()) {
-                        val warning = "Hysteria 2 использует QUIC TLS ядра; TCP uTLS fingerprint не применяется."
-                        if (warning !in warnings) warnings.add(warning)
-                    }
-                    if (Regex("[?&](spx|spiderX)=").containsMatchIn(line)) {
-                        val warning = "Параметр Reality spiderX не переносится: используется реализация Reality ядра sing-box."
+                    // Hysteria2 fp is mapped to tls.utls when present (QUIC path still uses core TLS).
+                    val spiderMatch = Regex("[?&](?:spx|spiderX)=([^&#]*)").find(line)
+                    val spiderValue = spiderMatch?.groupValues?.getOrNull(1)?.let {
+                        java.net.URLDecoder.decode(it, "UTF-8")
+                    }.orEmpty()
+                    // Default Xray spiderX is empty or "/"; only warn for custom paths (not supported by sing-box Reality).
+                    if (spiderValue.isNotBlank() && spiderValue != "/") {
+                        val warning =
+                            "Параметр Reality spiderX ($spiderValue) не поддерживается ядром sing-box и пропущен."
                         if (warning !in warnings) warnings.add(warning)
                     }
                     node

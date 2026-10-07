@@ -748,17 +748,8 @@ internal object ForeignSubscriptionParser {
             "Xray JSON",
             servers,
             listOf(
-                "Из Xray импортируются серверы. Inbounds, маршрутизация, DNS, группы, Reality spiderX/show и системные настройки Xray не переносятся; используются настройки SFAxtnd."
-            ) +
-                (if (
-                    servers.isNotEmpty() &&
-                        root.toString().contains("\"hysteria\"") &&
-                        root.toString().contains("\"fingerprint\"")
-                )
-                    listOf(
-                        "Hysteria 2 использует QUIC TLS ядра; TCP uTLS fingerprint не применяется."
-                    )
-                else emptyList()),
+                "Из Xray импортируются серверы. Inbounds, маршрутизация, DNS, группы, Reality spiderX/show и системные настройки Xray не переносятся; используются настройки SFAxtnd.",
+            ),
         )
     }
 

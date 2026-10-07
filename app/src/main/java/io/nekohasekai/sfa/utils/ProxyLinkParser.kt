@@ -552,6 +552,14 @@ internal object ProxyLinkParser {
         params["alpn"]
             ?.takeIf { it.isNotBlank() }
             ?.let { tls.put("alpn", JSONArray(it.split(','))) }
+        params["fp"]
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                tls.put(
+                    "utls",
+                    JSONObject().put("enabled", true).put("fingerprint", it),
+                )
+            }
         params["ech"]
             ?.takeIf { it.isNotBlank() }
             ?.let {

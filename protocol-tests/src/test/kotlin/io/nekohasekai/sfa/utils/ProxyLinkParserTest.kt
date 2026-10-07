@@ -7,6 +7,66 @@ import org.junit.Test
 
 class ProxyLinkParserTest {
     @Test
+    fun serializedXhttpNullOptionsUseDefaultsWithoutDroppingTransport() {
+        val uuid = "11111111-1111-4111-8111-111111111111"
+        for (name in listOf("downloadSettings", "download_settings")) {
+            val extra =
+                JSONObject()
+                    .put(name, JSONObject.NULL)
+                    .put("headers", JSONObject.NULL)
+                    .put("xmux", JSONObject.NULL)
+                    .put("extra", JSONObject.NULL)
+                    .put("scMaxConcurrentPosts", 3)
+            val encoded = URLEncoder.encode(extra.toString(), "UTF-8")
+            val result =
+                SubscriptionContentParser()
+                    .parse(
+                        "vless://$uuid@example.org:443?type=xhttp&mode=packet-up&path=%2Ffixture&extra=$encoded#null-options"
+                    )
+            assertEquals(1, result.report.imported)
+            assertTrue(result.report.issues.isEmpty())
+            val array = JSONObject(result.config).getJSONArray("outbounds")
+            val node =
+                (0 until array.length()).map { array.getJSONObject(it) }.single { it.has("server") }
+            val transport = node.getJSONObject("transport")
+            assertEquals("xhttp", transport.getString("type"))
+            assertEquals("packet-up", transport.getString("mode"))
+            assertEquals("/fixture", transport.getString("path"))
+            assertEquals(3, transport.getInt("sc_max_concurrent_posts"))
+            for (field in listOf("download_settings", "headers", "xmux", "extra")) assertFalse(
+                transport.has(field)
+            )
+            java.io.File("build/native-configs").mkdirs()
+            java.io
+                .File("build/native-configs/import-xhttp-null-$name.json")
+                .writeText(result.config)
+        }
+    }
+
+    @Test
+    fun malformedXhttpDownloadAndUnknownNullOptionsRemainErrors() {
+        for (value in listOf("broken", 12, org.json.JSONArray())) {
+            val extra = JSONObject().put("downloadSettings", value).toString()
+            assertTrue(
+                runCatching {
+                        ProxyLinkParser.transport("xhttp", mapOf("extra" to extra), "example.org")
+                    }
+                    .isFailure
+            )
+        }
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.transport(
+                        "xhttp",
+                        mapOf("extra" to "{\"unknownWireFeature\":null}"),
+                        "example.org",
+                    )
+                }
+                .isFailure
+        )
+    }
+
+    @Test
     fun concurrentPostTuningIsPreserved() {
         val extra = URLEncoder.encode("{\"scMaxConcurrentPosts\":4}", "UTF-8")
         val result =

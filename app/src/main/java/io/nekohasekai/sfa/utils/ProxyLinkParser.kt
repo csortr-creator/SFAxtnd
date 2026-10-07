@@ -739,6 +739,12 @@ internal object ProxyLinkParser {
         val result = JSONObject()
         for (key in extra.keys()) {
             val value = extra.get(key)
+            if (
+                value === JSONObject.NULL &&
+                    key in
+                        setOf("downloadSettings", "download_settings", "headers", "xmux", "extra")
+            )
+                continue
             when {
                 key in ranges -> result.put(ranges.getValue(key), range(value))
                 key in fields -> result.put(fields.getValue(key), value)

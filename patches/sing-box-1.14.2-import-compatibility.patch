@@ -313,6 +313,22 @@ diff --git a/transport/v2rayxhttp/interop_test.go b/transport/v2rayxhttp/interop
  			},
  		},
  		{
+@@ -720,6 +728,15 @@
+ func xrayXHTTPStreamSettingsWithOptions(alpn string, options option.V2RayXHTTPOptions, tlsSettings map[string]any) map[string]any {
+ 	tlsSettings["alpn"] = []string{alpn}
+ 	xhttpSettings := map[string]any{"path": options.Path, "mode": options.Mode}
++	if options.SCMaxEachPostBytes.To != 0 {
++		xhttpSettings["scMaxEachPostBytes"] = xrayRange(options.SCMaxEachPostBytes)
++	}
++	if options.SCMinPostsIntervalMS.To != 0 {
++		xhttpSettings["scMinPostsIntervalMs"] = xrayRange(options.SCMinPostsIntervalMS)
++	}
++	if options.SCMaxBufferedPosts != 0 {
++		xhttpSettings["scMaxBufferedPosts"] = options.SCMaxBufferedPosts
++	}
+ 	if options.XPaddingBytes.To != 0 {
+ 		xhttpSettings["xPaddingBytes"] = xrayRange(options.XPaddingBytes)
+ 	}
 diff --git a/common/tls/utls_client.go b/common/tls/utls_client.go
 --- a/common/tls/utls_client.go
 +++ b/common/tls/utls_client.go

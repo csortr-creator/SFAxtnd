@@ -63,3 +63,13 @@ of SNI. These fields do not replace the existing `certificate_sha256` behavior.
 Handshake tests cover matching and incorrect pins, CA chains, independent names
 and untrusted certificates. Upload tests cover concurrency limits, packet
 splitting, cancellation and worker failure. CI runs them with the race detector.
+
+`sing-box-1.14.2-import-compatibility.patch` follows the transport patch. It adds
+bounded parallel packet-up POST requests with cancellation and ordered sequence
+numbers, and preserves Xray `pcs`/`vcn` semantics in both Go TLS and uTLS.
+An exact leaf certificate pin accepts that certificate; a pinned CA still
+requires chain and hostname verification. Verification names are independent
+of SNI. These fields do not replace the existing `certificate_sha256` behavior.
+Handshake tests cover matching and incorrect pins, CA chains, independent names
+and untrusted certificates. Upload tests cover concurrency limits, packet
+splitting, cancellation and worker failure. CI runs them with the race detector.

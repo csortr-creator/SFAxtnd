@@ -339,6 +339,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ env.APP_VERSION }}"
+          target_commitish: "${{ github.sha }}"
           name: "SFAxtnd v${{ env.APP_VERSION }}"
           body_path: RELEASE_NOTES.md
           files: dist/*.apk

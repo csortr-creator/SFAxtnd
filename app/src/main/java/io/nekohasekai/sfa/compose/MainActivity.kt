@@ -31,6 +31,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -391,6 +394,20 @@ class MainActivity :
         // Error dialog state for UiEvent.ShowError
         var showErrorDialog by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
+        val importReports = remember { androidx.compose.runtime.mutableStateListOf<UiEvent.ImportReport>() }
+        importReports.firstOrNull()?.let { report ->
+            AlertDialog(
+                onDismissRequest = { importReports.removeAt(0) },
+                title = { Text("Отчёт импорта") },
+                text = {
+                    Column(modifier = Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(report.profileName, style = MaterialTheme.typography.titleMedium)
+                        Text(report.text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { importReports.removeAt(0) }) { Text("Готово") } },
+            )
+        }
         var pendingApplyServiceChangeMode by remember { mutableStateOf<UiEvent.ApplyServiceChange.Mode?>(null) }
         var activeApplyServiceChangeMode by remember { mutableStateOf<UiEvent.ApplyServiceChange.Mode?>(null) }
         var applyServiceChangeJob by remember { mutableStateOf<Job?>(null) }
@@ -938,6 +955,7 @@ class MainActivity :
                         showErrorDialog = true
                     }
 
+                    is UiEvent.ImportReport -> importReports.add(event)
                     is UiEvent.OpenUrl -> {
                         this@MainActivity.launchCustomTab(event.url)
                     }

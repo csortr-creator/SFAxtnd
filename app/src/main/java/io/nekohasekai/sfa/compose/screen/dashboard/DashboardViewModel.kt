@@ -60,6 +60,7 @@ data class DashboardUiState(
     val showAddProfileSheet: Boolean = false,
     val updatingProfileId: Long? = null,
     val updatedProfileId: Long? = null,
+    val isUpdatingAll: Boolean = false,
     // Status
     val memory: String = "",
     val goroutines: String = "",
@@ -300,60 +301,54 @@ class DashboardViewModel :
     }
 
     fun updateProfile(profile: Profile) {
-        if (profile.typed.type != TypedProfile.Type.Remote) return
-
+        if (profile.typed.type != TypedProfile.Type.Remote || currentState.updatingProfileId != null || currentState.isUpdatingAll) return
+        updateState { copy(updatingProfileId = profile.id) }
         viewModelScope.launch(Dispatchers.IO) {
-            // Set updating state
-            withContext(Dispatchers.Main) {
-                updateState { copy(updatingProfileId = profile.id) }
-            }
-
             try {
-                // Fetch remote config
-                val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
-                val content = result.config
-                Libbox.checkConfig(content)
+                refreshProfile(profile)
+                io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
+                updateState { copy(updatedProfileId = profile.id) }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { sendErrorMessage("Не удалось обновить подписку ${profile.name}: ${e.message}") }
+            finally { updateState { copy(updatingProfileId = null) } }
+            delay(1500)
+            updateState { if (updatedProfileId == profile.id) copy(updatedProfileId = null) else this }
+        }
+    }
 
-                // Check if content changed
-                val file = File(profile.typed.path)
-                var contentChanged = false
-                if (!file.exists() || file.readText() != content) {
-                    file.writeText(content)
-                    contentChanged = true
+    fun updateAllProfiles() {
+        if (currentState.isUpdatingAll || currentState.updatingProfileId != null) return
+        val profiles = currentState.profiles.filter { it.typed.type == TypedProfile.Type.Remote }
+        if (profiles.isEmpty()) return
+        updateState { copy(isUpdatingAll = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val reports = mutableListOf<String>()
+            try {
+                for (profile in profiles) {
+                    updateState { copy(updatingProfileId = profile.id) }
+                    try {
+                        refreshProfile(profile)
+                        reports.add("${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile)}")
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Exception) { reports.add("${profile.name}\nНе удалось обновить: ${e.message}") }
                 }
+                io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(UiEvent.ImportReport("Обновление всех подписок", reports.joinToString("\n\n")))
+            } finally { updateState { copy(isUpdatingAll = false, updatingProfileId = null) } }
+        }
+    }
 
-                // Update last updated time
-                result.report.save(profile.typed.path)
-                profile.typed.lastUpdated = Date()
-                ProfileManager.update(profile)
-
-                // Reload profiles
-                loadProfiles()
-
-                // Show success state
-                withContext(Dispatchers.Main) {
-                    updateState { copy(updatingProfileId = null, updatedProfileId = profile.id) }
-                }
-
-                // Clear success state after delay
-                withContext(Dispatchers.Main) {
-                    delay(1500)
-                    updateState { copy(updatedProfileId = null) }
-                }
-
-                // Restart service if this is the selected profile and content changed
-                if (contentChanged && profile.id == Settings.selectedProfile) {
-                    withContext(Dispatchers.Main) {
-                        sendGlobalEvent(UiEvent.RequestReconnectService)
-                    }
-                }
-            } catch (e: Exception) {
-                sendErrorMessage("Failed to update profile: ${e.message}")
-                // Clear updating state on error
-                withContext(Dispatchers.Main) {
-                    updateState { copy(updatingProfileId = null) }
-                }
-            }
+    private suspend fun refreshProfile(profile: Profile) {
+        val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
+        Libbox.checkConfig(result.config)
+        val file = File(profile.typed.path)
+        val changed = !file.exists() || file.readText() != result.config
+        if (changed) file.writeText(result.config)
+        result.report.save(profile.typed.path)
+        profile.typed.lastUpdated = Date()
+        ProfileManager.update(profile)
+        loadProfiles()
+        if (changed && profile.id == Settings.selectedProfile && _serviceStatus.value == Status.Started) {
+            sendGlobalEvent(UiEvent.RequestReconnectService)
         }
     }
 

@@ -85,7 +85,6 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.shareProfile
 import io.nekohasekai.sfa.ktx.shareProfileAsJson
-import io.nekohasekai.sfa.utils.SubscriptionImportReport
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -249,21 +248,7 @@ fun ProfilesCard(
                 )
             }
 
-            Surface(
-                onClick = onShowAddProfileSheet,
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.add_profile),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -772,16 +757,6 @@ private fun ShareButton(
     onShareURL: () -> Unit,
     onShareQRS: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var reportText by remember { mutableStateOf<String?>(null) }
-    reportText?.let { text ->
-        AlertDialog(
-            onDismissRequest = { reportText = null },
-            title = { Text("Отчёт импорта") },
-            text = { Text(text, modifier = Modifier.verticalScroll(rememberScrollState())) },
-            confirmButton = { TextButton(onClick = { reportText = null }) { Text("Закрыть") } },
-        )
-    }
     var expanded by remember { mutableStateOf(false) }
 
     Box {
@@ -798,19 +773,6 @@ private fun ShareButton(
                 onClick = {
                     expanded = false
                     onEdit()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Отчёт импорта") },
-                onClick = {
-                    expanded = false
-                    scope.launch {
-                        reportText =
-                            withContext(Dispatchers.IO) {
-                                SubscriptionImportReport.read(profile.typed.path)?.displayText()
-                                    ?: "Для этой версии подписки отчёта ещё нет. Обновите подписку."
-                            }
-                    }
                 },
             )
             HorizontalDivider()
@@ -928,20 +890,6 @@ private fun SubscriptionMetadata(profile: Profile) {
                         .getOrNull()
                 }
         }
-    val report by
-        produceState<SubscriptionImportReport?>(null, profile.id, profile.typed.lastUpdated.time) {
-            value =
-                withContext(Dispatchers.IO) { SubscriptionImportReport.read(profile.typed.path) }
-        }
-    report?.let {
-        Text(
-            it.summary() + if (it.warnings.isEmpty()) "" else " · Есть замечания",
-            style = MaterialTheme.typography.bodySmall,
-            color =
-                if (it.issues.isEmpty() && it.warnings.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.error,
-        )
-    }
     Text(
         listOfNotNull(
                 if (profile.typed.type == TypedProfile.Type.Remote) "Подписка"

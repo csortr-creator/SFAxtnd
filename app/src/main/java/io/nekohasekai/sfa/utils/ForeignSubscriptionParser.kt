@@ -729,7 +729,7 @@ internal object ForeignSubscriptionParser {
             servers,
             listOf(
                 "Из Xray импортируются серверы. Inbounds, маршрутизация, DNS, группы, Reality spiderX/show и системные настройки Xray не переносятся; используются настройки SFAxtnd."
-            ),
+            ) + if (root.toString().contains("\"scMaxConcurrentPosts\"")) listOf("XHTTP: scMaxConcurrentPosts не переносится; POST отправляются последовательно. Параллельность загрузки отличается.") else emptyList(),
         )
     }
 

@@ -253,6 +253,7 @@ class ProfileImportHandler(private val context: Context) {
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
 
+        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
         return ImportResult.Success(profile)
     }
 
@@ -283,6 +284,7 @@ class ProfileImportHandler(private val context: Context) {
         // Create profile in database and select it
         ProfileManager.create(profile, andSelect = true)
 
+        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
         return ImportResult.Success(profile)
     }
 
@@ -391,6 +393,7 @@ class ProfileImportHandler(private val context: Context) {
             // Create profile in database and select it
             ProfileManager.create(profile, andSelect = true)
 
+            io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
             ImportResult.Success(profile)
         } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error importing JSON configuration")

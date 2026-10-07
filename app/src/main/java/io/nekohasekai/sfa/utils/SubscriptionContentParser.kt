@@ -100,6 +100,14 @@ internal class SubscriptionContentParser(
                         .take(120)
                 accept(index + 1, name) {
                     val node = parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
+                    val query = ProxyLinkParser.query(line.substringBefore('#').substringAfter('?', ""))
+                    query["extra"]?.let { extraText ->
+                        val extra = JSONObject(extraText)
+                        if (extra.has("scMaxConcurrentPosts") || extra.has("sc_max_concurrent_posts")) {
+                            val warning = "XHTTP: scMaxConcurrentPosts не переносится; ядро отправляет POST последовательно. Сервер импортирован, но параллельность загрузки отличается."
+                            if (warning !in warnings) warnings.add(warning)
+                        }
+                    }
                     if (Regex("[?&](spx|spiderX)=").containsMatchIn(line)) {
                         val warning = "Параметр Reality spiderX не переносится: используется реализация Reality ядра sing-box."
                         if (warning !in warnings) warnings.add(warning)
@@ -116,7 +124,14 @@ internal class SubscriptionContentParser(
     }
 
     private fun safeParserReason(error: Exception): String {
-        val message = error.message.orEmpty().substringBefore(": ")
+        val rawMessage = error.message.orEmpty()
+        val detail = rawMessage.substringAfter(": ", "")
+        val detailedPrefixes = setOf("Unsupported share-link parameter", "Unsupported Hysteria parameter", "Unsupported XHTTP xmux parameter", "Unsupported XHTTP parameter", "Unsupported server field")
+        val prefix = rawMessage.substringBefore(": ")
+        if (prefix in detailedPrefixes && Regex("[A-Za-z][A-Za-z0-9_.-]{0,49}").matches(detail)) {
+            return "Неподдерживаемый параметр: $detail ($prefix)"
+        }
+        val message = prefix
         val safePrefixes =
             listOf(
                 "Missing ",
@@ -427,7 +442,8 @@ internal class SubscriptionContentParser(
     }
 
     private fun checkParameters(params: Map<String, String>, allowed: Set<String>) {
-        require(params.keys.all { it in allowed }) { "Unsupported share-link parameter" }
+        val unsupported = params.keys.firstOrNull { it !in allowed }
+        require(unsupported == null) { "Unsupported share-link parameter: $unsupported" }
         params["allowInsecure"]?.let {
             require(it.lowercase() in setOf("0", "1", "false", "true")) {
                 "Invalid TLS verification flag"

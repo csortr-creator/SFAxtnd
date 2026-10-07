@@ -96,7 +96,8 @@ internal object ProxyLinkParser {
             "https" -> tlsParameters + "fp"
             else -> emptySet()
         }
-        require(params.keys.all { it in allowed }) { "Unsupported share-link parameter" }
+        val unsupported = params.keys.firstOrNull { it !in allowed }
+        require(unsupported == null) { "Unsupported share-link parameter: $unsupported" }
         for ((alias, canonical) in mapOf("peer" to "sni", "insecure" to "allowInsecure", "congestion-control" to "congestion_control", "udp-relay-mode" to "udp_relay_mode", "reduce-rtt" to "zero_rtt_handshake")) {
             require(params[alias] == null || params[canonical] == null || params[alias] == params[canonical]) { "Invalid conflicting share-link aliases" }
         }
@@ -217,9 +218,18 @@ internal object ProxyLinkParser {
         val v2 = scheme != "hysteria"
         val body = line.substringAfter("://").substringBefore('#')
         val authority = body.substringBefore('?').trimEnd('/')
-        val params = query(body.substringAfter('?', ""))
-        val allowed = setOf("auth", "sni", "peer", "insecure", "pinSHA256", "alpn", "ech", "mport", "hopInterval", "obfs", "obfs-password", "obfsPassword", "protocol", "obfsParam", "upmbps", "downmbps", "up_mbps", "down_mbps")
-        require(params.keys.all { it in allowed }) { "Unsupported Hysteria parameter" }
+        val params = query(body.substringAfter('?', "")).toMutableMap()
+        for ((alias, canonical) in mapOf("allowInsecure" to "insecure", "skip-cert-verify" to "insecure", "serverName" to "sni", "obfsPassword" to "obfs-password", "hop-interval" to "hopInterval", "up" to "upmbps", "down" to "downmbps")) {
+            params.remove(alias)?.let { value ->
+                require(params[canonical] == null || params[canonical] == value) { "Invalid conflicting Hysteria aliases" }
+                params[canonical] = value
+            }
+        }
+        val allowed = setOf("auth", "sni", "peer", "insecure", "pinSHA256", "alpn", "ech", "mport", "hopInterval", "obfs", "obfs-password", "obfsPassword", "protocol", "obfsParam", "upmbps", "downmbps", "up_mbps", "down_mbps", "security", "type")
+        val unsupported = params.keys.firstOrNull { it !in allowed }
+        require(unsupported == null) { "Unsupported Hysteria parameter: $unsupported" }
+        require(params["security"].isNullOrBlank() || params["security"] == "tls") { "Unsupported Hysteria security" }
+        require(params["type"].isNullOrBlank() || params["type"] == "udp") { "Unsupported Hysteria transport" }
         val auth = if ('@' in authority) decode(authority.substringBeforeLast('@')) else params["auth"].orEmpty()
         val server = endpoint(authority.substringAfterLast('@'))
         val tls = JSONObject().put("enabled", true)
@@ -276,7 +286,7 @@ internal object ProxyLinkParser {
     private fun bandwidth(result: JSONObject, params: Map<String, String>, direction: String, required: Boolean) {
         val value = params["${direction}mbps"] ?: params["${direction}_mbps"]
         if (value != null) {
-            val mbps = value.toIntOrNull()
+            val mbps = Regex("(?i)^(\\d+)(?:\\s*(?:mbps|m))?$").matchEntire(value.trim())?.groupValues?.get(1)?.toIntOrNull()
             require(mbps != null && mbps > 0) { "Invalid Hysteria $direction bandwidth" }
             result.put("${direction}_mbps", mbps)
         } else if (required) {
@@ -323,7 +333,7 @@ internal object ProxyLinkParser {
     )
     private val xmuxRanges = mapOf(
         "maxConcurrency" to "max_concurrency", "maxConnections" to "max_connections",
-        "cMaxReuseTimes" to "c_max_reuse_times", "hMaxRequestTimes" to "h_max_request_times",
+        "cMaxReuseTimes" to "c_max_reuse_times", "maxReuseTimes" to "c_max_reuse_times", "hMaxRequestTimes" to "h_max_request_times",
         "hMaxReusableSecs" to "h_max_reusable_secs",
     )
 
@@ -346,11 +356,15 @@ internal object ProxyLinkParser {
                 key in fields -> result.put(fields.getValue(key), value)
                 key in ranges.values -> result.put(key, range(value))
                 key in fields.values -> result.put(key, value)
+                key == "scMaxConcurrentPosts" || key == "sc_max_concurrent_posts" -> {
+                    require(value.toString().toIntOrNull()?.let { it in 0..1024 } == true) { "Invalid XHTTP concurrent POST limit" }
+                }
                 key == "xmux" -> {
                     val converted = JSONObject()
                     val source = value as? JSONObject ?: error("Invalid XHTTP xmux options")
                     for (field in source.keys()) {
                         val name = xmuxRanges[field] ?: field
+                        require(!converted.has(name)) { "Invalid conflicting XHTTP xmux aliases" }
                         when {
                             name in xmuxRanges.values -> converted.put(name, range(source.get(field)))
                             field == "hKeepAlivePeriod" || field == "h_keep_alive_period" -> converted.put("h_keep_alive_period", source.get(field))

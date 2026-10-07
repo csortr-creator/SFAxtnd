@@ -206,6 +206,9 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                         }
                     }
 
+                if (state.profileType == ProfileType.Remote || state.profileSource == ProfileSource.Import) {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
+                }
                 _uiState.update {
                     it.copy(
                         isSaving = false,

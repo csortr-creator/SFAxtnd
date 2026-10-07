@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 sealed class UiEvent {
     data class ErrorMessage(val message: String) : UiEvent()
 
+    data class ImportReport(val profileName: String, val text: String) : UiEvent()
+
     data class OpenUrl(val url: String) : UiEvent()
 
     data class EditProfile(val profileId: Long) : UiEvent()

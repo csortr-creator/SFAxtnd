@@ -3,35 +3,29 @@ package io.nekohasekai.sfa.compose.screen.dashboard
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -43,7 +37,6 @@ import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.RemoteControlManager
-import kotlinx.coroutines.launch
 
 data class CardRenderItem(val cards: List<CardGroup>, val isRow: Boolean)
 
@@ -67,68 +60,49 @@ fun DashboardScreen(
         TopAppBar(
             title = { Text(stringResource(R.string.title_subscriptions)) },
             actions = {
-                Box {
-                    IconButton(onClick = { showOthersMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(R.string.title_others),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showOthersMenu,
-                        onDismissRequest = { showOthersMenu = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.dashboard_items)) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.GridView,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
+                IconButton(
+                    onClick = viewModel::updateAllProfiles,
+                    enabled =
+                        !isRemote &&
+                            !uiState.isUpdatingAll &&
+                            uiState.updatingProfileId == null &&
+                            uiState.profiles.any {
+                                it.typed.type ==
+                                    io.nekohasekai.sfa.database.TypedProfile.Type.Remote
                             },
-                            onClick = {
-                                showOthersMenu = false
-                                viewModel.toggleCardSettingsDialog()
-                            },
+                ) {
+                    if (uiState.isUpdatingAll)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
                         )
-                        RemoteControlMenuItems(
-                            servers = remoteServers,
-                            onAction = { showOthersMenu = false },
-                        )
+                    else Icon(Icons.Default.Refresh, "Обновить все подписки")
+                }
+                IconButton(onClick = viewModel::showAddProfileSheet, enabled = !isRemote) {
+                    Icon(Icons.Default.Add, "Добавить подписку")
+                }
+                if (remoteServers.isNotEmpty())
+                    Box {
+                        IconButton(onClick = { showOthersMenu = true }) {
+                            Icon(Icons.Default.Dns, "Удалённое управление")
+                        }
+                        DropdownMenu(
+                            expanded = showOthersMenu,
+                            onDismissRequest = { showOthersMenu = false },
+                        ) {
+                            RemoteControlMenuItems(
+                                servers = remoteServers,
+                                onAction = { showOthersMenu = false },
+                                leadingDivider = false,
+                            )
+                        }
                     }
-                }
-            },
-        )
-    }
-
-    val sheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    // Show dashboard settings bottom sheet
-    if (uiState.showCardSettingsDialog) {
-        DashboardSettingsBottomSheet(
-            sheetState = sheetState,
-            visibleCards = uiState.visibleCards,
-            cardOrder = uiState.cardOrder,
-            onToggleCard = viewModel::toggleCardVisibility,
-            onReorderCards = viewModel::reorderCards,
-            onResetOrder = viewModel::resetCardOrder,
-            onDismiss = {
-                scope.launch {
-                    sheetState.hide()
-                    viewModel.closeCardSettingsDialog()
-                }
             },
         )
     }
 
     if (isRemote && !remoteConnected) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -136,20 +110,15 @@ fun DashboardScreen(
 
     val scaffoldPadding = LocalScaffoldPadding.current
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        val bottomPadding = when {
-            showStartFab -> 88.dp
-            showStatusBar -> 74.dp
-            else -> 0.dp
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        val bottomPadding =
+            when {
+                showStartFab -> 88.dp
+                showStatusBar -> 74.dp
+                else -> 0.dp
+            }
         LazyColumn(
-            modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(scaffoldPadding)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(scaffoldPadding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = bottomPadding),
         ) {
@@ -183,4 +152,3 @@ fun DashboardScreen(
         }
     }
 }
-

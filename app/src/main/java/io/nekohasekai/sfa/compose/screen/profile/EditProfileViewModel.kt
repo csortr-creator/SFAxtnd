@@ -272,6 +272,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 result.report.save(profile.typed.path)
                 profile.typed.lastUpdated = Date()
                 ProfileManager.update(profile)
+                io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
 
                 // Update UI state with success indicator
                 _uiState.update {

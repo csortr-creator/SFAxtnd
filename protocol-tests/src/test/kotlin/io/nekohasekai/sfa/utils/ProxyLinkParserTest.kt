@@ -6,6 +6,41 @@ import org.junit.Test
 import java.net.URLEncoder
 
 class ProxyLinkParserTest {
+    @Test fun concurrentPostTuningUsesExplicitlyReportedSerialFallback() {
+        val extra = URLEncoder.encode("{\"scMaxConcurrentPosts\":4}", "UTF-8")
+        val result = SubscriptionContentParser().parse("vless://11111111-1111-4111-8111-111111111111@example.org:443?encryption=none&type=xhttp&extra=$extra#test")
+        assertEquals(1, result.report.imported)
+        assertTrue(result.report.warnings.single().contains("последовательно"))
+        java.io.File("build/native-configs").mkdirs()
+        java.io.File("build/native-configs/import-post-fallback.json").writeText(result.config)
+        assertTrue(runCatching { ProxyLinkParser.transport("xhttp", mapOf("extra" to "{\"scMaxConcurrentPosts\":-1}"), "example.org") }.isFailure)
+    }
+
+    @Test fun legacyXmuxReuseBudgetIsPreservedAndConflictsAreRejected() {
+        val transport = ProxyLinkParser.transport("xhttp", mapOf("extra" to "{\"xmux\":{\"maxConnections\":1,\"maxReuseTimes\":\"2-4\"}}"), "example.org")!!
+        val reuse = transport.getJSONObject("xmux").getJSONObject("c_max_reuse_times")
+        assertEquals(2, reuse.getInt("from"))
+        assertEquals(4, reuse.getInt("to"))
+        assertTrue(runCatching { ProxyLinkParser.transport("xhttp", mapOf("extra" to "{\"xmux\":{\"maxReuseTimes\":2,\"cMaxReuseTimes\":3}}"), "example.org") }.isFailure)
+    }
+
+    @Test fun hysteriaPanelAliasesPreserveTlsBandwidthAndHopSettings() {
+        val node = ProxyLinkParser.hysteria("hy2://secret@example.org:443?allowInsecure=0&serverName=tls.example.org&up=20%20Mbps&down=30&hop-interval=10&type=udp&security=tls")
+        assertFalse(node.getJSONObject("tls").getBoolean("insecure"))
+        assertEquals("tls.example.org", node.getJSONObject("tls").getString("server_name"))
+        assertEquals(20, node.getInt("up_mbps"))
+        assertEquals(30, node.getInt("down_mbps"))
+        assertEquals("10s", node.getString("hop_interval"))
+        assertTrue(runCatching { ProxyLinkParser.hysteria("hy2://secret@example.org?insecure=1&allowInsecure=0") }.isFailure)
+    }
+
+    @Test fun reportNamesUnsupportedParameterWithoutSavingItsValue() {
+        val result = SubscriptionContentParser().parse("ss://aes-128-gcm:secret@example.org:8388#good\nhy2://secret@example.org?unsupportedOption=confidential-value#bad")
+        assertEquals(1, result.report.imported)
+        assertTrue(result.report.displayText().contains("unsupportedOption"))
+        assertFalse(result.report.displayText().contains("confidential-value"))
+    }
+
     @Test fun hysteria2PreservesCredentialsTlsAndObfuscation() {
         val node = ProxyLinkParser.hysteria("hy2://user%3Apass+word@example.org:8443/?sni=tls.example.org&obfs=salamander&obfs-password=a%2Bb&insecure=0#%D0%A2%D0%B5%D1%81%D1%82")
         assertEquals("hysteria2", node.getString("type"))

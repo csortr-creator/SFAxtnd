@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Backport the XHTTP transport onto the pinned core; never silently build without it.
 CORE_PATCH="$(dirname "$0")/patches/sing-box-1.14.2-xhttp.patch"
-if git -C sing-box-core apply --reverse --check "$PWD/$CORE_PATCH" 2>/dev/null; then
+COMPAT_PATCH="$(dirname "$0")/patches/sing-box-1.14.2-import-compatibility.patch"
+if git -C sing-box-core apply --reverse --check "$PWD/$CORE_PATCH" 2>/dev/null || git -C sing-box-core apply --reverse --check "$PWD/$COMPAT_PATCH" 2>/dev/null; then
     echo "XHTTP core patch already applied"
 else
     git -C sing-box-core apply --check "$PWD/$CORE_PATCH"
@@ -36,6 +37,14 @@ if git -C sing-box-core apply --reverse --check "$PWD/$MODE_PATCH" 2>/dev/null; 
 else
     git -C sing-box-core apply --check "$PWD/$MODE_PATCH"
     git -C sing-box-core apply "$PWD/$MODE_PATCH"
+fi
+
+# Preserve Xray certificate verification and bound concurrent XHTTP uploads.
+if git -C sing-box-core apply --reverse --check "$PWD/$COMPAT_PATCH" 2>/dev/null; then
+    echo "Import compatibility patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$COMPAT_PATCH"
+    git -C sing-box-core apply "$PWD/$COMPAT_PATCH"
 fi
 
 # Получаем строку, где кончается класс HTTPClient

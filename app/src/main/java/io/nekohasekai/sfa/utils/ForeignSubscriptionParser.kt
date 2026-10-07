@@ -92,7 +92,20 @@ internal object ForeignSubscriptionParser {
                                 array.optJSONObject(i) ?: error("Invalid Xray configuration list")
                             val list =
                                 config.optJSONArray("outbounds") ?: error("Invalid Xray outbounds")
-                            for (j in 0 until list.length()) outbounds.put(list.get(j))
+                            for (j in 0 until list.length()) {
+                                val outbound = list.optJSONObject(j)
+                                if (
+                                    outbound != null &&
+                                        config.optString("remarks").isNotBlank() &&
+                                        outbound.optString("protocol") !in
+                                            setOf("freedom", "blackhole", "dns")
+                                ) {
+                                    outbounds.put(
+                                        JSONObject(outbound.toString())
+                                            .put("tag", config.getString("remarks"))
+                                    )
+                                } else outbounds.put(list.get(j))
+                            }
                         }
                         return xray(JSONObject().put("outbounds", outbounds))
                     }
@@ -702,7 +715,10 @@ internal object ForeignSubscriptionParser {
                 (settings.optJSONArray(
                         if (protocol in setOf("vmess", "vless")) "vnext" else "servers"
                     ) ?: JSONArray())
-                    .also { if (it.length() == 0) it.put(JSONObject()) }
+                    .also {
+                        if (it.length() == 0)
+                            it.put(if (protocol == "hysteria") settings else JSONObject())
+                    }
             for (j in 0 until entries.length()) {
                 val server = entries.optJSONObject(j) ?: JSONObject()
                 val users =
@@ -713,7 +729,9 @@ internal object ForeignSubscriptionParser {
                 for (k in 0 until users.length()) {
                     val position = servers.size + 1
                     val name =
-                        outbound.optString("tag").ifBlank { "Сервер $position" } +
+                        root.optString("remarks").ifBlank {
+                            outbound.optString("tag").ifBlank { "Сервер $position" }
+                        } +
                             if (entries.length() > 1 || users.length() > 1) " (${j + 1}/${k + 1})"
                             else ""
                     servers.add(
@@ -729,8 +747,73 @@ internal object ForeignSubscriptionParser {
             servers,
             listOf(
                 "Из Xray импортируются серверы. Inbounds, маршрутизация, DNS, группы, Reality spiderX/show и системные настройки Xray не переносятся; используются настройки SFAxtnd."
-            ) + if (root.toString().contains("\"scMaxConcurrentPosts\"")) listOf("XHTTP: scMaxConcurrentPosts не переносится; POST отправляются последовательно. Параллельность загрузки отличается.") else emptyList(),
+            ) +
+                (if (
+                    servers.isNotEmpty() &&
+                        root.toString().contains("\"hysteria\"") &&
+                        root.toString().contains("\"fingerprint\"")
+                )
+                    listOf(
+                        "Hysteria 2 использует QUIC TLS ядра; TCP uTLS fingerprint не применяется."
+                    )
+                else emptyList()),
         )
+    }
+
+    private fun xrayHysteria(source: JSONObject, name: String): JSONObject {
+        fields(source, setOf("tag", "protocol", "settings", "streamSettings"))
+        val settings = source.getJSONObject("settings")
+        fields(settings, setOf("address", "port", "version"))
+        require(settings.getInt("version") == 2) { "Unsupported Xray Hysteria version" }
+        val stream = source.getJSONObject("streamSettings")
+        fields(stream, setOf("network", "security", "hysteriaSettings", "tlsSettings", "finalmask"))
+        require(
+            stream.getString("network") == "hysteria" && stream.getString("security") == "tls"
+        ) {
+            "Invalid Xray Hysteria transport"
+        }
+        val hy = stream.getJSONObject("hysteriaSettings")
+        fields(hy, setOf("version", "auth"))
+        require(hy.getInt("version") == 2) { "Unsupported Xray Hysteria version" }
+        val options = stream.getJSONObject("tlsSettings")
+        fields(
+            options,
+            setOf(
+                "serverName",
+                "allowInsecure",
+                "alpn",
+                "fingerprint",
+                "enableSessionResumption",
+                "pinnedPeerCertSha256",
+                "verifyPeerCertByName",
+            ),
+        )
+        val tls =
+            JSONObject()
+                .put("enabled", true)
+                .put("server_name", options.optString("serverName", required(settings, "address")))
+        if (options.has("allowInsecure")) tls.put("insecure", bool(options, "allowInsecure"))
+        if (options.has("alpn")) tls.put("alpn", options.getJSONArray("alpn"))
+        require(
+            !options.has("enableSessionResumption") || !bool(options, "enableSessionResumption")
+        ) {
+            "Unsupported Hysteria session resumption"
+        }
+        ProxyLinkParser.applyXrayVerification(
+            tls,
+            options.optString("pinnedPeerCertSha256"),
+            options.optString("verifyPeerCertByName"),
+        )
+        val node =
+            JSONObject()
+                .put("type", "hysteria2")
+                .put("tag", name)
+                .put("server", required(settings, "address"))
+                .put("server_port", port(settings))
+                .put("password", required(hy, "auth"))
+                .put("tls", tls)
+        stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
+        return node
     }
 
     private fun xrayNode(
@@ -740,6 +823,7 @@ internal object ForeignSubscriptionParser {
         name: String,
     ): JSONObject {
         val protocol = source.optString("protocol")
+        if (protocol == "hysteria") return xrayHysteria(source, name)
         require(protocol in setOf("vless", "vmess", "trojan", "shadowsocks", "socks", "http")) {
             "Unsupported Xray outbound protocol"
         }
@@ -845,7 +929,12 @@ internal object ForeignSubscriptionParser {
                 options,
                 setOf("serverName", "allowInsecure", "alpn", "fingerprint") +
                     if (security == "reality") setOf("publicKey", "shortId", "spiderX", "show")
-                    else emptySet(),
+                    else
+                        setOf(
+                            "pinnedPeerCertSha256",
+                            "verifyPeerCertByName",
+                            "enableSessionResumption",
+                        ),
             )
             val tls =
                 JSONObject()
@@ -857,6 +946,19 @@ internal object ForeignSubscriptionParser {
                 .optString("fingerprint")
                 .takeIf { it.isNotBlank() }
                 ?.let { tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", it)) }
+            if (security == "tls") {
+                require(
+                    !options.has("enableSessionResumption") ||
+                        !bool(options, "enableSessionResumption")
+                ) {
+                    "Unsupported TLS session resumption"
+                }
+                ProxyLinkParser.applyXrayVerification(
+                    tls,
+                    options.optString("pinnedPeerCertSha256"),
+                    options.optString("verifyPeerCertByName"),
+                )
+            }
             if (security == "reality")
                 ProxyLinkParser.applyReality(
                     tls,

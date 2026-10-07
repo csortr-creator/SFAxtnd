@@ -1,0 +1,789 @@
+diff --git a/option/tls.go b/option/tls.go
+--- a/option/tls.go
++++ b/option/tls.go
+@@ -117,6 +117,8 @@
+ 	CurvePreferences           badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
+ 	Certificate                badoption.Listable[string]          `json:"certificate,omitempty"`
+ 	CertificatePath            string                              `json:"certificate_path,omitempty"`
++	XrayCertificateSHA256      badoption.Listable[[]byte]          `json:"xray_certificate_sha256,omitempty"`
++	VerifyServerNames          badoption.Listable[string]          `json:"verify_server_names,omitempty"`
+ 	CertificateSHA256          badoption.Listable[[]byte]          `json:"certificate_sha256,omitempty"`
+ 	CertificatePublicKeySHA256 badoption.Listable[[]byte]          `json:"certificate_public_key_sha256,omitempty"`
+ 	ClientCertificate          badoption.Listable[string]          `json:"client_certificate,omitempty"`
+diff --git a/option/v2ray_transport.go b/option/v2ray_transport.go
+--- a/option/v2ray_transport.go
++++ b/option/v2ray_transport.go
+@@ -174,6 +174,7 @@
+ 	NoSSEHeader          bool                        `json:"no_sse_header,omitempty"`
+ 	SCMaxEachPostBytes   V2RayXHTTPRange             `json:"sc_max_each_post_bytes,omitempty"`
+ 	SCMinPostsIntervalMS V2RayXHTTPRange             `json:"sc_min_posts_interval_ms,omitempty"`
++	SCMaxConcurrentPosts int                         `json:"sc_max_concurrent_posts,omitempty"`
+ 	SCMaxBufferedPosts   int                         `json:"sc_max_buffered_posts,omitempty"`
+ 	SCStreamUpServerSecs V2RayXHTTPRange             `json:"sc_stream_up_server_secs,omitempty"`
+ 	ServerMaxHeaderBytes int                         `json:"server_max_header_bytes,omitempty"`
+diff --git a/transport/v2rayxhttp/config.go b/transport/v2rayxhttp/config.go
+--- a/transport/v2rayxhttp/config.go
++++ b/transport/v2rayxhttp/config.go
+@@ -58,7 +58,7 @@
+ 	seqPlacement, seqKey, dataPlacement, dataKey               string
+ 	scMaxPost, scMinInterval, scStreamUp                       byteRange
+ 	uplinkChunk                                                byteRange
+-	maxBufferedPosts, maxHeaderBytes                           int
++	maxConcurrentPosts, maxBufferedPosts, maxHeaderBytes       int
+ 	quic                                                       option.QUICOptions
+ 	noGRPCHeader, noSSEHeader                                  bool
+ 	sessionTable                                               string
+@@ -72,33 +72,34 @@
+ 		return nil, err
+ 	}
+ 	c := &config{
+-		host:             options.Host,
+-		mode:             options.Mode,
+-		headers:          options.Headers.Build(),
+-		padding:          makeRange(options.XPaddingBytes, 100, 1000),
+-		paddingObfs:      options.XPaddingObfsMode,
+-		paddingKey:       options.XPaddingKey,
+-		paddingHeader:    options.XPaddingHeader,
+-		paddingPlacement: options.XPaddingPlacement,
+-		paddingMethod:    options.XPaddingMethod,
+-		uplinkMethod:     strings.ToUpper(options.UplinkHTTPMethod),
+-		sessionPlacement: options.SessionIDPlacement,
+-		sessionKey:       options.SessionIDKey,
+-		seqPlacement:     options.SeqPlacement,
+-		seqKey:           options.SeqKey,
+-		dataPlacement:    options.UplinkDataPlacement,
+-		dataKey:          options.UplinkDataKey,
+-		scMaxPost:        makeRange(options.SCMaxEachPostBytes, 1000000, 1000000),
+-		scMinInterval:    makeRange(options.SCMinPostsIntervalMS, 30, 30),
+-		scStreamUp:       makeRange(options.SCStreamUpServerSecs, 20, 80),
+-		maxBufferedPosts: options.SCMaxBufferedPosts,
+-		maxHeaderBytes:   options.ServerMaxHeaderBytes,
+-		quic:             options.QUIC,
+-		noGRPCHeader:     options.NoGRPCHeader,
+-		noSSEHeader:      options.NoSSEHeader,
+-		sessionTable:     predefinedTable(options.SessionIDTable),
+-		sessionLength:    makeRange(options.SessionIDLength, 0, 0),
+-		xmux:             xmux,
++		host:               options.Host,
++		mode:               options.Mode,
++		headers:            options.Headers.Build(),
++		padding:            makeRange(options.XPaddingBytes, 100, 1000),
++		paddingObfs:        options.XPaddingObfsMode,
++		paddingKey:         options.XPaddingKey,
++		paddingHeader:      options.XPaddingHeader,
++		paddingPlacement:   options.XPaddingPlacement,
++		paddingMethod:      options.XPaddingMethod,
++		uplinkMethod:       strings.ToUpper(options.UplinkHTTPMethod),
++		sessionPlacement:   options.SessionIDPlacement,
++		sessionKey:         options.SessionIDKey,
++		seqPlacement:       options.SeqPlacement,
++		seqKey:             options.SeqKey,
++		dataPlacement:      options.UplinkDataPlacement,
++		dataKey:            options.UplinkDataKey,
++		scMaxPost:          makeRange(options.SCMaxEachPostBytes, 1000000, 1000000),
++		scMinInterval:      makeRange(options.SCMinPostsIntervalMS, 30, 30),
++		scStreamUp:         makeRange(options.SCStreamUpServerSecs, 20, 80),
++		maxConcurrentPosts: options.SCMaxConcurrentPosts,
++		maxBufferedPosts:   options.SCMaxBufferedPosts,
++		maxHeaderBytes:     options.ServerMaxHeaderBytes,
++		quic:               options.QUIC,
++		noGRPCHeader:       options.NoGRPCHeader,
++		noSSEHeader:        options.NoSSEHeader,
++		sessionTable:       predefinedTable(options.SessionIDTable),
++		sessionLength:      makeRange(options.SessionIDLength, 0, 0),
++		xmux:               xmux,
+ 	}
+ 	if c.headers.Get("Host") != "" {
+ 		return nil, E.New("xhttp headers must not contain Host")
+@@ -178,6 +179,12 @@
+ 	c.uplinkChunk = normalizedUplinkChunk(options.UplinkChunkSize, c.dataPlacement, c.scMaxPost)
+ 	if !c.scMaxPost.valid() || !c.scMinInterval.valid() || !c.scStreamUp.valid() {
+ 		return nil, E.New("invalid xhttp upload range")
++	}
++	if c.maxConcurrentPosts == 0 {
++		c.maxConcurrentPosts = 1
++	}
++	if c.maxConcurrentPosts < 1 || c.maxConcurrentPosts > 1024 {
++		return nil, E.New("invalid xhttp concurrent POST limit")
+ 	}
+ 	if c.maxBufferedPosts == 0 {
+ 		c.maxBufferedPosts = 30
+diff --git a/transport/v2rayxhttp/client.go b/transport/v2rayxhttp/client.go
+--- a/transport/v2rayxhttp/client.go
++++ b/transport/v2rayxhttp/client.go
+@@ -353,6 +353,7 @@
+ func (c *splitConn) SetWriteDeadline(time.Time) error { return os.ErrInvalid }
+ 
+ type packetWriter struct {
++	cancel     context.CancelFunc
+ 	ctx        context.Context
+ 	target     *clientTarget
+ 	xmuxClient *xmuxClient
+@@ -365,7 +366,8 @@
+ }
+ 
+ func newPacketWriter(ctx context.Context, target *clientTarget, xmuxClient *xmuxClient, sessionID string) *packetWriter {
+-	writer := &packetWriter{ctx: ctx, target: target, xmuxClient: xmuxClient, sessionID: sessionID, packets: make(chan []byte, target.config.maxBufferedPosts), closed: make(chan struct{})}
++	ctx, cancel := context.WithCancel(ctx)
++	writer := &packetWriter{ctx: ctx, cancel: cancel, target: target, xmuxClient: xmuxClient, sessionID: sessionID, packets: make(chan []byte, target.config.maxBufferedPosts), closed: make(chan struct{})}
+ 	go writer.run()
+ 	return writer
+ }
+@@ -387,57 +389,74 @@
+ 		return 0, w.ctx.Err()
+ 	}
+ }
+-func (w *packetWriter) Close() error { w.once.Do(func() { close(w.closed) }); return nil }
++func (w *packetWriter) Close() error { w.once.Do(func() { close(w.closed); w.cancel() }); return nil }
+ func (w *packetWriter) run() {
++	slots := make(chan struct{}, w.target.config.maxConcurrentPosts)
++	var workers sync.WaitGroup
++	defer func() { w.Close(); workers.Wait() }()
+ 	var sequence uint64
+ 	var remainder []byte
+ 	for {
++		var payload []byte
++		if len(remainder) > 0 {
++			payload = remainder
++			remainder = nil
++		} else {
++			select {
++			case payload = <-w.packets:
++			case <-w.ctx.Done():
++				return
++			}
++		}
++		limit := w.target.config.scMaxPost.random()
++		for len(payload) < limit {
++			select {
++			case next := <-w.packets:
++				payload = append(payload, next...)
++			default:
++				goto flush
++			}
++		}
++	flush:
++		if len(payload) > limit {
++			remainder = payload[limit:]
++			payload = payload[:limit:limit]
++		}
+ 		select {
+-		case first := <-w.packets:
+-			limit := w.target.config.scMaxPost.random()
+-			payload := append([]byte(nil), remainder...)
+-			remainder = nil
+-			payload = append(payload, first...)
+-			for len(payload) < limit {
+-				select {
+-				case next := <-w.packets:
+-					payload = append(payload, next...)
+-				default:
+-					goto flush
+-				}
+-			}
+-		flush:
+-			if len(payload) > limit {
+-				remainder = append(remainder, payload[limit:]...)
+-				payload = payload[:limit]
+-			}
+-			if !w.target.xmux.consumePacketRequest(w.xmuxClient) {
+-				w.xmuxClient = w.target.xmux.acquireRequest()
+-			}
+-			if err := w.target.sendPacket(w.ctx, w.xmuxClient.transport, w.sessionID, sequence, payload); err != nil {
+-				w.access.Lock()
+-				w.err = err
+-				w.access.Unlock()
+-				return
+-			}
+-			sequence++
+-			interval := time.Duration(w.target.config.scMinInterval.random()) * time.Millisecond
+-			if interval > 0 {
+-				timer := time.NewTimer(interval)
+-				select {
+-				case <-timer.C:
+-				case <-w.closed:
+-					timer.Stop()
+-					return
+-				case <-w.ctx.Done():
+-					timer.Stop()
+-					return
+-				}
+-			}
+-		case <-w.closed:
+-			return
++		case slots <- struct{}{}:
+ 		case <-w.ctx.Done():
+ 			return
+ 		}
+-	}
+-}
++		if w.ctx.Err() != nil {
++			return
++		}
++		if !w.target.xmux.consumePacketRequest(w.xmuxClient) {
++			w.xmuxClient = w.target.xmux.acquireRequest()
++		}
++		transport := w.xmuxClient.transport
++		workers.Add(1)
++		go func(seq uint64, data []byte) {
++			defer workers.Done()
++			defer func() { <-slots }()
++			if err := w.target.sendPacket(w.ctx, transport, w.sessionID, seq, data); err != nil {
++				w.access.Lock()
++				if w.err == nil {
++					w.err = err
++				}
++				w.access.Unlock()
++				w.Close()
++			}
++		}(sequence, payload)
++		sequence++
++		interval := time.Duration(w.target.config.scMinInterval.random()) * time.Millisecond
++		if interval > 0 {
++			timer := time.NewTimer(interval)
++			select {
++			case <-timer.C:
++			case <-w.ctx.Done():
++				timer.Stop()
++				return
++			}
++		}
++	}
++}
+diff --git a/transport/v2rayxhttp/hysteria_integration_test.go b/transport/v2rayxhttp/hysteria_integration_test.go
+--- a/transport/v2rayxhttp/hysteria_integration_test.go
++++ b/transport/v2rayxhttp/hysteria_integration_test.go
+@@ -17,11 +17,8 @@
+ // Exercise authentication, TLS and obfuscation against a local native server.
+ func TestHysteriaProtocols(t *testing.T) {
+ 	for _, protocol := range []string{C.TypeHysteria, C.TypeHysteria2} {
+-		for _, pinned := range []bool{false, true} {
+-			name := protocol
+-			if pinned {
+-				name += "-certificate-pin"
+-			}
++		for _, verification := range []string{"ca", "certificate-pin", "xray-pin", "verify-name"} {
++			name := protocol + "-" + verification
+ 			t.Run(name, func(t *testing.T) {
+ 				certificate, key, ca := interopCertificate(t)
+ 				serverPort, proxyPort := interopPort(t), interopPort(t)
+@@ -29,7 +26,7 @@
+ 				defer closeTarget()
+ 				inboundTLS := option.InboundTLSOptionsContainer{TLS: &option.InboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: certificate, KeyPath: key}}
+ 				outboundTLS := option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "xhttp.test", CertificatePath: ca}}
+-				if pinned {
++				if verification == "certificate-pin" || verification == "xray-pin" {
+ 					content, err := os.ReadFile(certificate)
+ 					require.NoError(t, err)
+ 					block, _ := pem.Decode(content)
+@@ -37,7 +34,17 @@
+ 					digest := sha256.Sum256(block.Bytes)
+ 					outboundTLS.TLS.CertificatePath = ""
+ 					outboundTLS.TLS.Insecure = true
+-					outboundTLS.TLS.CertificateSHA256 = [][]byte{digest[:]}
++					if verification == "xray-pin" {
++						outboundTLS.TLS.Insecure = false
++						outboundTLS.TLS.XrayCertificateSHA256 = [][]byte{digest[:]}
++						outboundTLS.TLS.ServerName = "front.example.org"
++					} else {
++						outboundTLS.TLS.CertificateSHA256 = [][]byte{digest[:]}
++					}
++				}
++				if verification == "verify-name" {
++					outboundTLS.TLS.ServerName = "front.example.org"
++					outboundTLS.TLS.VerifyServerNames = []string{"xhttp.test"}
+ 				}
+ 				server := option.Inbound{Type: protocol}
+ 				client := option.Outbound{Type: protocol}
+diff --git a/transport/v2rayxhttp/interop_test.go b/transport/v2rayxhttp/interop_test.go
+--- a/transport/v2rayxhttp/interop_test.go
++++ b/transport/v2rayxhttp/interop_test.go
+@@ -93,6 +93,14 @@
+ 				SeqPlacement: "cookie", SeqKey: "x_interop_seq",
+ 				UplinkDataPlacement: "cookie", UplinkDataKey: "x_interop_data",
+ 				UplinkChunkSize: option.V2RayXHTTPRange{From: 64, To: 96},
++			},
++		},
++		{
++			name: "parallel-packet-posts",
++			options: option.V2RayXHTTPOptions{
++				Path: "/xhttp/", Mode: "packet-up", SCMaxConcurrentPosts: 3,
++				SCMaxEachPostBytes:   option.V2RayXHTTPRange{From: 128, To: 128},
++				SCMinPostsIntervalMS: option.V2RayXHTTPRange{From: 1, To: 1},
+ 			},
+ 		},
+ 		{
+diff --git a/common/tls/utls_client.go b/common/tls/utls_client.go
+--- a/common/tls/utls_client.go
++++ b/common/tls/utls_client.go
+@@ -31,6 +31,8 @@
+ 	ctx                   context.Context
+ 	config                *utls.Config
+ 	serverName            string
++	xrayPins              [][]byte
++	verifyNames           []string
+ 	disableSNI            bool
+ 	verifyServerName      bool
+ 	handshakeTimeout      time.Duration
+@@ -58,6 +60,11 @@
+ 		return
+ 	}
+ 	c.config.ServerName = serverName
++	if len(c.xrayPins) > 0 || len(c.verifyNames) > 0 {
++		c.config.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
++			return verifyXrayCertificate(rawCerts, c.xrayPins, c.verifyNames, c.config.ServerName, c.config.RootCAs, c.config.Time)
++		}
++	}
+ }
+ 
+ func (c *UTLSClientConfig) NextProtos() []string {
+@@ -100,9 +107,10 @@
+ 
+ func (c *UTLSClientConfig) Clone() Config {
+ 	cloned := &UTLSClientConfig{
+-		ctx:                   c.ctx,
+-		config:                c.config.Clone(),
+-		serverName:            c.serverName,
++		ctx:        c.ctx,
++		config:     c.config.Clone(),
++		serverName: c.serverName,
++		xrayPins:   c.xrayPins, verifyNames: c.verifyNames,
+ 		disableSNI:            c.disableSNI,
+ 		verifyServerName:      c.verifyServerName,
+ 		handshakeTimeout:      c.handshakeTimeout,
+@@ -236,6 +244,24 @@
+ 			return nil
+ 		}
+ 	}
++	if len(options.XrayCertificateSHA256) > 0 || len(options.VerifyServerNames) > 0 {
++		if len(options.CertificateSHA256) > 0 || len(options.CertificatePublicKeySHA256) > 0 || options.DisableSNI {
++			return nil, E.New("Xray certificate verification conflicts with other pins or disable_sni")
++		}
++		for _, pin := range options.XrayCertificateSHA256 {
++			if len(pin) != sha256.Size {
++				return nil, E.New("xray_certificate_sha256 must contain SHA-256 fingerprints")
++			}
++		}
++		for _, name := range options.VerifyServerNames {
++			if strings.TrimSpace(name) == "" {
++				return nil, E.New("verify_server_names must contain nonempty names")
++			}
++		}
++		tlsConfig.InsecureSkipVerify = true
++
++	}
++
+ 	if len(options.ALPN) > 0 {
+ 		tlsConfig.NextProtos = options.ALPN
+ 	}
+@@ -326,9 +352,10 @@
+ 		return nil, err
+ 	}
+ 	var config Config = &UTLSClientConfig{
+-		ctx:                   ctx,
+-		config:                &tlsConfig,
+-		serverName:            serverName,
++		ctx:        ctx,
++		config:     &tlsConfig,
++		serverName: serverName,
++		xrayPins:   options.XrayCertificateSHA256, verifyNames: options.VerifyServerNames,
+ 		disableSNI:            options.DisableSNI,
+ 		verifyServerName:      options.DisableSNI && !options.Insecure,
+ 		handshakeTimeout:      handshakeTimeout,
+diff --git a/common/tls/client.go b/common/tls/client.go
+--- a/common/tls/client.go
++++ b/common/tls/client.go
+@@ -93,7 +93,7 @@
+ 	if options.Options.KernelRx {
+ 		options.Logger.Warn("enabling kTLS RX will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_rx")
+ 	}
+-	if len(options.Options.CertificateSHA256) > 0 {
++	if len(options.Options.CertificateSHA256) > 0 || len(options.Options.XrayCertificateSHA256) > 0 || len(options.Options.VerifyServerNames) > 0 {
+ 		if options.Options.Engine != "" && options.Options.Engine != C.TLSEngineGo {
+ 			return nil, E.New("certificate_sha256 requires the Go TLS engine")
+ 		}
+diff --git a/common/tls/std_client.go b/common/tls/std_client.go
+--- a/common/tls/std_client.go
++++ b/common/tls/std_client.go
+@@ -26,6 +26,8 @@
+ 	ctx                   context.Context
+ 	config                *tls.Config
+ 	serverName            string
++	xrayPins              [][]byte
++	verifyNames           []string
+ 	disableSNI            bool
+ 	verifyServerName      bool
+ 	handshakeTimeout      time.Duration
+@@ -52,6 +54,11 @@
+ 		return
+ 	}
+ 	c.config.ServerName = serverName
++	if len(c.xrayPins) > 0 || len(c.verifyNames) > 0 {
++		c.config.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
++			return verifyXrayCertificate(rawCerts, c.xrayPins, c.verifyNames, c.config.ServerName, c.config.RootCAs, c.config.Time)
++		}
++	}
+ }
+ 
+ func (c *STDClientConfig) NextProtos() []string {
+@@ -87,9 +94,10 @@
+ 
+ func (c *STDClientConfig) Clone() Config {
+ 	cloned := &STDClientConfig{
+-		ctx:                   c.ctx,
+-		config:                c.config.Clone(),
+-		serverName:            c.serverName,
++		ctx:        c.ctx,
++		config:     c.config.Clone(),
++		serverName: c.serverName,
++		xrayPins:   c.xrayPins, verifyNames: c.verifyNames,
+ 		disableSNI:            c.disableSNI,
+ 		verifyServerName:      c.verifyServerName,
+ 		handshakeTimeout:      c.handshakeTimeout,
+@@ -160,6 +168,24 @@
+ 			return nil
+ 		}
+ 	}
++	if len(options.XrayCertificateSHA256) > 0 || len(options.VerifyServerNames) > 0 {
++		if len(options.CertificateSHA256) > 0 || len(options.CertificatePublicKeySHA256) > 0 || options.DisableSNI {
++			return nil, E.New("Xray certificate verification conflicts with other pins or disable_sni")
++		}
++		for _, pin := range options.XrayCertificateSHA256 {
++			if len(pin) != sha256.Size {
++				return nil, E.New("xray_certificate_sha256 must contain SHA-256 fingerprints")
++			}
++		}
++		for _, name := range options.VerifyServerNames {
++			if strings.TrimSpace(name) == "" {
++				return nil, E.New("verify_server_names must contain nonempty names")
++			}
++		}
++		tlsConfig.InsecureSkipVerify = true
++
++	}
++
+ 	if len(options.ALPN) > 0 {
+ 		tlsConfig.NextProtos = options.ALPN
+ 	}
+@@ -249,9 +275,10 @@
+ 		return nil, err
+ 	}
+ 	var config Config = &STDClientConfig{
+-		ctx:                   ctx,
+-		config:                &tlsConfig,
+-		serverName:            serverName,
++		ctx:        ctx,
++		config:     &tlsConfig,
++		serverName: serverName,
++		xrayPins:   options.XrayCertificateSHA256, verifyNames: options.VerifyServerNames,
+ 		disableSNI:            options.DisableSNI,
+ 		verifyServerName:      options.DisableSNI && !options.Insecure,
+ 		handshakeTimeout:      handshakeTimeout,
+diff --git a/common/tls/xray_certificate.go b/common/tls/xray_certificate.go
+new file mode 100644
+--- /dev/null
++++ b/common/tls/xray_certificate.go
+@@ -0,0 +1,70 @@
++package tls
++
++import (
++	"crypto/sha256"
++	"crypto/subtle"
++	"crypto/x509"
++	"errors"
++	"time"
++)
++
++// Xray permits an exact leaf pin, or a pinned CA plus normal chain/name verification.
++func verifyXrayCertificate(rawCerts, pins [][]byte, names []string, serverName string, roots *x509.CertPool, clock func() time.Time) error {
++	if len(rawCerts) == 0 {
++		return errors.New("missing peer certificate")
++	}
++	certs := make([]*x509.Certificate, len(rawCerts))
++	for i, raw := range rawCerts {
++		cert, err := x509.ParseCertificate(raw)
++		if err != nil {
++			return err
++		}
++		certs[i] = cert
++	}
++	if len(pins) > 0 {
++		found := false
++		for i, cert := range certs {
++			digest := sha256.Sum256(cert.Raw)
++			for _, pin := range pins {
++				if subtle.ConstantTimeCompare(digest[:], pin) != 1 {
++					continue
++				}
++				if i == 0 {
++					return nil
++				}
++				roots = x509.NewCertPool()
++				roots.AddCert(cert)
++				found = true
++				break
++			}
++			if found {
++				break
++			}
++		}
++		if !found {
++			return errors.New("peer certificate does not match Xray SHA-256 pin")
++		}
++	}
++	if len(names) == 0 {
++		names = []string{serverName}
++	}
++	intermediates := x509.NewCertPool()
++	for _, cert := range certs[1:] {
++		intermediates.AddCert(cert)
++	}
++	now := time.Now()
++	if clock != nil {
++		now = clock()
++	}
++	var lastErr error
++	for _, name := range names {
++		if name == "" {
++			return errors.New("missing certificate verification name")
++		}
++		_, lastErr = certs[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, DNSName: name, CurrentTime: now})
++		if lastErr == nil {
++			return nil
++		}
++	}
++	return lastErr
++}
+diff --git a/common/tls/xray_certificate_test.go b/common/tls/xray_certificate_test.go
+new file mode 100644
+--- /dev/null
++++ b/common/tls/xray_certificate_test.go
+@@ -0,0 +1,88 @@
++//go:build with_utls
++
++package tls
++
++import (
++	"context"
++	"crypto/ecdsa"
++	"crypto/elliptic"
++	"crypto/rand"
++	"crypto/sha256"
++	stdtls "crypto/tls"
++	"crypto/x509"
++	"encoding/pem"
++	"io"
++	"log"
++	"math/big"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/stretchr/testify/require"
++)
++
++func TestXrayCertificateVerificationHandshake(t *testing.T) {
++	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
++	require.NoError(t, err)
++	ca := &x509.Certificate{SerialNumber: big.NewInt(1), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
++	caDER, err := x509.CreateCertificate(rand.Reader, ca, ca, &key.PublicKey, key)
++	require.NoError(t, err)
++	ca, err = x509.ParseCertificate(caDER)
++	require.NoError(t, err)
++	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{"cert.example.org"}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
++	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, ca, &key.PublicKey, key)
++	require.NoError(t, err)
++	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
++	server.Config.ErrorLog = log.New(io.Discard, "", 0)
++	server.TLS = &stdtls.Config{Certificates: []stdtls.Certificate{{Certificate: [][]byte{leafDER, caDER}, PrivateKey: key}}}
++	server.StartTLS()
++	defer server.Close()
++	leafPin, caPin, wrong := sha256.Sum256(leafDER), sha256.Sum256(caDER), sha256.Sum256([]byte("wrong"))
++	for _, useUTLS := range []bool{false, true} {
++		for _, test := range []struct {
++			name        string
++			pins        [][]byte
++			names       []string
++			trusted, ok bool
++		}{
++			{"leaf-pin-self-signed", [][]byte{leafPin[:]}, nil, false, true},
++			{"wrong-pin", [][]byte{wrong[:]}, nil, false, false},
++			{"CA-pin-name", [][]byte{caPin[:]}, []string{"cert.example.org"}, false, true},
++			{"CA-pin-wrong-name", [][]byte{caPin[:]}, []string{"other.example.org"}, false, false},
++			{"verify-name-independent-SNI", nil, []string{"cert.example.org"}, true, true},
++			{"verify-name-untrusted", nil, []string{"cert.example.org"}, false, false},
++			{"verify-name-wrong", nil, []string{"other.example.org"}, true, false},
++			{"verify-name-alternatives", nil, []string{"wrong.example.org", "cert.example.org"}, true, true},
++		} {
++			t.Run(test.name+map[bool]string{false: "-go", true: "-utls"}[useUTLS], func(t *testing.T) {
++				options := option.OutboundTLSOptions{Enabled: true, ServerName: "front.example.org", XrayCertificateSHA256: test.pins, VerifyServerNames: test.names}
++				if useUTLS {
++					options.UTLS = &option.OutboundUTLSOptions{Enabled: true, Fingerprint: "chrome"}
++				}
++				if test.trusted {
++					options.Certificate = []string{string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}))}
++				}
++				config, err := NewClient(context.Background(), logger.NOP(), "front.example.org", options)
++				require.NoError(t, err)
++				config = config.Clone()
++				config.SetServerName("clone.example.org")
++				conn, err := net.DialTimeout("tcp", server.Listener.Addr().String(), time.Second)
++				require.NoError(t, err)
++				defer conn.Close()
++				require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
++				client, err := config.Client(conn)
++				require.NoError(t, err)
++				err = client.HandshakeContext(context.Background())
++				if test.ok {
++					require.NoError(t, err)
++				} else {
++					require.Error(t, err)
++				}
++			})
++		}
++	}
++}
+diff --git a/transport/v2rayxhttp/concurrent_posts_test.go b/transport/v2rayxhttp/concurrent_posts_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/v2rayxhttp/concurrent_posts_test.go
+@@ -0,0 +1,135 @@
++package v2rayxhttp
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/option"
++	"github.com/stretchr/testify/require"
++)
++
++type blockedPostTransport struct {
++	started  chan *http.Request
++	release  chan struct{}
++	finished chan struct{}
++	fail     bool
++}
++
++func (b *blockedPostTransport) RoundTrip(r *http.Request) (*http.Response, error) {
++	b.started <- r
++	defer func() { b.finished <- struct{}{} }()
++	select {
++	case <-b.release:
++		if b.fail {
++			return nil, errors.New("test POST failure")
++		}
++		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(""))}, nil
++	case <-r.Context().Done():
++		return nil, r.Context().Err()
++	}
++}
++func TestConcurrentPostsAreBoundedAndSequencePreserved(t *testing.T) {
++	for _, limit := range []int{1, 3} {
++		options := option.V2RayXHTTPOptions{Mode: "packet-up", SCMaxConcurrentPosts: limit, SCMaxEachPostBytes: option.V2RayXHTTPRange{From: 1, To: 1}, SCMinPostsIntervalMS: option.V2RayXHTTPRange{From: 1, To: 1}}
++		config, err := newConfig(options)
++		require.NoError(t, err)
++		transport := &blockedPostTransport{started: make(chan *http.Request, 10), release: make(chan struct{}), finished: make(chan struct{}, 10)}
++		manager := newXMuxManager(config.xmux, func() http.RoundTripper { return transport })
++		defer manager.Close()
++		target := &clientTarget{config: config, xmux: manager, requestURL: "http://example.org/xhttp/"}
++		writer := newPacketWriter(context.Background(), target, manager.acquireConnection(), "test")
++		defer writer.Close()
++		_, err = writer.Write([]byte("abcde"))
++		require.NoError(t, err)
++		requests := make([]*http.Request, 0, 5)
++		for i := 0; i < limit; i++ {
++			select {
++			case r := <-transport.started:
++				requests = append(requests, r)
++			case <-time.After(time.Second):
++				t.Fatal("POST concurrency was not reached")
++			}
++		}
++		select {
++		case <-transport.started:
++			t.Fatal("POST concurrency exceeded limit")
++		case <-time.After(30 * time.Millisecond):
++		}
++		close(transport.release)
++		for len(requests) < 5 {
++			select {
++			case r := <-transport.started:
++				requests = append(requests, r)
++			case <-time.After(time.Second):
++				t.Fatal("split payload remainder stalled")
++			}
++		}
++		got := map[string]string{}
++		for _, r := range requests {
++			data, err := io.ReadAll(r.Body)
++			require.NoError(t, err)
++			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
++			got[parts[len(parts)-1]] = string(data)
++		}
++		require.Equal(t, map[string]string{"0": "a", "1": "b", "2": "c", "3": "d", "4": "e"}, got)
++		for range 5 {
++			select {
++			case <-transport.finished:
++			case <-time.After(time.Second):
++				t.Fatal("POST worker leaked")
++			}
++		}
++	}
++}
++func TestConcurrentPostCloseAndFailureUnblockWorkers(t *testing.T) {
++	for _, fail := range []bool{false, true} {
++		config, err := newConfig(option.V2RayXHTTPOptions{Mode: "packet-up", SCMaxConcurrentPosts: 2, SCMaxEachPostBytes: option.V2RayXHTTPRange{From: 1, To: 1}, SCMinPostsIntervalMS: option.V2RayXHTTPRange{From: 1, To: 1}})
++		require.NoError(t, err)
++		transport := &blockedPostTransport{started: make(chan *http.Request, 10), release: make(chan struct{}), finished: make(chan struct{}, 10), fail: fail}
++		manager := newXMuxManager(config.xmux, func() http.RoundTripper { return transport })
++		defer manager.Close()
++		writer := newPacketWriter(context.Background(), &clientTarget{config: config, xmux: manager, requestURL: "http://example.org/xhttp/"}, manager.acquireConnection(), "test")
++		_, err = writer.Write([]byte("abc"))
++		require.NoError(t, err)
++		for range 2 {
++			select {
++			case <-transport.started:
++			case <-time.After(time.Second):
++				t.Fatal("requests did not start")
++			}
++		}
++		if fail {
++			close(transport.release)
++		} else {
++			require.NoError(t, writer.Close())
++		}
++		for range 2 {
++			select {
++			case <-transport.finished:
++			case <-time.After(time.Second):
++				t.Fatal("request not cancelled")
++			}
++		}
++		select {
++		case <-writer.closed:
++		case <-time.After(time.Second):
++			t.Fatal("writer not closed")
++		}
++		var wg sync.WaitGroup
++		wg.Add(1)
++		go func() { defer wg.Done(); _, _ = writer.Write([]byte("x")) }()
++		done := make(chan struct{})
++		go func() { wg.Wait(); close(done) }()
++		select {
++		case <-done:
++		case <-time.After(time.Second):
++			t.Fatal("writer blocked after shutdown")
++		}
++	}
++}

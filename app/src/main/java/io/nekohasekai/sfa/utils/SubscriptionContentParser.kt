@@ -101,12 +101,9 @@ internal class SubscriptionContentParser(
                 accept(index + 1, name) {
                     val node = parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
                     val query = ProxyLinkParser.query(line.substringBefore('#').substringAfter('?', ""))
-                    query["extra"]?.let { extraText ->
-                        val extra = JSONObject(extraText)
-                        if (extra.has("scMaxConcurrentPosts") || extra.has("sc_max_concurrent_posts")) {
-                            val warning = "XHTTP: scMaxConcurrentPosts не переносится; ядро отправляет POST последовательно. Сервер импортирован, но параллельность загрузки отличается."
-                            if (warning !in warnings) warnings.add(warning)
-                        }
+                    if (node.optString("type") == "hysteria2" && query["fp"].orEmpty().isNotBlank()) {
+                        val warning = "Hysteria 2 использует QUIC TLS ядра; TCP uTLS fingerprint не применяется."
+                        if (warning !in warnings) warnings.add(warning)
                     }
                     if (Regex("[?&](spx|spiderX)=").containsMatchIn(line)) {
                         val warning = "Параметр Reality spiderX не переносится: используется реализация Reality ядра sing-box."
@@ -460,6 +457,8 @@ internal class SubscriptionContentParser(
             "fp",
             "alpn",
             "allowInsecure",
+            "pcs",
+            "vcn",
             "path",
             "serviceName",
             "service_name",
@@ -551,7 +550,7 @@ internal class SubscriptionContentParser(
             "Unsupported VLESS encryption"
         }
         require(security == "reality" || listOf("pbk", "sid").none { !params[it].isNullOrBlank() }) { "Invalid Reality options without Reality security" }
-        require(security != "none" || listOf("sni", "fp", "alpn", "allowInsecure").none { !params[it].isNullOrBlank() }) { "Invalid TLS options without TLS security" }
+        require(security != "none" || listOf("sni", "fp", "alpn", "allowInsecure", "pcs", "vcn").none { !params[it].isNullOrBlank() }) { "Invalid TLS options without TLS security" }
         if (security == "reality") {
             val key = params["pbk"].orEmpty()
             require(
@@ -608,7 +607,9 @@ internal class SubscriptionContentParser(
             outbound.put("tls", tls)
         }
 
+        require(security != "reality" || listOf("pcs", "vcn").none { !params[it].isNullOrBlank() }) { "Invalid certificate verification options with Reality" }
         outbound.optJSONObject("tls")?.let { tls ->
+            ProxyLinkParser.applyXrayVerification(tls, params["pcs"], params["vcn"])
             if (!alpn.isNullOrBlank()) tls.put("alpn", JSONArray(alpn.split(',')))
             params["allowInsecure"]?.let {
                 tls.put("insecure", ProxyLinkParser.boolean(it))
@@ -701,6 +702,10 @@ internal class SubscriptionContentParser(
             )
         }
 
+        require(tlsFlag == "tls" || listOf("pcs", "vcn").none { vmessJson.optString(it).isNotBlank() }) { "Invalid certificate verification options without TLS" }
+        outbound.optJSONObject("tls")?.let {
+            ProxyLinkParser.applyXrayVerification(it, vmessJson.optString("pcs"), vmessJson.optString("vcn"))
+        }
         val transportParams =
             vmessJson.keys().asSequence().associateWith { vmessJson.optString(it) }.toMutableMap()
         if (network == "grpc") transportParams["serviceName"] = vmessJson.optString("path")
@@ -767,6 +772,8 @@ internal class SubscriptionContentParser(
         )
 
         require(params["security"] == "reality" || listOf("pbk", "sid").none { !params[it].isNullOrBlank() }) { "Invalid Reality options without Reality security" }
+        require(params["security"] != "reality" || listOf("pcs", "vcn").none { !params[it].isNullOrBlank() }) { "Invalid certificate verification options with Reality" }
+        ProxyLinkParser.applyXrayVerification(outbound.getJSONObject("tls"), params["pcs"], params["vcn"])
         if (params["security"] == "reality") {
             ProxyLinkParser.applyReality(outbound.getJSONObject("tls"), params["pbk"].orEmpty(), params["sid"].orEmpty())
         }

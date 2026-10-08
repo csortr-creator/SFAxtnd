@@ -128,7 +128,11 @@ object ProfileConfigCommit {
             if (!isCurrent(profileId, operationToken)) {
                 return CommitOutcome.Stale
             }
-            validate(content)
+            try {
+                validate(content)
+            } catch (e: Exception) {
+                return CommitOutcome.Failed(e)
+            }
             val replaced =
                 try {
                     replaceAtomically(target, content)

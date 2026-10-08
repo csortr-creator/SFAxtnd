@@ -27,6 +27,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ForeignSubscriptionParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionImportReport.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionRouting.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/ProfileConfigCommit.kt")
     kotlin.include("io/nekohasekai/sfa/utils/OutboundProfileState.kt")
     kotlin.include("io/nekohasekai/sfa/utils/UserRoutingConfig.kt")
     kotlin.include("io/nekohasekai/sfa/utils/RoutingPresets.kt")

@@ -16,7 +16,9 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import java.io.File
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -78,20 +80,51 @@ class UpdateProfileWork {
                 if (lastSeconds < profile.typed.autoUpdateInterval * 60) {
                     continue
                 }
+                val operationToken = ProfileConfigCommit.beginOperation(profile.id)
                 try {
                     val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
                     val content = result.config
-                    Libbox.checkConfig(content)
                     val file = File(profile.typed.path)
-                    if (file.readText() != content) {
-                        File(profile.typed.path).writeText(content)
-                        if (profile.id == selectedProfile) {
-                            selectedProfileUpdated = true
+                    when (
+                        val outcome =
+                            ProfileConfigCommit.commit(
+                                profileId = profile.id,
+                                operationToken = operationToken,
+                                target = file,
+                                content = content,
+                                validate = { Libbox.checkConfig(it) },
+                                afterFileCommit = {
+                                    result.report.save(profile.typed.path)
+                                    profile.typed.lastUpdated = Date()
+                                    ProfileManager.update(profile)
+                                },
+                            )
+                    ) {
+                        is CommitOutcome.Success -> {
+                            if (outcome.replaced && profile.id == selectedProfile) {
+                                selectedProfileUpdated = true
+                            }
+                        }
+                        is CommitOutcome.FileCommittedMetadataFailed -> {
+                            // File is the new LKG; metadata/report incomplete — do not hide.
+                            Log.e(
+                                TAG,
+                                "profile ${profile.name}: config committed but metadata failed",
+                                outcome.error,
+                            )
+                            if (outcome.replaced && profile.id == selectedProfile) {
+                                selectedProfileUpdated = true
+                            }
+                            success = false
+                        }
+                        is CommitOutcome.Stale -> {
+                            Log.w(TAG, "profile ${profile.name}: stale update skipped")
+                        }
+                        is CommitOutcome.Failed -> {
+                            Log.e(TAG, "update profile ${profile.name}", outcome.error)
+                            success = false
                         }
                     }
-                    result.report.save(profile.typed.path)
-                    profile.typed.lastUpdated = Date()
-                    ProfileManager.update(profile)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

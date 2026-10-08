@@ -13,7 +13,9 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -253,42 +255,79 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
 
             try {
                 var selectedProfileUpdated = false
+                val operationToken = ProfileConfigCommit.beginOperation(profile.id)
 
-                // Fetch remote config
                 val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
                 val content = result.config
-                Libbox.checkConfig(content)
-
-                // Check if content changed
                 val file = File(profile.typed.path)
-                if (!file.exists() || file.readText() != content) {
-                    file.writeText(content)
-                    if (profile.id == Settings.selectedProfile) {
-                        selectedProfileUpdated = true
+
+                when (
+                    val outcome =
+                        ProfileConfigCommit.commit(
+                            profileId = profile.id,
+                            operationToken = operationToken,
+                            target = file,
+                            content = content,
+                            validate = { Libbox.checkConfig(it) },
+                            afterFileCommit = {
+                                result.report.save(profile.typed.path)
+                                profile.typed.lastUpdated = Date()
+                                ProfileManager.update(profile)
+                            },
+                        )
+                ) {
+                    is CommitOutcome.Success -> {
+                        if (outcome.replaced && profile.id == Settings.selectedProfile) {
+                            selectedProfileUpdated = true
+                        }
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
+                        _uiState.update {
+                            it.copy(
+                                lastUpdated = profile.typed.lastUpdated,
+                                isUpdating = false,
+                                showUpdateSuccess = true,
+                                errorMessage = null,
+                            )
+                        }
+                    }
+                    is CommitOutcome.FileCommittedMetadataFailed -> {
+                        if (outcome.replaced && profile.id == Settings.selectedProfile) {
+                            selectedProfileUpdated = true
+                        }
+                        _uiState.update {
+                            it.copy(
+                                isUpdating = false,
+                                showUpdateSuccess = false,
+                                errorMessage =
+                                    "Config saved but metadata update failed: ${outcome.error.message}",
+                            )
+                        }
+                    }
+                    is CommitOutcome.Stale -> {
+                        _uiState.update {
+                            it.copy(
+                                isUpdating = false,
+                                showUpdateSuccess = false,
+                                errorMessage = "Update skipped (a newer update is in progress)",
+                            )
+                        }
+                    }
+                    is CommitOutcome.Failed -> {
+                        _uiState.update {
+                            it.copy(
+                                isUpdating = false,
+                                showUpdateSuccess = false,
+                                errorMessage = outcome.error.message,
+                            )
+                        }
                     }
                 }
 
-                // Update last updated time
-                result.report.save(profile.typed.path)
-                profile.typed.lastUpdated = Date()
-                ProfileManager.update(profile)
-                io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
-
-                // Update UI state with success indicator
-                _uiState.update {
-                    it.copy(
-                        lastUpdated = profile.typed.lastUpdated,
-                        isUpdating = false,
-                        showUpdateSuccess = true,
-                    )
-                }
-
-                // Reload service if needed
                 if (selectedProfileUpdated) {
                     try {
                         Libbox.newStandaloneCommandClient().serviceReload()
-                    } catch (e: Exception) {
-                        // Service reload errors are not critical
+                    } catch (_: Exception) {
+                        // Service reload errors are not critical for file durability
                     }
                 }
             } catch (e: Exception) {

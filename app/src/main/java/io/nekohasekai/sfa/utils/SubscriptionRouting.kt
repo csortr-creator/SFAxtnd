@@ -46,6 +46,10 @@ object SubscriptionRouting {
 
     fun apply(root: JSONObject, mode: Mode, blockIpv6: Boolean = true) {
         val route = ensureRoute(root)
+        // route.default_domain_resolver requires a matching dns.servers[].tag (sing-box 1.14+).
+        // Panel sing-box JSON (e.g. without a dns block) would otherwise fail checkConfig with
+        // "default domain resolver not found: dns-direct".
+        ensureDefaultDomainResolverAvailable(root)
         ensureRuleSet(route)
 
         when (mode) {
@@ -68,6 +72,37 @@ object SubscriptionRouting {
             route.put("auto_detect_interface", true)
         }
         return route
+    }
+
+    /**
+     * Ensures [route.default_domain_resolver] resolves to an existing DNS server tag.
+     * If missing, registers a `local` server under that tag (import-time safe bootstrap).
+     */
+    internal fun ensureDefaultDomainResolverAvailable(root: JSONObject) {
+        val route = root.optJSONObject("route") ?: return
+        val tag = defaultDomainResolverTag(route) ?: return
+        val dns = root.optJSONObject("dns") ?: JSONObject().also { root.put("dns", it) }
+        val servers = dns.optJSONArray("servers") ?: JSONArray().also { dns.put("servers", it) }
+        for (i in 0 until servers.length()) {
+            val server = servers.optJSONObject(i) ?: continue
+            if (server.optString("tag") == tag) return
+        }
+        servers.put(
+            JSONObject()
+                .put("type", "local")
+                .put("tag", tag),
+        )
+        dns.put("servers", servers)
+        root.put("dns", dns)
+    }
+
+    private fun defaultDomainResolverTag(route: JSONObject): String? {
+        if (!route.has("default_domain_resolver")) return null
+        return when (val value = route.get("default_domain_resolver")) {
+            is String -> value.trim().takeIf { it.isNotEmpty() }
+            is JSONObject -> value.optString("server").trim().takeIf { it.isNotEmpty() }
+            else -> null
+        }
     }
 
     private fun ensureRuleSet(route: JSONObject) {

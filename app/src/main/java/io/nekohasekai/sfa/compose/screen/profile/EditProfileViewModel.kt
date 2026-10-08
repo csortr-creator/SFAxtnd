@@ -7,14 +7,16 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.CommitOutcome
+import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.utils.NetworkErrorKind
+import io.nekohasekai.sfa.utils.NetworkErrorPresentation
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,11 +97,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         isLoading = false,
                     )
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = e.message,
+                        errorMessage = "Failed to load profile",
                     )
                 }
             }
@@ -233,11 +235,11 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         isSaving = false,
                     )
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        errorMessage = e.message,
+                        errorMessage = "Failed to save profile",
                     )
                 }
             }
@@ -299,7 +301,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                                 isUpdating = false,
                                 showUpdateSuccess = false,
                                 errorMessage =
-                                    "Config saved but metadata update failed: ${outcome.error.message}",
+                                    "Config saved but metadata update failed",
                             )
                         }
                     }
@@ -317,7 +319,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                             it.copy(
                                 isUpdating = false,
                                 showUpdateSuccess = false,
-                                errorMessage = outcome.error.message,
+                                errorMessage = "Configuration validation or save failed",
                             )
                         }
                     }
@@ -334,11 +336,26 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         isUpdating = false,
-                        errorMessage = e.message,
+                        errorMessage = subscriptionFetchUserMessage(e),
                     )
                 }
             }
         }
+    }
+
+    private fun subscriptionFetchUserMessage(error: Throwable): String {
+        val res =
+            when (NetworkErrorPresentation.classify(error).kind) {
+                NetworkErrorKind.TLS_TIMEOUT -> R.string.error_subscription_tls_timeout
+                NetworkErrorKind.TLS -> R.string.error_subscription_tls
+                NetworkErrorKind.DNS -> R.string.error_subscription_dns
+                NetworkErrorKind.TIMEOUT -> R.string.error_subscription_timeout
+                NetworkErrorKind.HTTP_AUTH -> R.string.error_subscription_http_auth
+                NetworkErrorKind.HTTP_STATUS -> R.string.error_subscription_http
+                NetworkErrorKind.CONNECTION -> R.string.error_subscription_connection
+                NetworkErrorKind.UNKNOWN -> R.string.error_subscription_unknown
+            }
+        return getApplication<Application>().getString(res)
     }
 
     fun clearError() {

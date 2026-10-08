@@ -145,6 +145,16 @@
     <string name="profile_share_url">Share URL as QR Code</string>
     <string name="profile_input_required">Required</string>
     <string name="profile_update">Update</string>
+    
+    <string name="error_subscription_tls_timeout">Не удалось установить защищённое соединение с сервером подписки</string>
+    <string name="error_subscription_tls">Не удалось установить защищённое соединение с сервером подписки</string>
+    <string name="error_subscription_dns">Не удалось определить адрес сервера подписки</string>
+    <string name="error_subscription_timeout">Превышено время ожидания соединения</string>
+    <string name="error_subscription_http_auth">Сервер подписки отклонил запрос</string>
+    <string name="error_subscription_http">Сервер подписки вернул ошибку</string>
+    <string name="error_subscription_connection">Не удалось подключиться к серверу подписки</string>
+    <string name="error_subscription_unknown">Не удалось обновить подписку</string>
+
     <string name="profile_auto_update">Auto Update</string>
     <string name="profile_auto_update_interval">Auto Update Interval (Minutes)</string>
     <string name="profile_auto_update_interval_minimum_hint">Minimum value is 15</string>

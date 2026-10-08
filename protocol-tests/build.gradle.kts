@@ -22,6 +22,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ClientSettingsConfig.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProfileLatencyCache.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProbeOutcome.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/NetworkErrorPresentation.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/XrayCompatibility.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionContentParser.kt")

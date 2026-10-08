@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.bg
 
+import io.nekohasekai.sfa.utils.NetworkErrorPresentation
+
 import android.content.Context
 import android.util.Log
 import androidx.work.Constraints
@@ -109,8 +111,7 @@ class UpdateProfileWork {
                             // File is the new LKG; metadata/report incomplete — do not hide.
                             Log.e(
                                 TAG,
-                                "profile ${profile.name}: config committed but metadata failed",
-                                outcome.error,
+                                "event=profile_update_metadata_failed profileId=${profile.id} code=META",
                             )
                             if (outcome.replaced && profile.id == selectedProfile) {
                                 selectedProfileUpdated = true
@@ -118,17 +119,23 @@ class UpdateProfileWork {
                             success = false
                         }
                         is CommitOutcome.Stale -> {
-                            Log.w(TAG, "profile ${profile.name}: stale update skipped")
+                            Log.w(TAG, "event=profile_update_stale profileId=${profile.id}")
                         }
                         is CommitOutcome.Failed -> {
-                            Log.e(TAG, "update profile ${profile.name}", outcome.error)
+                            Log.e(
+                                TAG,
+                                "event=profile_update_commit_failed profileId=${profile.id} code=COMMIT",
+                            )
                             success = false
                         }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "update profile ${profile.name}", e)
+                    Log.e(
+                        TAG,
+                        "event=profile_update_fetch_failed profileId=${profile.id} code=${NetworkErrorPresentation.logCode(e)}",
+                    )
                     success = false
                 }
             }

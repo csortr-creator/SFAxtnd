@@ -193,6 +193,16 @@ jobs:
           for config in ../protocol-tests/build/native-configs/*.json; do
             /tmp/sfa-config-check check -c "$config"
           done
+          # B0: harness expect-fail fixtures must be rejected by sing-box check
+          if compgen -G "../protocol-tests/build/native-configs-expect-fail/*.json" > /dev/null; then
+            for config in ../protocol-tests/build/native-configs-expect-fail/*.json; do
+              if /tmp/sfa-config-check check -c "$config"; then
+                echo "expected failure but check passed: $config"
+                exit 1
+              fi
+              echo "expect-fail OK (rejected): $config"
+            done
+          fi
 
       - name: Build libbox
         shell: bash

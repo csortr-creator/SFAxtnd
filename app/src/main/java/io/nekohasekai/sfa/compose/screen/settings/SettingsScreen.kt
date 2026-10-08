@@ -126,13 +126,6 @@ fun SettingsScreen(navController: NavController) {
             ) {
                 navController.navigate("settings/core")
             }
-            RoutingSectionLink(
-                "Сервис VPN",
-                "Фоновая работа и системные разрешения",
-                Icons.Outlined.Tune,
-            ) {
-                navController.navigate("settings/service")
-            }
         }
         PreferenceSection("Приложение", Icons.Outlined.Palette) {
             RoutingSectionLink(

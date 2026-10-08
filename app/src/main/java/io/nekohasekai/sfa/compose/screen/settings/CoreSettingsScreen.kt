@@ -2,6 +2,16 @@ package io.nekohasekai.sfa.compose.screen.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.os.PowerManager
+import android.os.Build
+import android.net.Uri
 import android.content.Intent
 import android.provider.DocumentsContract
 import android.widget.Toast
@@ -104,6 +114,38 @@ fun CoreSettingsScreen(navController: NavController) {
 
     val scaffoldPadding = LocalScaffoldPadding.current
 
+    var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
+
+    fun refreshBatteryOptimizationStatus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = context.getSystemService(PowerManager::class.java)
+            isBatteryOptimizationIgnored =
+                pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+        } else {
+            isBatteryOptimizationIgnored = true
+        }
+    }
+
+    val requestBatteryOptimizationLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) {
+            refreshBatteryOptimizationStatus()
+        }
+
+    LaunchedEffect(Unit) { refreshBatteryOptimizationStatus() }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshBatteryOptimizationStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Column(
         modifier =
         Modifier
@@ -115,6 +157,58 @@ fun CoreSettingsScreen(navController: NavController) {
                 bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
             ),
     ) {
+        // Background / battery optimization — always visible status + action (not a fake switch)
+        Card(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        ) {
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = stringResource(R.string.allow_background_work),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        text =
+                            if (isBatteryOptimizationIgnored)
+                                stringResource(R.string.battery_optimization_ignored)
+                            else
+                                stringResource(R.string.battery_optimization_active),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                },
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Outlined.BatteryChargingFull,
+                        contentDescription = null,
+                        tint =
+                            if (isBatteryOptimizationIgnored)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.tertiary,
+                    )
+                },
+                modifier =
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { openBackgroundWorkSettings(context, requestBatteryOptimizationLauncher) },
+                colors =
+                ListItemDefaults.colors(
+                    containerColor = Color.Transparent,
+                ),
+            )
+        }
+
         NetworkOptionsContent(core = true)
 
         // Core Information Card
@@ -343,6 +437,41 @@ fun CoreSettingsScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+
+private fun openBackgroundWorkSettings(
+    context: Context,
+    launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        Toast.makeText(context, R.string.battery_optimization_ignored, Toast.LENGTH_SHORT).show()
+        return
+    }
+    val packageUri = Uri.parse("package:${context.packageName}")
+    val candidates =
+        listOf(
+            Intent(
+                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                packageUri,
+            ),
+            Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                packageUri,
+            ),
+        )
+    for (intent in candidates) {
+        try {
+            launcher.launch(intent)
+            return
+        } catch (_: ActivityNotFoundException) {
+            // try next
+        } catch (_: SecurityException) {
+            // try next
+        }
+    }
+    Toast.makeText(context, R.string.battery_settings_unavailable, Toast.LENGTH_SHORT).show()
 }
 
 private fun openInFileManager(context: Context) {

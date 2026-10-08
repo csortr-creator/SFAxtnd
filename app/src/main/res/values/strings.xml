@@ -257,6 +257,10 @@
     <string name="privileged_access_required">Root or Shizuku access required to get the complete app list</string>
 
     <!-- Permissions -->
+    <string name="allow_background_work">Allow background work</string>
+    <string name="battery_optimization_active">Battery optimization is restricting this app</string>
+    <string name="battery_optimization_ignored">Battery optimization is disabled for this app</string>
+    <string name="battery_settings_unavailable">Unable to open battery settings on this device</string>
     <string name="background_permission">Background permission</string>
     <string name="background_permission_description">Apply for the necessary permissions in order for the VPN to function properly.\n\nIf you are using a device made by a Chinese company, the card may not disappear after the permission is granted.</string>
     <string name="request_background_permission">Ignore</string>

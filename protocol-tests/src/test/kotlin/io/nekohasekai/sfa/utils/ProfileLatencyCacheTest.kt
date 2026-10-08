@@ -20,8 +20,14 @@ class ProfileLatencyCacheTest {
         cache.put(1, "A", "a", 120, 1000)
         cache.put(2, "B", "b", 0, 2000)
         val restored = ProfileLatencyCache(cache.encode())
-        assertEquals(ProfileLatencyCache.Result(120, 1000), restored.get(1, "A", "a"))
-        assertEquals(ProfileLatencyCache.Result(0, 2000), restored.get(2, "B", "b"))
+        assertEquals(
+            ProfileLatencyCache.Result(120, 1000, ProbeStatus.SUCCESS, ""),
+            restored.get(1, "A", "a"),
+        )
+        assertEquals(
+            ProfileLatencyCache.Result(0, 2000, ProbeStatus.PROBE_ERROR, ""),
+            restored.get(2, "B", "b"),
+        )
     }
 
     @Test

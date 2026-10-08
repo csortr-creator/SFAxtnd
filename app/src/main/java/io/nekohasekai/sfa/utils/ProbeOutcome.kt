@@ -59,16 +59,8 @@ data class ProbeOutcome(
 
             val status =
                 when {
-                    has(
-                        "UnknownHostException",
-                        "NoAddressAssociatedWithHostname",
-                        "no such host",
-                        "no address associated",
-                        "dns lookup",
-                        "try again later",
-                        "android_getaddrinfo",
-                    ) || (has("dns") && has("fail", "error", "exchange", "resolve")) ->
-                        ProbeStatus.DNS_ERROR
+                    // Timeouts first: core often reports "dns: exchange failed … deadline exceeded"
+                    // which is a timeout on the DNS exchange, not NXDOMAIN.
                     has(
                         "SocketTimeoutException",
                         "TimeoutException",
@@ -76,8 +68,16 @@ data class ProbeOutcome(
                         "context deadline",
                         "i/o timeout",
                         "timed out",
-                        "timeout",
-                    ) -> ProbeStatus.TIMEOUT
+                    ) || (has("timeout") && !has("UnknownHostException")) -> ProbeStatus.TIMEOUT
+                    has(
+                        "UnknownHostException",
+                        "NoAddressAssociatedWithHostname",
+                        "no such host",
+                        "no address associated",
+                        "dns lookup",
+                        "android_getaddrinfo",
+                    ) || (has("dns") && has("fail", "error", "exchange", "resolve")) ->
+                        ProbeStatus.DNS_ERROR
                     has(
                         "SSLException",
                         "SSLHandshakeException",

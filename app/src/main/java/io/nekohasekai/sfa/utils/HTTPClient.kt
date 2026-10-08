@@ -130,15 +130,24 @@ class HTTPClient : Closeable {
         return result.config
     }
 
-    internal fun parseSubscription(raw: String): SubscriptionImportResult =
-        SubscriptionContentParser(
-                io.nekohasekai.sfa.database.Settings.tunStack,
-                io.nekohasekai.sfa.database.Settings.routingBlockIpv6,
-            ) { node ->
-                val minimal = JSONObject().put("outbounds", JSONArray().put(node)).put("dns", JSONObject().put("servers", JSONArray().put(JSONObject().put("type", "local").put("tag", "dns-direct"))))
-                Libbox.checkConfig(minimal.toString())
-            }
-            .parse(raw)
+    /**
+     * B2: structural parse via [SubscriptionContentParser], per-node core via [NodeCoreValidator]
+     * (NodeCoreHarness + family control). Old minimal dns-direct-only scaffold removed.
+     * Final [Libbox.checkConfig] remains at commit time ([ProfileConfigCommit]).
+     */
+    internal fun parseSubscription(raw: String): SubscriptionImportResult {
+        NodeCoreValidator.beginBatch()
+        try {
+            return SubscriptionContentParser(
+                    io.nekohasekai.sfa.database.Settings.tunStack,
+                    io.nekohasekai.sfa.database.Settings.routingBlockIpv6,
+                    validateNode = { node -> NodeCoreValidator.validateOrThrow(node) },
+                )
+                .parse(raw)
+        } finally {
+            NodeCoreValidator.endBatch()
+        }
+    }
 
     override fun close() {
         if (clientDelegate.isInitialized()) client.close()

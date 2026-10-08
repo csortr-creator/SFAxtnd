@@ -6,7 +6,7 @@ import org.json.JSONObject
 /**
  * B0 — Isolated per-node core validation harness (tests / diagnostics only).
  *
- * Does **not** participate in production [HTTPClient.parseSubscription] or partial import.
+ * Used by production [NodeCoreValidator] for per-node core checks (B2).
  * Builds a minimal sing-box 1.14.2-shaped config so [Libbox.checkConfig] / `sing-box check`
  * can validate a single outbound without the full subscription profile.
  *
@@ -14,9 +14,11 @@ import org.json.JSONObject
  * `dns-remote`, `default_domain_resolver`) so domain resolution references resolve.
  */
 enum class NodeCoreVerdict {
+    /** checkConfig succeeded for this outbound harness. */
+    VALID,
     /** Outbound is the likely cause of checkConfig failure (only when control for family passed). */
     NODE_INVALID,
-    /** Harness template / DNS-route scaffolding is broken. */
+    /** Harness template / DNS-route scaffolding is broken (policy: HARNESS_ERROR — do not auto-skip). */
     HARNESS_INVALID,
     /** Native core not available in this process. */
     CORE_UNAVAILABLE,
@@ -170,6 +172,7 @@ object NodeCoreHarness {
                 "missing required",
                 "required field",
                 "invalid type",
+                "cannot unmarshal",
                 "json:",
             )
         if (nodeHints.any { it in msg }) {

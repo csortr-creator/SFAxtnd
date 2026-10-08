@@ -102,6 +102,11 @@ cp sing-box-core/libbox.aar app/libs/libbox.aar
 
 ```bash
 ./gradlew -p protocol-tests test
+
+# Pre-push validation (parser / isolated core patches / android):
+./scripts/validate.sh --parser
+# ./scripts/validate.sh --core
+# ./scripts/validate.sh --all
 ```
 
 CI дополнительно проверяет совместимость XHTTP с Xray, DNS-резервирование и сгенерированные конфигурации ядра перед сборкой APK.

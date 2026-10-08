@@ -109,7 +109,7 @@ object NodeValidationCompare {
                 newErr == null && oldErr == null -> "pass"
                 newErr == null && oldErr != null -> "old_fail_new_pass"
                 newErr != null && oldErr == null -> mapReason(newErr)
-                else -> mapReason(newErr ?: oldErr)
+                else -> mapReason(newErr ?: oldErr ?: "other")
             }
         val effectiveNew =
             if (newErr == null) {

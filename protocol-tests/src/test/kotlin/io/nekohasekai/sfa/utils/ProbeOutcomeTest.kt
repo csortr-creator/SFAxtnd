@@ -3,6 +3,7 @@ package io.nekohasekai.sfa.utils
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

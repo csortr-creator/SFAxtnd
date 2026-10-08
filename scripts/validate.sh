@@ -2,9 +2,9 @@
 # SFAxtnd pre-push validation (aligns with .github/workflows/build.yml where possible).
 #
 # Exit codes:
-#   0 — all executed required checks PASS
+#   0 — all executed required checks PASS (no FAIL/SKIP/UNVERIFIED recorded)
 #   1 — at least one check FAIL
-#   2 — requested mode incomplete (SKIP/UNVERIFIED for a required check)
+#   2 — requested mode incomplete (SKIP/UNVERIFIED without FAIL)
 #
 # --core uses an isolated temp clone of SagerNet/sing-box v1.14.2 and never
 # modifies the caller's working tree or any existing sing-box-core directory.
@@ -18,13 +18,27 @@ STATUS_FAIL=0
 STATUS_UNVERIFIED=0
 declare -a REPORT_LINES=()
 
+# Apply order follows patch.sh application sequence. Membership is checked
+# against patch.sh via assert_patch_list_matches_patch_sh().
+REQUIRED_CORE_PATCHES=(
+  sing-box-1.14.2-xhttp.patch
+  sing-box-1.14.2-test-fixtures.patch
+  sing-box-1.14.2-ping-completion.patch
+  sing-box-1.14.2-probe-mode.patch
+  sing-box-1.14.2-import-compatibility.patch
+  sing-box-1.14.2-vless-encryption.patch
+  sing-box-1.14.2-client-options.patch
+  sing-box-1.14.2-rule-set-fallback.patch
+  sing-box-1.14.2-reality-spider-x.patch
+)
+
 usage() {
   cat <<'USAGE'
 Usage: scripts/validate.sh --parser|--core|--android|--all [--help]
 
-  --parser   ./gradlew -p protocol-tests test --no-daemon --stacktrace  (CI step)
-  --core     Isolated clean sing-box v1.14.2 + patch apply; optional go tests
-  --android  ./gradlew assembleOtherDebug if libbox.aar + SDK available (CI task)
+  --parser   bash ./gradlew -p protocol-tests test --no-daemon --stacktrace
+  --core     Isolated clean sing-box v1.14.2 + required patches; optional go tests
+  --android  bash ./gradlew assembleOtherDebug if libbox.aar + SDK available
   --all      parser, core, android in sequence
 
 Statuses: PASS | FAIL | SKIP | UNVERIFIED
@@ -80,6 +94,48 @@ need_java() {
   return 1
 }
 
+run_gradle() {
+  # Do not chmod tracked gradlew; invoke via bash.
+  if [[ ! -f "$ROOT/gradlew" ]]; then
+    return 127
+  fi
+  (cd "$ROOT" && bash ./gradlew "$@")
+}
+
+assert_patch_list_matches_patch_sh() {
+  local patch_sh="$ROOT/patch.sh"
+  if [[ ! -f "$patch_sh" ]]; then
+    record "core-patch-list" "FAIL" "patch.sh missing"
+    return 1
+  fi
+  local -A in_required=()
+  local -A in_sh=()
+  local p name line
+  for p in "${REQUIRED_CORE_PATCHES[@]}"; do
+    in_required["$p"]=1
+  done
+  while IFS= read -r line; do
+    if [[ "$line" =~ (sing-box-1\.14\.2-[a-z0-9-]+\.patch) ]]; then
+      name="${BASH_REMATCH[1]}"
+      in_sh["$name"]=1
+    fi
+  done < "$patch_sh"
+
+  for p in "${REQUIRED_CORE_PATCHES[@]}"; do
+    if [[ -z "${in_sh[$p]+x}" ]]; then
+      record "core-patch-list" "FAIL" "required $p not referenced in patch.sh"
+      return 1
+    fi
+  done
+  for name in "${!in_sh[@]}"; do
+    if [[ -z "${in_required[$name]+x}" ]]; then
+      record "core-patch-list" "FAIL" "patch.sh references $name but REQUIRED_CORE_PATCHES omits it"
+      return 1
+    fi
+  done
+  return 0
+}
+
 run_parser() {
   log "=== --parser (protocol-tests) ==="
   if ! need_java; then
@@ -90,48 +146,66 @@ run_parser() {
     record "parser" "FAIL" "gradlew missing"
     return
   fi
-  chmod +x "$ROOT/gradlew" 2>/dev/null || true
   set +e
-  (cd "$ROOT" && ./gradlew -p protocol-tests test --no-daemon --stacktrace)
+  run_gradle -p protocol-tests test --no-daemon --stacktrace
   local rc=$?
   set -e
   if [[ $rc -eq 0 ]]; then
-    record "parser" "PASS" "./gradlew -p protocol-tests test"
+    record "parser" "PASS" "bash ./gradlew -p protocol-tests test"
   else
     record "parser" "FAIL" "gradle exit $rc"
   fi
 }
 
+apply_one_patch() {
+  local core_dir="$1"
+  local path="$2"
+  local name="$3"
+
+  if [[ ! -f "$path" ]]; then
+    log "ERROR: required patch missing: $name"
+    return 1
+  fi
+
+  if git -C "$core_dir" apply --reverse --check "$path" >/dev/null 2>&1; then
+    log "Already applied: $name"
+    return 0
+  fi
+
+  if ! git -C "$core_dir" apply --check "$path"; then
+    log "ERROR: git apply --check failed: $name"
+    return 1
+  fi
+  if ! git -C "$core_dir" apply "$path"; then
+    log "ERROR: git apply failed: $name"
+    return 1
+  fi
+  log "Applied: $name"
+  return 0
+}
+
 apply_patches_isolated() {
   local core_dir="$1"
   local patches_dir="$ROOT/patches"
-  # Order matches patch.sh (sing-box patches only; no app-side sed).
-  local -a patch_files=(
-    sing-box-1.14.2-xhttp.patch
-    sing-box-1.14.2-test-fixtures.patch
-    sing-box-1.14.2-ping-completion.patch
-    sing-box-1.14.2-probe-mode.patch
-    sing-box-1.14.2-import-compatibility.patch
-    sing-box-1.14.2-vless-encryption.patch
-    sing-box-1.14.2-client-options.patch
-    sing-box-1.14.2-rule-set-fallback.patch
-    sing-box-1.14.2-reality-spider-x.patch
-  )
   local p path
-  for p in "${patch_files[@]}"; do
+  for p in "${REQUIRED_CORE_PATCHES[@]}"; do
     path="$patches_dir/$p"
-    if [[ ! -f "$path" ]]; then
-      log "WARN: missing patch file $p (skipped)"
-      continue
+    if ! apply_one_patch "$core_dir" "$path" "$p"; then
+      return 1
     fi
-    if git -C "$core_dir" apply --reverse --check "$path" 2>/dev/null; then
-      log "Already applied: $p"
-      continue
-    fi
-    git -C "$core_dir" apply --check "$path"
-    git -C "$core_dir" apply "$path"
-    log "Applied: $p"
   done
+  return 0
+}
+
+go_error_is_infra_only() {
+  local logf="$1"
+  if ! grep -qE '502 Bad Gateway|proxy\.golang|reading http://|download go[0-9]|toolchain@|go: downloading go[0-9]' "$logf"; then
+    return 1
+  fi
+  if grep -qE '^--- FAIL:|FAIL\t.*\[build failed\]|undefined: |syntax error:' "$logf"; then
+    return 1
+  fi
+  return 0
 }
 
 run_core() {
@@ -142,6 +216,10 @@ run_core() {
   fi
   if [[ ! -d "$ROOT/patches" ]]; then
     record "core" "FAIL" "patches/ directory missing"
+    return
+  fi
+
+  if ! assert_patch_list_matches_patch_sh; then
     return
   fi
 
@@ -167,12 +245,12 @@ run_core() {
   local patch_rc=$?
   set -e
   if [[ $patch_rc -ne 0 ]]; then
-    record "core" "FAIL" "patch apply failed (exit $patch_rc)"
+    record "core-patches" "FAIL" "required patch missing or apply failed"
     trap - EXIT
     cleanup_core
     return
   fi
-  record "core-patches" "PASS" "patches applied on clean v1.14.2"
+  record "core-patches" "PASS" "all required patches applied on clean v1.14.2"
 
   if ! command -v go >/dev/null 2>&1; then
     record "core-go-tests" "SKIP" "go not found; patch-only"
@@ -194,16 +272,33 @@ run_core() {
   set -e
   if [[ $go_rc -eq 0 ]]; then
     record "core-go-tests" "PASS" "go test option/tls/v2ray/vlessenc"
-  elif grep -qE 'download go|toolchain|go.mod requires|502 Bad Gateway|proxy.golang|reading http' "$go_log"; then
-    tail -5 "$go_log" || true
-    record "core-go-tests" "UNVERIFIED" "Go modules/toolchain unavailable in this environment (full core tests run in CI)"
+  elif go_error_is_infra_only "$go_log"; then
+    tail -8 "$go_log" || true
+    record "core-go-tests" "UNVERIFIED" "Go module/toolchain fetch unavailable (see log tail)"
   else
-    tail -20 "$go_log" || true
-    record "core-go-tests" "FAIL" "go test exit $go_rc"
+    tail -30 "$go_log" || true
+    record "core-go-tests" "FAIL" "go test exit $go_rc (compile/test or ambiguous; not classified as infra)"
   fi
   rm -f "$go_log"
 
-  record "core-xhttp-interop" "SKIP" "full XHTTP+Xray interop only in GitHub Actions"
+  if [[ -n "${XHTTP_XRAY_BINARY:-}" && -x "${XHTTP_XRAY_BINARY}" ]]; then
+    set +e
+    (
+      cd "$tmp/sing-box-core"
+      XHTTP_XRAY_BINARY="$XHTTP_XRAY_BINARY" go test -count=1 -timeout 5m \
+        -ldflags=-checklinkname=0 -tags=with_quic,with_utls \
+        ./transport/v2rayxhttp
+    )
+    local x_rc=$?
+    set -e
+    if [[ $x_rc -eq 0 ]]; then
+      record "core-xhttp-interop" "PASS" "go test ./transport/v2rayxhttp with XHTTP_XRAY_BINARY"
+    else
+      record "core-xhttp-interop" "FAIL" "XHTTP interop go test exit $x_rc"
+    fi
+  else
+    record "core-xhttp-interop" "SKIP" "set XHTTP_XRAY_BINARY to a local verified xray binary to run; no auto-download"
+  fi
 
   trap - EXIT
   cleanup_core
@@ -230,13 +325,12 @@ run_android() {
     fi
   fi
 
-  chmod +x "$ROOT/gradlew" 2>/dev/null || true
   set +e
-  (cd "$ROOT" && ./gradlew assembleOtherDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace)
+  run_gradle assembleOtherDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:+UseG1GC" --stacktrace
   local rc=$?
   set -e
   if [[ $rc -eq 0 ]]; then
-    record "android" "PASS" "./gradlew assembleOtherDebug"
+    record "android" "PASS" "bash ./gradlew assembleOtherDebug"
   else
     record "android" "FAIL" "gradle exit $rc"
   fi

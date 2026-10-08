@@ -31,6 +31,40 @@ class ProfileLatencyCacheTest {
     }
 
     @Test
+    fun putDoesNotPersistDetailText() {
+        val cache = ProfileLatencyCache()
+        cache.put(
+            1,
+            "A",
+            "fp",
+            0,
+            1000L,
+            ProbeStatus.DNS_ERROR,
+            "no such host: secret.example.invalid",
+        )
+        val raw = cache.encode()
+        assertFalse(raw.contains("secret.example"))
+        assertFalse(raw.contains("\"detail\""))
+        val r = cache.get(1, "A", "fp")!!
+        assertEquals(ProbeStatus.DNS_ERROR, r.status)
+        assertEquals("", r.detail)
+    }
+
+    @Test
+    fun legacyDetailInStoredJsonIsIgnoredOnReadAndStrippedOnEncode() {
+        val raw =
+            """{"1":{"A":{"fingerprint":"fp","delay":0,"time":1000,"status":"TIMEOUT","detail":"dns: exchange failed example.com"}}}"""
+        val cache = ProfileLatencyCache(raw)
+        val r = cache.get(1, "A", "fp")!!
+        assertEquals(ProbeStatus.TIMEOUT, r.status)
+        assertEquals("", r.detail)
+        val encoded = cache.encode()
+        assertFalse(encoded.contains("example.com"))
+        assertFalse(encoded.contains("\"detail\""))
+        assertTrue(encoded.contains("TIMEOUT"))
+    }
+
+    @Test
     fun changedOrRemovedServersLoseTheirMeasurements() {
         val cache = ProfileLatencyCache()
         cache.put(1, "A", "old", 120, 1000)

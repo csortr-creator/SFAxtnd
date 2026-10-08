@@ -8,6 +8,7 @@ class ProfileLatencyCache(raw: String = "{}") {
         val delay: Int,
         val time: Long,
         val status: ProbeStatus = ProbeStatus.UNTESTED,
+        /** Session-only; never written to persistent encode. */
         val detail: String = "",
     )
 
@@ -24,11 +25,12 @@ class ProfileLatencyCache(raw: String = "{}") {
                 .getOrDefault(
                     if (entry.optInt("delay") > 0) ProbeStatus.SUCCESS else ProbeStatus.PROBE_ERROR,
                 )
+        // Ignore any legacy free-text detail that may contain host/path fragments.
         return Result(
             delay = entry.optInt("delay").coerceAtLeast(0),
             time = time,
             status = status,
-            detail = entry.optString("detail"),
+            detail = "",
         )
     }
 
@@ -40,18 +42,18 @@ class ProfileLatencyCache(raw: String = "{}") {
         delay: Int,
         time: Long,
         status: ProbeStatus = if (delay > 0) ProbeStatus.SUCCESS else ProbeStatus.PROBE_ERROR,
-        detail: String = "",
+        @Suppress("UNUSED_PARAMETER") detail: String = "",
     ) {
         if (time <= 0 || profile < 0) return
         val values = entries.optJSONObject(profile.toString()) ?: JSONObject()
+        // Do not persist exception messages or other free-text diagnostics.
         values.put(
             tag,
             JSONObject()
                 .put("fingerprint", fingerprint)
                 .put("delay", delay.coerceAtLeast(0))
                 .put("time", time)
-                .put("status", status.name)
-                .put("detail", detail.take(160)),
+                .put("status", status.name),
         )
         entries.put(profile.toString(), values)
     }
@@ -65,7 +67,26 @@ class ProfileLatencyCache(raw: String = "{}") {
         }
     }
 
-    @Synchronized fun encode(): String = entries.toString()
+    /** Serialize without legacy detail keys. */
+    @Synchronized
+    fun encode(): String {
+        stripLegacyDetail()
+        return entries.toString()
+    }
+
+    private fun stripLegacyDetail() {
+        val profileKeys = entries.keys().asSequence().toList()
+        for (profileKey in profileKeys) {
+            val values = entries.optJSONObject(profileKey) ?: continue
+            val tags = values.keys().asSequence().toList()
+            for (tag in tags) {
+                val entry = values.optJSONObject(tag) ?: continue
+                if (entry.has("detail")) {
+                    entry.remove("detail")
+                }
+            }
+        }
+    }
 
     companion object {
         fun fingerprints(config: String): Map<String, String> {

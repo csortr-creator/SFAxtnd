@@ -63,6 +63,7 @@ class ProbeOutcomeTest {
         val r = cache.get(1L, "node", "fp")!!
         assertEquals(ProbeStatus.DNS_ERROR, r.status)
         assertEquals(0, r.delay)
-        assertEquals("no such host", r.detail)
+        assertEquals("", r.detail)
+        assertFalse(cache.encode().contains("no such host"))
     }
 }

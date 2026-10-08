@@ -18,6 +18,9 @@ import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.OfflineProbePlatform
+import io.nekohasekai.sfa.utils.ProbeOutcome
+import io.nekohasekai.sfa.utils.ProbeStatus
+import android.util.Log
 import io.nekohasekai.sfa.utils.OutboundProfileState
 import io.nekohasekai.sfa.utils.ProfileLatencyCache
 import io.nekohasekai.sfa.utils.RemoteControlManager
@@ -79,19 +82,56 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         profileId: Long,
         tag: String,
         fingerprint: String?,
-        delay: Int,
+        outcome: ProbeOutcome,
         time: Long,
     ) {
         if (fingerprint == null) return
         synchronized(latencyCache) {
-            if (
-                latencyCache.get(profileId, tag, fingerprint) ==
-                    ProfileLatencyCache.Result(delay, time)
+            val next =
+                ProfileLatencyCache.Result(
+                    outcome.delayMs,
+                    time,
+                    outcome.status,
+                    outcome.detail,
+                )
+            if (latencyCache.get(profileId, tag, fingerprint) == next) return
+            latencyCache.put(
+                profileId,
+                tag,
+                fingerprint,
+                outcome.delayMs,
+                time,
+                outcome.status,
+                outcome.detail,
             )
-                return
-            latencyCache.put(profileId, tag, fingerprint, delay, time)
             Settings.outboundLatencyCache = latencyCache.encode()
         }
+    }
+
+    private fun logProbe(
+        event: String,
+        tag: String,
+        path: String,
+        outcome: ProbeOutcome? = null,
+        durationMs: Long? = null,
+        correlation: String,
+    ) {
+        val parts =
+            buildList {
+                add("event=$event")
+                add("corr=$correlation")
+                add("path=$path")
+                add("tag=$tag")
+                add("url=${ProbeOutcome.DEFAULT_PROBE_URL}")
+                add("timeoutMs=${pingTimeoutMs()}")
+                if (durationMs != null) add("durationMs=$durationMs")
+                if (outcome != null) {
+                    add("status=${outcome.status}")
+                    add("delayMs=${outcome.delayMs}")
+                    if (outcome.detail.isNotBlank()) add("detail=${outcome.detail.take(120)}")
+                }
+            }
+        Log.i(TAG_PROBE, parts.joinToString(" "))
     }
 
     private var probeJob: Job? = null
@@ -351,10 +391,30 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         viewModelScope
             .launch(Dispatchers.IO) {
                 try {
-                    // Patched core RPC returns after the entire test finishes.
-                    CommandTarget.standaloneClient().urlTestWithOptions(testingTag, warmPing(), pingTimeoutMs())
+                    val corr = "online-${testingTag.hashCode()}-${System.currentTimeMillis()}"
+                    logProbe("probe_started", testingTag, "online", correlation = corr)
+                    val started = System.currentTimeMillis()
+                    // Patched core RPC returns after the entire test finishes; per-tag
+                    // errors land in history without structured codes to Kotlin.
+                    CommandTarget.standaloneClient()
+                        .urlTestWithOptions(testingTag, warmPing(), pingTimeoutMs())
+                    logProbe(
+                        "probe_finished",
+                        testingTag,
+                        "online",
+                        ProbeOutcome(ProbeStatus.SUCCESS, 0, "batch completed"),
+                        System.currentTimeMillis() - started,
+                        corr,
+                    )
                 } catch (e: Exception) {
                     coroutineContext.ensureActive()
+                    logProbe(
+                        "probe_finished",
+                        testingTag,
+                        "online",
+                        ProbeOutcome.fromThrowable(e),
+                        correlation = "online-err",
+                    )
                     sendError(e)
                 }
             }
@@ -402,18 +462,53 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                             async {
                                                 limit.withPermit {
                                                     ensureActive()
-                                                    val delay =
-                                                        runCatching {
-                                                                session.urlTestWithOptions(tag, warm, pingTimeoutMs())
+                                                    val startedAt = System.currentTimeMillis()
+                                                    val correlation =
+                                                        "p${profileId}-${tag.hashCode()}-${startedAt}"
+                                                    logProbe(
+                                                        "probe_started",
+                                                        tag,
+                                                        "offline",
+                                                        correlation = correlation,
+                                                    )
+                                                    val outcome =
+                                                        try {
+                                                            val delay =
+                                                                session.urlTestWithOptions(
+                                                                    tag,
+                                                                    warm,
+                                                                    pingTimeoutMs(),
+                                                                )
+                                                            if (delay > 0) {
+                                                                ProbeOutcome.success(delay)
+                                                            } else {
+                                                                ProbeOutcome(
+                                                                    ProbeStatus.PROBE_ERROR,
+                                                                    0,
+                                                                    "urltest returned 0",
+                                                                )
                                                             }
-                                                            .getOrDefault(0)
+                                                        } catch (e: Exception) {
+                                                            if (e is kotlin.coroutines.cancellation.CancellationException) {
+                                                                throw e
+                                                            }
+                                                            ProbeOutcome.fromThrowable(e)
+                                                        }
                                                     ensureActive()
                                                     val measuredAt = System.currentTimeMillis()
+                                                    logProbe(
+                                                        "probe_finished",
+                                                        tag,
+                                                        "offline",
+                                                        outcome,
+                                                        measuredAt - startedAt,
+                                                        correlation,
+                                                    )
                                                     rememberLatency(
                                                         profileId,
                                                         tag,
                                                         fingerprints[tag],
-                                                        delay,
+                                                        outcome,
                                                         measuredAt,
                                                     )
                                                     if (
@@ -426,22 +521,22 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                                                     groups.map { group ->
                                                                         group.copy(
                                                                             items =
-                                                                                group.items.map {
-                                                                                    item ->
-                                                                                    if (
-                                                                                        item.tag ==
-                                                                                            tag
-                                                                                    )
+                                                                                group.items.map { item ->
+                                                                                    if (item.tag == tag)
                                                                                         item.copy(
                                                                                             urlTestDelay =
-                                                                                                delay,
+                                                                                                outcome.delayMs,
                                                                                             urlTestTime =
                                                                                                 measuredAt,
+                                                                                            probeStatus =
+                                                                                                outcome.status.name,
+                                                                                            probeDetail =
+                                                                                                outcome.detail,
                                                                                         )
                                                                                     else item
-                                                                                }
+                                                                                },
                                                                         )
-                                                                    }
+                                                                    },
                                                             )
                                                         }
                                                     }
@@ -515,7 +610,14 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                         profileId,
                                         item.tag,
                                         fingerprints[item.tag],
-                                        item.urlTestDelay,
+                                        if (item.urlTestDelay > 0)
+                                            ProbeOutcome.success(item.urlTestDelay)
+                                        else
+                                            ProbeOutcome(
+                                                ProbeStatus.PROBE_ERROR,
+                                                0,
+                                                "online history zero delay",
+                                            ),
                                         item.urlTestTime.takeIf { it > 0 }
                                             ?: System.currentTimeMillis(),
                                     )
@@ -532,6 +634,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                     item.copy(
                                         urlTestDelay = cached.delay,
                                         urlTestTime = cached.time,
+                                        probeStatus = cached.status.name,
+                                        probeDetail = cached.detail,
                                     )
                                 else if (
                                     prev != null && (prev.urlTestDelay > 0 || prev.urlTestTime > 0L)
@@ -539,6 +643,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                     item.copy(
                                         urlTestDelay = prev.urlTestDelay,
                                         urlTestTime = prev.urlTestTime,
+                                        probeStatus = prev.probeStatus,
+                                        probeDetail = prev.probeDetail,
                                     )
                                 } else {
                                     item
@@ -631,12 +737,16 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                                         item.copy(
                                             urlTestDelay = cached.delay,
                                             urlTestTime = cached.time,
+                                            probeStatus = cached.status.name,
+                                            probeDetail = cached.detail,
                                         )
                                     else
                                         previous[item.tag]?.let {
                                             item.copy(
                                                 urlTestDelay = it.urlTestDelay,
                                                 urlTestTime = it.urlTestTime,
+                                                probeStatus = it.probeStatus,
+                                                probeDetail = it.probeDetail,
                                             )
                                         } ?: item
                                 }
@@ -657,6 +767,8 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         }
 
     companion object {
+        private const val TAG_PROBE = "SFAxtndProbe"
+
         private val latencyCache by lazy { ProfileLatencyCache(Settings.outboundLatencyCache) }
 
         fun parseGroupsFromConfig(jsonStr: String): List<Group> {

@@ -4,7 +4,12 @@ import java.security.MessageDigest
 import org.json.JSONObject
 
 class ProfileLatencyCache(raw: String = "{}") {
-    data class Result(val delay: Int, val time: Long)
+    data class Result(
+        val delay: Int,
+        val time: Long,
+        val status: ProbeStatus = ProbeStatus.UNTESTED,
+        val detail: String = "",
+    )
 
     private val entries = runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
 
@@ -13,11 +18,30 @@ class ProfileLatencyCache(raw: String = "{}") {
         val entry = entries.optJSONObject(profile.toString())?.optJSONObject(tag) ?: return null
         if (entry.optString("fingerprint") != fingerprint) return null
         val time = entry.optLong("time")
-        return if (time > 0) Result(entry.optInt("delay").coerceAtLeast(0), time) else null
+        if (time <= 0) return null
+        val status =
+            runCatching { ProbeStatus.valueOf(entry.optString("status", "SUCCESS")) }
+                .getOrDefault(
+                    if (entry.optInt("delay") > 0) ProbeStatus.SUCCESS else ProbeStatus.PROBE_ERROR,
+                )
+        return Result(
+            delay = entry.optInt("delay").coerceAtLeast(0),
+            time = time,
+            status = status,
+            detail = entry.optString("detail"),
+        )
     }
 
     @Synchronized
-    fun put(profile: Long, tag: String, fingerprint: String, delay: Int, time: Long) {
+    fun put(
+        profile: Long,
+        tag: String,
+        fingerprint: String,
+        delay: Int,
+        time: Long,
+        status: ProbeStatus = if (delay > 0) ProbeStatus.SUCCESS else ProbeStatus.PROBE_ERROR,
+        detail: String = "",
+    ) {
         if (time <= 0 || profile < 0) return
         val values = entries.optJSONObject(profile.toString()) ?: JSONObject()
         values.put(
@@ -25,7 +49,9 @@ class ProfileLatencyCache(raw: String = "{}") {
             JSONObject()
                 .put("fingerprint", fingerprint)
                 .put("delay", delay.coerceAtLeast(0))
-                .put("time", time),
+                .put("time", time)
+                .put("status", status.name)
+                .put("detail", detail.take(160)),
         )
         entries.put(profile.toString(), values)
     }

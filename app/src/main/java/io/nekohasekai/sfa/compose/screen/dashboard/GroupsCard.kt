@@ -819,18 +819,18 @@ private fun ProxyChip(
                             },
                     )
 
-                    if (item.urlTestTime > 0L && item.urlTestDelay == 0) {
-                        Text(
-                            "Недоступен",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    } else if (item.urlTestDelay > 0) {
+                    if (item.urlTestDelay > 0) {
                         Text(
                             text = "${item.urlTestDelay} мс",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = palette.forDelay(item.urlTestDelay),
+                        )
+                    } else if (item.urlTestTime > 0L) {
+                        Text(
+                            text = probeStatusLabel(item.probeStatus),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
@@ -1116,7 +1116,7 @@ private fun ServerListRow(
                     )
                 else if (item.urlTestTime > 0)
                     Text(
-                        "Недоступен",
+                        probeStatusLabel(item.probeStatus),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -1144,3 +1144,17 @@ private fun ServerListRow(
         }
     }
 }
+
+
+private fun probeStatusLabel(status: String): String =
+    when (status) {
+        "TIMEOUT" -> "Таймаут"
+        "DNS_ERROR" -> "DNS"
+        "HANDSHAKE_ERROR" -> "Handshake"
+        "HTTP_ERROR" -> "HTTP"
+        "CANCELLED" -> "Отменено"
+        "TESTING" -> "…"
+        "SUCCESS" -> ""
+        "UNTESTED", "" -> ""
+        else -> "Ошибка проверки"
+    }

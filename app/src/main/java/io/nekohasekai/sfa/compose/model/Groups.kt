@@ -34,6 +34,9 @@ data class GroupItem(
     val displayType: String,
     val urlTestTime: Long,
     val urlTestDelay: Int,
+    /** Probe classification; empty for online-history items without Kotlin-side status. */
+    val probeStatus: String = "",
+    val probeDetail: String = "",
 ) {
     constructor(item: OutboundGroupItem) : this(
         item.tag,
@@ -41,6 +44,10 @@ data class GroupItem(
         Libbox.proxyDisplayType(item.type),
         item.urlTestTime,
         item.urlTestDelay,
+        probeStatus = if (item.urlTestTime > 0L && item.urlTestDelay > 0) "SUCCESS"
+        else if (item.urlTestTime > 0L) "PROBE_ERROR"
+        else "",
+        probeDetail = "",
     )
 }
 

@@ -206,8 +206,16 @@ jobs:
 
           # B1: dual old/new scaffold compare + in-process CheckConfig bench (timings never fail job)
           cp ../protocol-tests/sfa_node_core_b1_test.go experimental/libbox/sfa_node_core_b1_test.go
-          export SFA_B1_COMPARE_DIR="../protocol-tests/build/node-core-compare"
-          export SFA_B1_BENCH_CONFIG="../protocol-tests/build/native-configs/harness-vless-reality-domain.json"
+          export SFA_B1_COMPARE_DIR="${GITHUB_WORKSPACE}/protocol-tests/build/node-core-compare"
+          export SFA_B1_BENCH_CONFIG="${GITHUB_WORKSPACE}/protocol-tests/build/native-configs/harness-vless-reality-domain.json"
+          echo "B1 paths:"; ls -la "$SFA_B1_COMPARE_DIR" || true; ls -la "$SFA_B1_BENCH_CONFIG" || true
+          # Fallback: protocol-tests may write relative to repo root build/
+          if [ ! -d "$SFA_B1_COMPARE_DIR" ] && [ -d "${GITHUB_WORKSPACE}/build/node-core-compare" ]; then
+            export SFA_B1_COMPARE_DIR="${GITHUB_WORKSPACE}/build/node-core-compare"
+          fi
+          if [ ! -f "$SFA_B1_BENCH_CONFIG" ] && [ -f "${GITHUB_WORKSPACE}/build/native-configs/harness-vless-reality-domain.json" ]; then
+            export SFA_B1_BENCH_CONFIG="${GITHUB_WORKSPACE}/build/native-configs/harness-vless-reality-domain.json"
+          fi
           go test -timeout 10m -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./experimental/libbox -run 'TestSFANodeCoreB1' -count=1 -v
 
           # CLI process overhead sample (logged only; not a pass/fail gate on duration)
@@ -215,7 +223,7 @@ jobs:
             echo "CLI single check:"
             time /tmp/sfa-config-check check -c "$SFA_B1_BENCH_CONFIG" || true
             echo "CLI x10:"
-            time bash -c 'for i in $(seq 1 10); do /tmp/sfa-config-check check -c "$SFA_B1_BENCH_CONFIG" || exit 1; done' || true
+            time env SFA_B1_BENCH_CONFIG="$SFA_B1_BENCH_CONFIG" bash -c 'for i in $(seq 1 10); do /tmp/sfa-config-check check -c "$SFA_B1_BENCH_CONFIG" || exit 1; done' || true
           fi
 
       - name: Build libbox

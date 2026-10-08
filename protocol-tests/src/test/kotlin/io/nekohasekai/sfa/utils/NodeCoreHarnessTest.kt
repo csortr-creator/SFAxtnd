@@ -109,10 +109,21 @@ class NodeCoreHarnessTest {
     }
 
     @Test
-    fun classifyNeverNodeWhenControlFailed() {
+    fun classifyUnambiguousSchemaIsNodeEvenWithoutControl() {
+        // B2: unknown type / unmarshal are node-local; no family control required.
         val v =
             NodeCoreHarness.classify(
                 "unknown outbound type: not-a-real-outbound-type",
+                controlPassed = false,
+            )
+        assertEquals(NodeCoreVerdict.NODE_INVALID, v)
+    }
+
+    @Test
+    fun classifyAmbiguousWithoutControlIsUnknown() {
+        val v =
+            NodeCoreHarness.classify(
+                "tls: handshake failure",
                 controlPassed = false,
             )
         assertEquals(NodeCoreVerdict.UNKNOWN, v)

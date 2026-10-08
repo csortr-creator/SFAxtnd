@@ -24,6 +24,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ProbeOutcome.kt")
     kotlin.include("io/nekohasekai/sfa/utils/NetworkErrorPresentation.kt")
     kotlin.include("io/nekohasekai/sfa/utils/NodeCoreHarness.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/NodeValidationCompare.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/XrayCompatibility.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionContentParser.kt")

@@ -204,6 +204,20 @@ jobs:
             done
           fi
 
+          # B1: dual old/new scaffold compare + in-process CheckConfig bench (timings never fail job)
+          cp ../protocol-tests/sfa_node_core_b1_test.go experimental/libbox/sfa_node_core_b1_test.go
+          export SFA_B1_COMPARE_DIR="../protocol-tests/build/node-core-compare"
+          export SFA_B1_BENCH_CONFIG="../protocol-tests/build/native-configs/harness-vless-reality-domain.json"
+          go test -timeout 10m -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./experimental/libbox -run 'TestSFANodeCoreB1' -count=1 -v
+
+          # CLI process overhead sample (logged only; not a pass/fail gate on duration)
+          if [ -f "$SFA_B1_BENCH_CONFIG" ]; then
+            echo "CLI single check:"
+            time /tmp/sfa-config-check check -c "$SFA_B1_BENCH_CONFIG" || true
+            echo "CLI x10:"
+            time bash -c 'for i in $(seq 1 10); do /tmp/sfa-config-check check -c "$SFA_B1_BENCH_CONFIG" || exit 1; done' || true
+          fi
+
       - name: Build libbox
         shell: bash
         run: |

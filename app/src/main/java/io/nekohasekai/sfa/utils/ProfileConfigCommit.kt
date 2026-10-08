@@ -122,7 +122,7 @@ object ProfileConfigCommit {
         target: File,
         content: String,
         validate: (String) -> Unit,
-        afterFileCommit: () -> T,
+        afterFileCommit: suspend () -> T,
     ): CommitOutcome<T> {
         mutexFor(profileId).withLock {
             if (!isCurrent(profileId, operationToken)) {

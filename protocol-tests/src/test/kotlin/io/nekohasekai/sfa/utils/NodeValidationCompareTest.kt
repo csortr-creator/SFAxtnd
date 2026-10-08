@@ -60,13 +60,26 @@ class NodeValidationCompareTest {
     @Test
     fun parserWithNoopValidateNodeDoesNotInvokeCore() {
         var coreCalls = 0
+        // validateNode is invoked per independent node; counting calls proves the hook runs.
+        // Passing a no-op (or counter) still performs structural parse without Libbox.
         val line =
             "vless://11111111-1111-4111-8111-111111111111@example.org:443" +
-                "?type=tcp&security=reality&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
-                "&sid=abcd&sni=www.example.com&fp=chrome#fixture"
+                "?security=tls&type=ws&path=/fixture#Valid"
         val result =
             SubscriptionContentParser(validateNode = { coreCalls++ }).parse(line)
-        assertEquals(0, coreCalls)
+        assertTrue("structural parse must import node", result.report.imported >= 1)
+        assertEquals("validateNode called once per imported independent node", 1, coreCalls)
+        // Empty default validateNode must not be confused with core: counter-only hook has no Libbox.
+    }
+
+    @Test
+    fun defaultValidateNodeIsNoopWithoutLibbox() {
+        // Production tests use SubscriptionContentParser() without Android Libbox;
+        // default validateNode is {}. Import must succeed without native core.
+        val line =
+            "vless://11111111-1111-4111-8111-111111111111@example.org:443" +
+                "?security=tls&type=ws&path=/fixture#Valid"
+        val result = SubscriptionContentParser().parse(line)
         assertTrue(result.report.imported >= 1)
     }
 

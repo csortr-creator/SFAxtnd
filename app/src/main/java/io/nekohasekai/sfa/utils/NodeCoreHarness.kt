@@ -159,20 +159,29 @@ object NodeCoreHarness {
             return NodeCoreVerdict.HARNESS_INVALID
         }
 
+        // Unambiguous outbound schema/decode failures: NODE even without family control
+        // (e.g. unknown type has no protocol family to validate harness against).
+        val unambiguousNodeHints =
+            listOf(
+                "unknown outbound type",
+                "unsupported outbound",
+                "cannot unmarshal",
+            )
+        if (unambiguousNodeHints.any { it in msg }) {
+            return NodeCoreVerdict.NODE_INVALID
+        }
+
         if (!controlPassed) {
-            // Family control failed — node result is not trustworthy.
+            // Family control failed — ambiguous errors are not trustworthy as NODE.
             return NodeCoreVerdict.UNKNOWN
         }
 
         // Prefer type/schema style failures for NODE when control is green.
         val nodeHints =
             listOf(
-                "unknown outbound type",
-                "unsupported outbound",
                 "missing required",
                 "required field",
                 "invalid type",
-                "cannot unmarshal",
                 "json:",
             )
         if (nodeHints.any { it in msg }) {

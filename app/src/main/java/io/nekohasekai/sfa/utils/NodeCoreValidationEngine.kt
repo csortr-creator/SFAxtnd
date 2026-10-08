@@ -82,7 +82,7 @@ internal class NodeCoreValidationEngine(
                     controlPassed = controlPassed,
                     expectedHarnessFailure = false,
                 )
-            if (verdict == NodeCoreVerdict.NODE_INVALID && controlPassed) {
+            if (verdict == NodeCoreVerdict.NODE_INVALID) {
                 throw NodeCoreNodeInvalidException(
                     NodeValidationCompare.mapReason(e.message ?: "other"),
                 )

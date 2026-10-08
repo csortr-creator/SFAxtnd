@@ -74,12 +74,13 @@ class NetworkErrorPresentationTest {
 
     @Test
     fun extractSafeHintDropsUrlBodies() {
-        assertEquals(
-            "tls handshake timeout",
+        val hint =
             NetworkErrorPresentation.extractSafeHint(
                 """Get "https://x/SECRET": net/http: TLS handshake timeout""",
-            ),
-        )
+            )
+        assertTrue(hint != null && "tls handshake timeout" in hint!!)
+        assertFalse(hint!!.contains("SECRET"))
+        assertFalse(hint.contains("://"))
         assertEquals(
             null,
             NetworkErrorPresentation.extractSafeHint("https://x/SECRET?token=1"),

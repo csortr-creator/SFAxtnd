@@ -4,14 +4,14 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal data class SubscriptionImportIssue(
+data class SubscriptionImportIssue(
     val line: Int,
     val name: String,
     val reason: String,
     val code: ImportIssueCode = ImportIssueCode.UNKNOWN,
 )
 
-internal data class SubscriptionImportReport(
+data class SubscriptionImportReport(
     val received: Int,
     val imported: Int,
     val issues: List<SubscriptionImportIssue>,

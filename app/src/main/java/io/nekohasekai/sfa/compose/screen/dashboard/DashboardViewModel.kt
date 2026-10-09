@@ -19,7 +19,6 @@ import io.nekohasekai.sfa.utils.ManualPrepareResult
 import io.nekohasekai.sfa.utils.PendingImportHolder
 import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.CommitOutcome
-import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.ImportResultFormatter
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile

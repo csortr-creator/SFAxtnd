@@ -152,8 +152,7 @@ internal class SubscriptionContentParser(
     }
 
     /**
-     * Import-time config sanitize. FakeIP migration follows sing-box 1.11/1.12 semantics
-     * (enabled store + existing fakeip server), not doc-only defaults or auto DNS rules.
+     * Import-time config sanitize. FakeIP migration follows sing-box 1.11/1.12 semantics.
      */
     private fun sanitizeAndMigrateConfig(
         jsonStr: String,
@@ -202,7 +201,6 @@ internal class SubscriptionContentParser(
                             val addr = server.remove("address").toString().trim()
                             try {
                                 when {
-                                    // Defer to migrateLegacyDnsFakeIp (do not map to udp).
                                     addr == "fakeip" || addr.startsWith("fakeip://") -> Unit
                                     addr == "local" || addr.startsWith("rcode://") ->
                                         server.put("type", "local")
@@ -299,10 +297,7 @@ internal class SubscriptionContentParser(
                 root.put("outbounds", cleanedOutbounds)
             }
 
-            val dnsAfterServers = root.optJSONObject("dns")
-            if (dnsAfterServers != null) {
-                migrateLegacyDnsFakeIp(dnsAfterServers, migrationWarnings)
-            }
+            root.optJSONObject("dns")?.let { migrateLegacyDnsFakeIp(it, migrationWarnings) }
 
             SubscriptionRouting.apply(root, mode, blockIpv6)
 
@@ -310,15 +305,10 @@ internal class SubscriptionContentParser(
         } catch (e: LegacyDnsFakeIpIncompatibleException) {
             throw e
         } catch (e: Exception) {
-            // Soft-fail only for unparseable input; never hide FakeIP migration outcomes.
             if (e is org.json.JSONException) jsonStr else throw e
         }
 
 
-    /**
-     * Migrate removed sing-box 1.14 legacy [dns.fakeip] object and address=fakeip servers.
-     * Does not invent DNS rules, servers, or documentation default ranges.
-     */
     private fun migrateLegacyDnsFakeIp(dns: JSONObject, warnings: MutableList<String>) {
         val knownFakeIpKeys = setOf("enabled", "inet4_range", "inet6_range")
         var enabled = false
@@ -332,7 +322,7 @@ internal class SubscriptionContentParser(
             when (raw) {
                 is JSONObject -> {
                     val unknown =
-                        raw.keys().asSequence().map { it as String }.filter { it !in knownFakeIpKeys }.toList()
+                        raw.keys().asSequence().map { it.toString() }.filter { it !in knownFakeIpKeys }.toList()
                     if (unknown.isNotEmpty()) {
                         throw LegacyDnsFakeIpIncompatibleException(
                             "LEGACY_DNS_FAKEIP_INCOMPATIBLE: unknown field(s): ${unknown.joinToString(",")}",
@@ -342,11 +332,13 @@ internal class SubscriptionContentParser(
                     if (raw.has("inet4_range")) inet4 = raw.opt("inet4_range")?.toString()
                     if (raw.has("inet6_range")) inet6 = raw.opt("inet6_range")?.toString()
                 }
-                JSONObject.NULL, null -> Unit
-                else ->
-                    throw LegacyDnsFakeIpIncompatibleException(
-                        "LEGACY_DNS_FAKEIP_INCOMPATIBLE: unexpected fakeip value type",
-                    )
+                else -> {
+                    if (raw != null && raw != JSONObject.NULL) {
+                        throw LegacyDnsFakeIpIncompatibleException(
+                            "LEGACY_DNS_FAKEIP_INCOMPATIBLE: unexpected fakeip value type",
+                        )
+                    }
+                }
             }
         }
 
@@ -395,10 +387,9 @@ internal class SubscriptionContentParser(
             for (i in 0 until servers.length()) {
                 val server = servers.optJSONObject(i) ?: continue
                 if (!isLegacyFakeIpAddressServer(server)) continue
-                convertLegacyFakeIpAddressServer(server, inet4 = null, inet6 = null)
+                convertLegacyFakeIpAddressServer(server, null, null)
             }
-            val note =
-                "Legacy address=fakeip converted to type=fakeip without range defaults"
+            val note = "Legacy address=fakeip converted to type=fakeip without range defaults"
             if (note !in warnings) warnings.add(note)
         }
     }
@@ -1102,5 +1093,4 @@ internal class SubscriptionContentParser(
     }
 }
 
-/** Safe import-time error; message is a stable code (+ short detail), no config body. */
 internal class LegacyDnsFakeIpIncompatibleException(message: String) : IllegalArgumentException(message)

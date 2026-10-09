@@ -313,6 +313,112 @@ internal class SubscriptionContentParser(
             jsonStr
         }
 
+
+    /**
+     * Migrate removed sing-box 1.14 legacy [dns.fakeip] object and address=fakeip servers.
+     * Does not invent DNS rules, servers, or documentation default ranges.
+     */
+    private fun migrateLegacyDnsFakeIp(dns: JSONObject, warnings: MutableList<String>) {
+        val knownFakeIpKeys = setOf("enabled", "inet4_range", "inet6_range")
+        var enabled = false
+        var inet4: String? = null
+        var inet6: String? = null
+        var hadObject = false
+
+        if (dns.has("fakeip")) {
+            hadObject = true
+            val raw = dns.remove("fakeip")
+            when (raw) {
+                is JSONObject -> {
+                    val unknown =
+                        raw.keys().asSequence().map { it as String }.filter { it !in knownFakeIpKeys }.toList()
+                    if (unknown.isNotEmpty()) {
+                        throw LegacyDnsFakeIpIncompatibleException(
+                            "LEGACY_DNS_FAKEIP_INCOMPATIBLE: unknown field(s): ${unknown.joinToString(",")}",
+                        )
+                    }
+                    enabled = raw.optBoolean("enabled", false)
+                    if (raw.has("inet4_range")) inet4 = raw.opt("inet4_range")?.toString()
+                    if (raw.has("inet6_range")) inet6 = raw.opt("inet6_range")?.toString()
+                }
+                JSONObject.NULL, null -> Unit
+                else ->
+                    throw LegacyDnsFakeIpIncompatibleException(
+                        "LEGACY_DNS_FAKEIP_INCOMPATIBLE: unexpected fakeip value type",
+                    )
+            }
+        }
+
+        val servers = dns.optJSONArray("servers") ?: JSONArray().also { dns.put("servers", it) }
+        var legacyAddressCount = 0
+        var modernFakeIpCount = 0
+        for (i in 0 until servers.length()) {
+            val server = servers.optJSONObject(i) ?: continue
+            when {
+                server.optString("type") == "fakeip" -> modernFakeIpCount++
+                isLegacyFakeIpAddressServer(server) -> legacyAddressCount++
+            }
+        }
+
+        if (hadObject && !enabled) {
+            if (legacyAddressCount > 0) {
+                throw LegacyDnsFakeIpIncompatibleException(
+                    "LEGACY_DNS_FAKEIP_INCOMPATIBLE: enabled=false with legacy address fakeip server",
+                )
+            }
+            return
+        }
+
+        if (hadObject && enabled) {
+            var converted = 0
+            for (i in 0 until servers.length()) {
+                val server = servers.optJSONObject(i) ?: continue
+                if (!isLegacyFakeIpAddressServer(server)) continue
+                convertLegacyFakeIpAddressServer(server, inet4, inet6)
+                converted++
+            }
+            if (converted == 0 && modernFakeIpCount == 0) {
+                val note =
+                    "Legacy dns.fakeip was enabled but no fakeip DNS server was configured; " +
+                        "object removed without adding servers or rules"
+                if (note !in warnings) warnings.add(note)
+            } else if (converted == 0 && modernFakeIpCount > 0) {
+                val note =
+                    "Legacy dns.fakeip removed; existing type=fakeip server ranges left unchanged"
+                if (note !in warnings) warnings.add(note)
+            }
+            return
+        }
+
+        if (legacyAddressCount > 0) {
+            for (i in 0 until servers.length()) {
+                val server = servers.optJSONObject(i) ?: continue
+                if (!isLegacyFakeIpAddressServer(server)) continue
+                convertLegacyFakeIpAddressServer(server, inet4 = null, inet6 = null)
+            }
+            val note =
+                "Legacy address=fakeip converted to type=fakeip without range defaults"
+            if (note !in warnings) warnings.add(note)
+        }
+    }
+
+    private fun isLegacyFakeIpAddressServer(server: JSONObject): Boolean {
+        if (server.optString("type") == "fakeip") return false
+        val addr = server.optString("address").trim()
+        return addr == "fakeip" || addr.startsWith("fakeip://")
+    }
+
+    private fun convertLegacyFakeIpAddressServer(
+        server: JSONObject,
+        inet4: String?,
+        inet6: String?,
+    ) {
+        server.put("type", "fakeip")
+        server.remove("address")
+        if (inet4 != null && !server.has("inet4_range")) server.put("inet4_range", inet4)
+        if (inet6 != null && !server.has("inet6_range")) server.put("inet6_range", inet6)
+    }
+
     private fun tryDecodeBase64(text: String): String {
         val trimmed = text.trim()
         if (trimmed.contains("://") || trimmed.startsWith("{") || trimmed.startsWith("[")) {

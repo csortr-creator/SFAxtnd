@@ -29,6 +29,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ProxyLinkParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/XrayCompatibility.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionContentParser.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/DnsFakeIpMigration.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ForeignSubscriptionParser.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionImportReport.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionRouting.kt")

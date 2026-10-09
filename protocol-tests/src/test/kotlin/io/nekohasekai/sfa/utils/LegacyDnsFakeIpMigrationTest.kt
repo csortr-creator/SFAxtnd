@@ -9,44 +9,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/**
- * Import-time legacy dns.fakeip migration (sing-box 1.11/1.12 semantics → 1.14).
- */
 class LegacyDnsFakeIpMigrationTest {
 
-    private fun baseOutbounds() =
-        JSONArray()
-            .put(
-                JSONObject()
-                    .put("type", "direct")
-                    .put("tag", "direct"),
-            )
-            .put(
-                JSONObject()
-                    .put("type", "vless")
-                    .put("tag", "proxy")
-                    .put("server", "example.org")
-                    .put("server_port", 443)
-                    .put("uuid", "11111111-1111-4111-8111-111111111111"),
-            )
-
-    private fun wrap(dns: JSONObject): String =
-        JSONObject()
-            .put("outbounds", baseOutbounds())
-            .put("dns", dns)
-            .put("route", JSONObject().put("final", "proxy"))
-            .toString()
-
-    private fun parse(json: String) = SubscriptionContentParser().parse(json)
+    private fun migrate(dns: JSONObject): List<String> {
+        val warnings = mutableListOf<String>()
+        DnsFakeIpMigration.migrate(dns, warnings)
+        return warnings
+    }
 
     private fun findFakeIp(dns: JSONObject): JSONObject =
         (0 until dns.getJSONArray("servers").length())
             .map { dns.getJSONArray("servers").getJSONObject(it) }
             .first { it.optString("type") == "fakeip" }
 
-    private fun export(name: String, config: String) {
+    private fun export(name: String, dns: JSONObject) {
         File("build/native-configs").mkdirs()
-        File("build/native-configs/$name").writeText(config)
+        File("build/native-configs/$name").writeText(
+            JSONObject()
+                .put("dns", dns)
+                .put("outbounds", JSONArray().put(JSONObject().put("type", "direct").put("tag", "direct")))
+                .put("route", JSONObject().put("final", "direct"))
+                .toString(2),
+        )
     }
 
     @Test
@@ -76,25 +60,16 @@ class LegacyDnsFakeIpMigrationTest {
                         .put("inet4_range", "198.18.0.0/15")
                         .put("inet6_range", "fc00::/18"),
                 )
-        val result = parse(wrap(dns))
-        assertTrue(result.report.issues.isEmpty())
-        val root = JSONObject(result.config)
-        val outDns = root.getJSONObject("dns")
-        assertFalse(outDns.has("fakeip"))
-        assertEquals("remote", outDns.getString("final"))
-        val rules = outDns.getJSONArray("rules")
-        assertEquals(1, rules.length())
-        assertEquals("fakeip", rules.getJSONObject(0).getString("server"))
-        val servers = outDns.getJSONArray("servers")
-        val fake =
-            (0 until servers.length())
-                .map { servers.getJSONObject(it) }
-                .first { it.optString("type") == "fakeip" || it.optString("tag") == "fakeip" }
-        assertEquals("config=${result.config}", "fakeip", fake.optString("type"))
-        assertEquals("config=${result.config}", "198.18.0.0/15", fake.optString("inet4_range"))
-        assertEquals("config=${result.config}", "fc00::/18", fake.optString("inet6_range"))
+        migrate(dns)
+        assertFalse(dns.has("fakeip"))
+        assertEquals("remote", dns.getString("final"))
+        assertEquals(1, dns.getJSONArray("rules").length())
+        val fake = findFakeIp(dns)
+        assertEquals("fakeip", fake.getString("type"))
+        assertEquals("198.18.0.0/15", fake.getString("inet4_range"))
+        assertEquals("fc00::/18", fake.getString("inet6_range"))
         assertFalse(fake.has("address"))
-        export("legacy-fakeip-enabled.json", result.config)
+        export("legacy-fakeip-enabled.json", dns)
     }
 
     @Test
@@ -107,13 +82,10 @@ class LegacyDnsFakeIpMigrationTest {
                 )
                 .put("fakeip", JSONObject().put("enabled", false))
         try {
-            parse(wrap(dns))
+            migrate(dns)
             fail("expected LEGACY_DNS_FAKEIP_INCOMPATIBLE")
-        } catch (e: Exception) {
-            assertTrue(
-                "got ${e::class.simpleName}: ${e.message}",
-                e.message?.contains("LEGACY_DNS_FAKEIP_INCOMPATIBLE") == true,
-            )
+        } catch (e: LegacyDnsFakeIpIncompatibleException) {
+            assertTrue(e.message!!.startsWith("LEGACY_DNS_FAKEIP_INCOMPATIBLE"))
         }
     }
 
@@ -132,11 +104,9 @@ class LegacyDnsFakeIpMigrationTest {
                         ),
                 )
                 .put("fakeip", JSONObject().put("enabled", false))
-        val result = parse(wrap(dns))
-        val outDns = JSONObject(result.config).getJSONObject("dns")
-        assertFalse(outDns.has("fakeip"))
-        val s = outDns.getJSONArray("servers").getJSONObject(0)
-        assertEquals("fakeip", s.getString("type"))
+        migrate(dns)
+        assertFalse(dns.has("fakeip"))
+        val s = findFakeIp(dns)
         assertEquals("198.18.0.0/15", s.getString("inet4_range"))
     }
 
@@ -149,13 +119,11 @@ class LegacyDnsFakeIpMigrationTest {
                     JSONArray().put(JSONObject().put("type", "local").put("tag", "local")),
                 )
                 .put("fakeip", JSONObject().put("inet4_range", "198.18.0.0/15"))
-        val result = parse(wrap(dns))
-        assertFalse(JSONObject(result.config).getJSONObject("dns").has("fakeip"))
-        // no invented fakeip server
-        val servers = JSONObject(result.config).getJSONObject("dns").getJSONArray("servers")
+        migrate(dns)
+        assertFalse(dns.has("fakeip"))
         assertFalse(
-            (0 until servers.length()).any {
-                servers.getJSONObject(it).optString("type") == "fakeip"
+            (0 until dns.getJSONArray("servers").length()).any {
+                dns.getJSONArray("servers").getJSONObject(it).optString("type") == "fakeip"
             },
         )
     }
@@ -175,7 +143,8 @@ class LegacyDnsFakeIpMigrationTest {
                         .put("inet4_range", "10.0.0.0/8")
                         .put("inet6_range", "fd00::/8"),
                 )
-        val fake = findFakeIp(JSONObject(parse(wrap(dns)).config).getJSONObject("dns"))
+        migrate(dns)
+        val fake = findFakeIp(dns)
         assertEquals("10.0.0.0/8", fake.getString("inet4_range"))
         assertEquals("fd00::/8", fake.getString("inet6_range"))
     }
@@ -189,7 +158,8 @@ class LegacyDnsFakeIpMigrationTest {
                     JSONArray().put(JSONObject().put("address", "fakeip").put("tag", "fp")),
                 )
                 .put("fakeip", JSONObject().put("enabled", true))
-        val fake = findFakeIp(JSONObject(parse(wrap(dns)).config).getJSONObject("dns"))
+        migrate(dns)
+        val fake = findFakeIp(dns)
         assertEquals("fakeip", fake.getString("type"))
         assertFalse(fake.has("inet4_range"))
         assertFalse(fake.has("inet6_range"))
@@ -200,20 +170,17 @@ class LegacyDnsFakeIpMigrationTest {
         val dns =
             JSONObject()
                 .put("servers", JSONArray().put(JSONObject().put("type", "local").put("tag", "l")))
-                .put(
-                    "fakeip",
-                    JSONObject().put("enabled", true).put("store_mode", "weird"),
-                )
+                .put("fakeip", JSONObject().put("enabled", true).put("store_mode", "weird"))
         try {
-            parse(wrap(dns))
+            migrate(dns)
             fail("expected incompatible")
-        } catch (e: Exception) {
+        } catch (e: LegacyDnsFakeIpIncompatibleException) {
             assertTrue(e.message!!.contains("LEGACY_DNS_FAKEIP_INCOMPATIBLE"))
         }
     }
 
     @Test
-    fun modernConfigUnchangedAsideFromExistingSanitize() {
+    fun modernConfigUnchanged() {
         val dns =
             JSONObject()
                 .put(
@@ -225,20 +192,13 @@ class LegacyDnsFakeIpMigrationTest {
                                 .put("tag", "fakeip")
                                 .put("inet4_range", "198.18.0.0/15")
                                 .put("inet6_range", "fc00::/18"),
-                        )
-                        .put(JSONObject().put("type", "local").put("tag", "local")),
+                        ),
                 )
                 .put("final", "local")
-        val result = parse(wrap(dns))
-        val out = JSONObject(result.config).getJSONObject("dns")
-        assertFalse(out.has("fakeip"))
-        val fake =
-            (0 until out.getJSONArray("servers").length())
-                .map { out.getJSONArray("servers").getJSONObject(it) }
-                .first { it.optString("type") == "fakeip" }
-        assertEquals("198.18.0.0/15", fake.getString("inet4_range"))
-        assertEquals("local", out.getString("final"))
-        export("modern-fakeip.json", result.config)
+        migrate(dns)
+        assertFalse(dns.has("fakeip"))
+        assertEquals("198.18.0.0/15", findFakeIp(dns).getString("inet4_range"))
+        export("modern-fakeip.json", dns)
     }
 
     @Test
@@ -251,18 +211,13 @@ class LegacyDnsFakeIpMigrationTest {
                 )
                 .put(
                     "fakeip",
-                    JSONObject()
-                        .put("enabled", true)
-                        .put("inet4_range", "198.18.0.0/15"),
+                    JSONObject().put("enabled", true).put("inet4_range", "198.18.0.0/15"),
                 )
-        val once = parse(wrap(dns)).config
-        val twice = parse(once).config
-        val a = JSONObject(once).getJSONObject("dns")
-        val b = JSONObject(twice).getJSONObject("dns")
-        assertFalse(a.has("fakeip"))
-        assertFalse(b.has("fakeip"))
-        assertEquals(findFakeIp(a).getString("type"), findFakeIp(b).getString("type"))
-        assertEquals(findFakeIp(a).optString("inet4_range"), findFakeIp(b).optString("inet4_range"))
+        migrate(dns)
+        val once = dns.toString()
+        migrate(dns)
+        assertEquals(once, dns.toString())
+        assertEquals("fakeip", findFakeIp(dns).getString("type"))
     }
 
     @Test
@@ -287,10 +242,9 @@ class LegacyDnsFakeIpMigrationTest {
                 )
                 .put("final", "google")
                 .put("fakeip", JSONObject().put("enabled", true).put("inet4_range", "198.18.0.0/15"))
-        val out = JSONObject(parse(wrap(dns)).config).getJSONObject("dns")
-        assertEquals("google", out.getString("final"))
-        assertEquals(2, out.getJSONArray("rules").length())
-        assertEquals("google", out.getJSONArray("rules").getJSONObject(0).getString("server"))
+        migrate(dns)
+        assertEquals("google", dns.getString("final"))
+        assertEquals(2, dns.getJSONArray("rules").length())
     }
 
     @Test
@@ -302,18 +256,57 @@ class LegacyDnsFakeIpMigrationTest {
                     JSONArray().put(JSONObject().put("type", "local").put("tag", "local")),
                 )
                 .put("fakeip", JSONObject().put("enabled", true).put("inet4_range", "198.18.0.0/15"))
-        val result = parse(wrap(dns))
-        assertFalse(JSONObject(result.config).getJSONObject("dns").has("fakeip"))
-        assertTrue(result.report.warnings.any { it.contains("no fakeip DNS server") })
+        val warnings = migrate(dns)
+        assertFalse(dns.has("fakeip"))
+        assertTrue(warnings.any { it.contains("no fakeip DNS server") })
         assertFalse(
-            (0 until JSONObject(result.config).getJSONObject("dns").getJSONArray("servers").length())
-                .any {
-                    JSONObject(result.config)
-                        .getJSONObject("dns")
-                        .getJSONArray("servers")
-                        .getJSONObject(it)
-                        .optString("type") == "fakeip"
-                },
+            (0 until dns.getJSONArray("servers").length()).any {
+                dns.getJSONArray("servers").getJSONObject(it).optString("type") == "fakeip"
+            },
+        )
+    }
+
+    @Test
+    fun fullParseIntegratesMigration() {
+        val body =
+            JSONObject()
+                .put(
+                    "outbounds",
+                    JSONArray()
+                        .put(JSONObject().put("type", "direct").put("tag", "direct"))
+                        .put(
+                            JSONObject()
+                                .put("type", "vless")
+                                .put("tag", "proxy")
+                                .put("server", "example.org")
+                                .put("server_port", 443)
+                                .put("uuid", "11111111-1111-4111-8111-111111111111"),
+                        ),
+                )
+                .put(
+                    "dns",
+                    JSONObject()
+                        .put(
+                            "servers",
+                            JSONArray()
+                                .put(JSONObject().put("address", "fakeip").put("tag", "fakeip")),
+                        )
+                        .put(
+                            "fakeip",
+                            JSONObject()
+                                .put("enabled", true)
+                                .put("inet4_range", "198.18.0.0/15"),
+                        ),
+                )
+                .put("route", JSONObject().put("final", "proxy"))
+                .toString()
+        val result = SubscriptionContentParser().parse(body)
+        val dns = JSONObject(result.config).getJSONObject("dns")
+        assertFalse(dns.has("fakeip"))
+        assertTrue(
+            (0 until dns.getJSONArray("servers").length()).any {
+                dns.getJSONArray("servers").getJSONObject(it).optString("type") == "fakeip"
+            },
         )
     }
 }

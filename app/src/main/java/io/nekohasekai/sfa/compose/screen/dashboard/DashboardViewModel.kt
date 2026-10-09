@@ -64,6 +64,7 @@ data class DashboardUiState(
     val serviceStartTime: Long? = null,
     val showAddProfileSheet: Boolean = false,
     val updatingProfileIds: Set<Long> = emptySet(),
+    val deletingProfileIds: Set<Long> = emptySet(),
     val updatedProfileId: Long? = null,
     val isUpdatingAll: Boolean = false,
     // Status
@@ -329,44 +330,50 @@ class DashboardViewModel :
     }
 
     fun deleteProfile(profile: Profile) {
+        if (profile.id in currentState.deletingProfileIds) return
+        updateState { copy(deletingProfileIds = deletingProfileIds + profile.id) }
         viewModelScope.launch(Dispatchers.IO) {
             val snapshot = currentState.profiles
             val status = _serviceStatus.value
-            val outcome =
-                ProfileSafeDelete.delete(
-                    profile = profile,
-                    allProfiles = snapshot,
-                    filesDir = Application.application.filesDir,
-                    serviceStatus = status,
-                    stopVpnAndAwait = {
-                        if (_serviceStatus.value == Status.Stopped) return@delete true
-                        withContext(Dispatchers.Main) { stopService() }
-                        val deadline = System.currentTimeMillis() + 15_000L
-                        while (System.currentTimeMillis() < deadline) {
+            try {
+                val outcome =
+                    ProfileSafeDelete.delete(
+                        profile = profile,
+                        allProfiles = snapshot,
+                        filesDir = Application.application.filesDir,
+                        serviceStatus = status,
+                        stopVpnAndAwait = {
                             if (_serviceStatus.value == Status.Stopped) return@delete true
-                            delay(100)
+                            withContext(Dispatchers.Main) { stopService() }
+                            val deadline = System.currentTimeMillis() + 15_000L
+                            while (System.currentTimeMillis() < deadline) {
+                                if (_serviceStatus.value == Status.Stopped) return@delete true
+                                delay(100)
+                            }
+                            _serviceStatus.value == Status.Stopped
+                        },
+                    )
+                when (outcome) {
+                    is ProfileSafeDelete.Outcome.Success -> {
+                        withContext(Dispatchers.Main) {
+                            updateState {
+                                val cleared = selectedProfileId == profile.id
+                                copy(
+                                    profiles = profiles.filter { p -> p.id != profile.id },
+                                    selectedProfileId = if (cleared) -1L else selectedProfileId,
+                                    selectedProfileName = if (cleared) null else selectedProfileName,
+                                )
+                            }
                         }
-                        _serviceStatus.value == Status.Stopped
-                    },
-                )
-            when (outcome) {
-                is ProfileSafeDelete.Outcome.Success -> {
-                    withContext(Dispatchers.Main) {
-                        updateState {
-                            val cleared = selectedProfileId == profile.id
-                            copy(
-                                profiles = profiles.filter { p -> p.id != profile.id },
-                                selectedProfileId = if (cleared) -1L else selectedProfileId,
-                                selectedProfileName = if (cleared) null else selectedProfileName,
-                            )
-                        }
+                        loadProfiles()
                     }
-                    loadProfiles()
+                    is ProfileSafeDelete.Outcome.Failed -> {
+                        loadProfiles()
+                        sendErrorMessage("Не удалось удалить подписку: ${outcome.message}")
+                    }
                 }
-                is ProfileSafeDelete.Outcome.Failed -> {
-                    loadProfiles()
-                    sendErrorMessage("Не удалось удалить подписку: ${outcome.message}")
-                }
+            } finally {
+                updateState { copy(deletingProfileIds = deletingProfileIds - profile.id) }
             }
         }
     }

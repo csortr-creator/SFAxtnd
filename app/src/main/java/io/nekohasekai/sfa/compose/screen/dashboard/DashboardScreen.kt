@@ -135,6 +135,7 @@ fun DashboardScreen(
                     isLoading = uiState.isLoading,
                     showAddProfileSheet = uiState.showAddProfileSheet,
                     updatingProfileIds = uiState.updatingProfileIds,
+                    deletingProfileIds = uiState.deletingProfileIds,
                     updatedProfileId = uiState.updatedProfileId,
                     onProfileSelected = viewModel::selectProfile,
                     onProfileEdit = viewModel::editProfile,

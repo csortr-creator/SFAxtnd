@@ -88,3 +88,14 @@ Required by `scripts/validate.sh` (`REQUIRED_CORE_PATCHES`):
 - Full Xray protocol parity  
 - RUNTIME_VERIFIED for any row above unless a device log is attached  
 - That `PARSED` + warning means the parameter affects the connection  
+
+
+## x_padding_bytes (A+1)
+
+| Stage | Status |
+|-------|--------|
+| PARSED | yes (query + extra.xPaddingBytes) |
+| MAPPED | yes `transport.x_padding_bytes.{from,to}` |
+| CORE_CHECKED | yes (XHTTP patch `XPaddingBytes`; native fixture import-xhttp-padding.json) |
+| RUNTIME_VERIFIED | partial — Go `TestXHTTPXRayInteropParameters` with padding range in core patch; not device |
+| Conflict query≠extra | reject |

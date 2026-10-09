@@ -8,18 +8,98 @@ import org.junit.Test
 class ProxyLinkParserTest {
     @Test
     fun xhttpPaddingUriAliasPreservesRangeAndRejectsConflicts() {
-        val prefix = "vless://11111111-1111-4111-8111-111111111111@example.org:443?type=xhttp&x_padding_bytes=100-1342"
-        val extra = URLEncoder.encode("{\"xPaddingBytes\":\"100-1342\"}", "UTF-8")
-        val result = SubscriptionContentParser().parse("$prefix&extra=$extra#padding")
-        assertEquals(1, result.report.imported)
-        val nodes = JSONObject(result.config).getJSONArray("outbounds")
-        val node = (0 until nodes.length()).map { nodes.getJSONObject(it) }.single { it.has("server") }
-        val range = node.getJSONObject("transport").getJSONObject("x_padding_bytes")
-        assertEquals(100, range.getInt("from"))
-        assertEquals(1342, range.getInt("to"))
-        val conflicting = URLEncoder.encode("{\"xPaddingBytes\":\"200-1400\"}", "UTF-8")
-        assertTrue(runCatching { SubscriptionContentParser().parse("$prefix&extra=$conflicting") }.isFailure)
-        assertTrue(runCatching { SubscriptionContentParser().parse("${prefix.replace("100-1342", "broken")}") }.isFailure)
+        val uuid = "11111111-1111-4111-8111-111111111111"
+        val base = "vless://$uuid@example.org:443?type=xhttp&path=%2Fpad&mode=packet-up"
+
+        // Query-only range maps into transport.x_padding_bytes {from,to}.
+        val queryOnly =
+            SubscriptionContentParser().parse("$base&x_padding_bytes=100-1342#pad-query")
+        assertEquals(1, queryOnly.report.imported)
+        val qNode =
+            JSONObject(queryOnly.config)
+                .getJSONArray("outbounds")
+                .let { arr ->
+                    (0 until arr.length()).map { arr.getJSONObject(it) }.single { it.has("server") }
+                }
+        val qRange = qNode.getJSONObject("transport").getJSONObject("x_padding_bytes")
+        assertEquals(100, qRange.getInt("from"))
+        assertEquals(1342, qRange.getInt("to"))
+
+        // extra.xPaddingBytes (Xray camelCase) alone is equivalent.
+        val extraOnly =
+            URLEncoder.encode("""{"xPaddingBytes":"32-64"}""", "UTF-8")
+        val eOnly =
+            SubscriptionContentParser().parse("$base&extra=$extraOnly#pad-extra")
+        assertEquals(1, eOnly.report.imported)
+        val eRange =
+            JSONObject(eOnly.config)
+                .getJSONArray("outbounds")
+                .let { arr ->
+                    (0 until arr.length()).map { arr.getJSONObject(it) }.single { it.has("server") }
+                }
+                .getJSONObject("transport")
+                .getJSONObject("x_padding_bytes")
+        assertEquals(32, eRange.getInt("from"))
+        assertEquals(64, eRange.getInt("to"))
+
+        // Matching query + extra is accepted (no silent drop).
+        val same =
+            URLEncoder.encode("""{"xPaddingBytes":"100-1342"}""", "UTF-8")
+        val both =
+            SubscriptionContentParser()
+                .parse("$base&x_padding_bytes=100-1342&extra=$same#pad-both")
+        assertEquals(1, both.report.imported)
+        val bothRange =
+            JSONObject(both.config)
+                .getJSONArray("outbounds")
+                .let { arr ->
+                    (0 until arr.length()).map { arr.getJSONObject(it) }.single { it.has("server") }
+                }
+                .getJSONObject("transport")
+                .getJSONObject("x_padding_bytes")
+        assertEquals(100, bothRange.getInt("from"))
+        assertEquals(1342, bothRange.getInt("to"))
+
+        // Publish full profile for CI sing-box check (patched core reads x_padding_bytes).
+        java.io.File("build/native-configs").mkdirs()
+        java.io.File("build/native-configs/import-xhttp-padding.json").writeText(both.config)
+
+        // Conflict query vs extra must fail import (not prefer one silently).
+        val conflict = URLEncoder.encode("""{"xPaddingBytes":"200-1400"}""", "UTF-8")
+        assertTrue(
+            runCatching {
+                    SubscriptionContentParser()
+                        .parse("$base&x_padding_bytes=100-1342&extra=$conflict")
+                }
+                .isFailure
+        )
+
+        // Invalid ranges rejected.
+        for (bad in listOf("broken", "100-50", "-1-10", "1-2-3", "")) {
+            assertTrue(
+                "expected reject for x_padding_bytes=$bad",
+                runCatching {
+                        SubscriptionContentParser()
+                            .parse("$base&x_padding_bytes=$bad#bad")
+                    }
+                    .isFailure,
+            )
+        }
+
+        // Single endpoint range "128" → from=to=128.
+        val single =
+            SubscriptionContentParser().parse("$base&x_padding_bytes=128#pad-single")
+        assertEquals(1, single.report.imported)
+        val sRange =
+            JSONObject(single.config)
+                .getJSONArray("outbounds")
+                .let { arr ->
+                    (0 until arr.length()).map { arr.getJSONObject(it) }.single { it.has("server") }
+                }
+                .getJSONObject("transport")
+                .getJSONObject("x_padding_bytes")
+        assertEquals(128, sRange.getInt("from"))
+        assertEquals(128, sRange.getInt("to"))
     }
 
     @Test

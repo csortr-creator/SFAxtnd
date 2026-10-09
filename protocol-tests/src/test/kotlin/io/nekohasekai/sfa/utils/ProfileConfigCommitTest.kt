@@ -211,4 +211,50 @@ class ProfileConfigCommitTest {
         ProfileConfigCommit.clearDeleted(77L)
         assertFalse(ProfileConfigCommit.isMarkedDeleted(77L))
     }
+
+
+    @Test
+    fun clearDeletedAllowsFreshCommitAfterFailedDeleteSimulation() = runBlocking {
+        val target = tmp.newFile("rollback.json")
+        target.writeText("ALIVE")
+        ProfileConfigCommit.markDeleted(101L)
+        // Simulated Room failure path: clear tombstone so updates work again.
+        ProfileConfigCommit.clearDeleted(101L)
+        val token = ProfileConfigCommit.beginOperation(101L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 101L,
+                operationToken = token,
+                target = target,
+                content = "UPDATED",
+                validate = {},
+                afterFileCommit = {},
+            )
+        assertTrue(outcome is CommitOutcome.Success)
+        assertEquals("UPDATED", target.readText())
+    }
+
+    @Test
+    fun missingProfileRejectsCommitEvenWithFreshToken() = runBlocking {
+        val target = tmp.newFile("missing.json")
+        target.writeText("OLD")
+        val prev = ProfileConfigCommit.profileStillExists
+        try {
+            ProfileConfigCommit.profileStillExists = { false }
+            val token = ProfileConfigCommit.beginOperation(202L)
+            val outcome =
+                ProfileConfigCommit.commit(
+                    profileId = 202L,
+                    operationToken = token,
+                    target = target,
+                    content = "RESURRECT",
+                    validate = {},
+                    afterFileCommit = {},
+                )
+            assertTrue(outcome is CommitOutcome.Stale)
+            assertEquals("OLD", target.readText())
+        } finally {
+            ProfileConfigCommit.profileStillExists = prev
+        }
+    }
 }

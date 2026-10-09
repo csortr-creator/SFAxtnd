@@ -194,7 +194,11 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
 
                 // Save to file without validation
                 profile?.let { p ->
-                    File(p.typed.path).writeText(currentContent)
+                    if (!io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(p.id) &&
+                        io.nekohasekai.sfa.database.ProfileManager.get(p.id) != null
+                    ) {
+                        File(p.typed.path).writeText(currentContent)
+                    }
                 }
 
                 _uiState.update {

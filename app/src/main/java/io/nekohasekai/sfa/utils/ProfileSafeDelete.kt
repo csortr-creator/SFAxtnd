@@ -81,13 +81,19 @@ object ProfileSafeDelete {
             ProfileConfigCommit.withProfileLock(profile.id) {
                 // Tombstone under lock so a concurrent updater cannot beginOperation+commit
                 // after we leave this section and recreate the config file.
+                // Cleared on any failure path so a surviving profile can still update.
                 ProfileConfigCommit.markDeleted(profile.id)
+
+                fun rollbackTombstone() {
+                    ProfileConfigCommit.clearDeleted(profile.id)
+                }
 
                 val selected = selection.getSelected()
                 val vpnUsesThis =
                     serviceStatus == Status.Started || serviceStatus == Status.Starting
                 if (vpnUsesThis && selected == profile.id) {
                     if (!stopVpnAndAwait()) {
+                        rollbackTombstone()
                         return@withProfileLock Outcome.Failed(
                             "VPN_STOP_FAILED",
                             "Could not stop VPN before deleting the active profile",
@@ -103,6 +109,7 @@ object ProfileSafeDelete {
                             ".sfax-deleted-${profile.id}-${configFile.name}",
                         )
                     if (!configFile.renameTo(staged)) {
+                        rollbackTombstone()
                         return@withProfileLock Outcome.Failed(
                             "FILE_STAGE_FAILED",
                             "Could not stage config file for deletion",
@@ -118,12 +125,14 @@ object ProfileSafeDelete {
                             runCatching { s.renameTo(configFile) }
                         }
                     }
+                    rollbackTombstone()
                     return@withProfileLock Outcome.Failed(
                         "DB_DELETE_FAILED",
                         e.message ?: "Room delete failed",
                     )
                 }
 
+                // Room succeeded — keep tombstone permanently (process lifetime).
                 if (selection.getSelected() == profile.id) {
                     selection.setSelected(-1L)
                 }

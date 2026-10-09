@@ -29,6 +29,14 @@ object ProfileConfigCommit {
     /** Profile ids removed by [markDeleted]; blocks further commits until cleared. */
     private val deletedIds = ConcurrentHashMap.newKeySet<Long>()
 
+    /**
+     * Optional Room existence probe. Default allows commit (tests).
+     * Production should set this so a process restart cannot resurrect a deleted id
+     * via a stale in-memory profile list + new beginOperation token.
+     */
+    @Volatile
+    var profileStillExists: (Long) -> Boolean = { true }
+
     /** Issue a monotonic operation token for [profileId]. Call before fetch. */
     fun beginOperation(profileId: Long): Long {
         val gen = generations.getOrPut(profileId) { AtomicLong(0L) }
@@ -154,6 +162,10 @@ object ProfileConfigCommit {
     ): CommitOutcome<T> {
         mutexFor(profileId).withLock {
             if (isMarkedDeleted(profileId) || !isCurrent(profileId, operationToken)) {
+                return CommitOutcome.Stale
+            }
+            // Survive process restart: tombstones are process-lifetime only.
+            if (!profileStillExists(profileId)) {
                 return CommitOutcome.Stale
             }
             try {

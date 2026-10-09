@@ -22,6 +22,8 @@ import io.nekohasekai.sfa.compose.screen.tools.TaildropFiles
 import io.nekohasekai.sfa.constant.Bugs
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -39,6 +41,14 @@ class Application : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLifecycleObserver.register(this)
+        // Survive process restart: reject commits for ids no longer in Room.
+        ProfileConfigCommit.profileStillExists = { id ->
+            try {
+                kotlinx.coroutines.runBlocking { ProfileManager.get(id) != null }
+            } catch (_: Exception) {
+                false
+            }
+        }
 
 //        Seq.setContext(this)
         runCatching {

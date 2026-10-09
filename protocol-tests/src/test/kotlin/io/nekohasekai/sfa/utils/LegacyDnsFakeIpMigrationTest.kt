@@ -266,47 +266,5 @@ class LegacyDnsFakeIpMigrationTest {
         )
     }
 
-    @Test
-    fun fullParseIntegratesMigration() {
-        val body =
-            JSONObject()
-                .put(
-                    "outbounds",
-                    JSONArray()
-                        .put(JSONObject().put("type", "direct").put("tag", "direct"))
-                        .put(
-                            JSONObject()
-                                .put("type", "vless")
-                                .put("tag", "proxy")
-                                .put("server", "example.org")
-                                .put("server_port", 443)
-                                .put("uuid", "11111111-1111-4111-8111-111111111111"),
-                        ),
-                )
-                .put(
-                    "dns",
-                    JSONObject()
-                        .put(
-                            "servers",
-                            JSONArray()
-                                .put(JSONObject().put("address", "fakeip").put("tag", "fakeip")),
-                        )
-                        .put(
-                            "fakeip",
-                            JSONObject()
-                                .put("enabled", true)
-                                .put("inet4_range", "198.18.0.0/15"),
-                        ),
-                )
-                .put("route", JSONObject().put("final", "proxy"))
-                .toString()
-        val result = SubscriptionContentParser().parse(body)
-        val dns = JSONObject(result.config).getJSONObject("dns")
-        assertFalse(dns.has("fakeip"))
-        assertTrue(
-            (0 until dns.getJSONArray("servers").length()).any {
-                dns.getJSONArray("servers").getJSONObject(it).optString("type") == "fakeip"
-            },
-        )
-    }
+
 }

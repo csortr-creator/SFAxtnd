@@ -1,15 +1,7 @@
 package io.nekohasekai.sfa.utils
 
 /**
- * B3-3a: pure decision model for applying a partially imported subscription.
- *
- * Not wired to production paths — callers (B3-3b/c) must invoke [decide] and honor the result.
- *
- * Statistics reliability:
- * - [StatsReliability.COMPLETE]: received/imported/rejected are trustworthy (URI list path).
- * - [StatsReliability.INCOMPLETE]: some formats under-report issues; do not treat imported==received
- *   as proof of zero rejections.
- * - [StatsReliability.UNKNOWN]: no usable counters.
+ * B3-3a/b: pure decision model for applying a partially imported subscription.
  */
 enum class UpdateTrigger {
     FIRST_IMPORT,
@@ -24,22 +16,12 @@ enum class StatsReliability {
 }
 
 enum class PolicyDecision {
-    /** Commit the new config. */
     APPLY,
-    /** Do not commit; keep previous file when present. */
     REJECT_KEEP_LKG,
-    /** Manual path only: hold candidate until user confirms. */
     AWAIT_CONFIRMATION,
-    /** First import with nothing usable — do not create profile. */
     REJECT_FIRST,
 }
 
-/**
- * Inputs are plain integers and flags — no Throwables, URLs, or secrets.
- *
- * [rejected] should match issues.size when known; may be 0 when reliability is not COMPLETE.
- * [hadPreviousConfig] reflects an existing LKG file / profile (not merely Room row intent).
- */
 data class PartialUpdateInput(
     val trigger: UpdateTrigger,
     val received: Int,
@@ -51,25 +33,25 @@ data class PartialUpdateInput(
 
 object PartialUpdatePolicy {
     /**
-     * Decide whether to apply the candidate config.
-     *
-     * Rules (COMPLETE reliability):
-     * - imported <= 0 → REJECT_FIRST / REJECT_KEEP_LKG
-     * - full (imported == received, rejected == 0, received > 0) → APPLY
-     * - partial (imported < received or rejected > 0) + FIRST → APPLY
-     * - partial + AUTO → REJECT_KEEP_LKG
-     * - partial + MANUAL → AWAIT_CONFIRMATION
-     *
-     * INCOMPLETE / UNKNOWN: never treat as "full"; FIRST still APPLY if imported > 0;
-     * AUTO → REJECT_KEEP_LKG if hadPrevious; MANUAL → AWAIT_CONFIRMATION if hadPrevious
-     * else APPLY when imported > 0.
-     *
-     * No percentage threshold — provider shrink with full import (10/10) is APPLY.
+     * No percentage threshold. Contradictory COMPLETE counters are treated as UNKNOWN
+     * (not coerced into APPLY via coerceAtLeast).
      */
     fun decide(input: PartialUpdateInput): PolicyDecision {
-        val received = input.received.coerceAtLeast(0)
-        val imported = input.imported.coerceAtLeast(0)
-        val rejected = input.rejected.coerceAtLeast(0)
+        val received = input.received
+        val imported = input.imported
+        val rejected = input.rejected
+
+        val reliability =
+            when {
+                input.reliability == StatsReliability.UNKNOWN -> StatsReliability.UNKNOWN
+                received < 0 || imported < 0 || rejected < 0 -> StatsReliability.UNKNOWN
+                imported > received -> StatsReliability.UNKNOWN
+                rejected > received -> StatsReliability.UNKNOWN
+                input.reliability == StatsReliability.COMPLETE &&
+                    received > 0 &&
+                    imported + rejected != received -> StatsReliability.UNKNOWN
+                else -> input.reliability
+            }
 
         if (imported <= 0) {
             return if (input.hadPreviousConfig || input.trigger != UpdateTrigger.FIRST_IMPORT) {
@@ -79,8 +61,9 @@ object PartialUpdatePolicy {
             }
         }
 
-        return when (input.reliability) {
-            StatsReliability.COMPLETE -> decideComplete(input.trigger, received, imported, rejected)
+        return when (reliability) {
+            StatsReliability.COMPLETE ->
+                decideComplete(input.trigger, received, imported, rejected)
             StatsReliability.INCOMPLETE,
             StatsReliability.UNKNOWN,
             -> decideUncertain(input.trigger, input.hadPreviousConfig, imported)
@@ -94,11 +77,7 @@ object PartialUpdatePolicy {
         rejected: Int,
     ): PolicyDecision {
         val isFull = received > 0 && imported == received && rejected == 0
-        val isPartial = !isFull
-
         if (isFull) return PolicyDecision.APPLY
-
-        // Partial with at least one imported node
         return when (trigger) {
             UpdateTrigger.FIRST_IMPORT -> PolicyDecision.APPLY
             UpdateTrigger.AUTO_UPDATE -> PolicyDecision.REJECT_KEEP_LKG
@@ -111,7 +90,6 @@ object PartialUpdatePolicy {
         hadPrevious: Boolean,
         imported: Int,
     ): PolicyDecision {
-        // Cannot prove full import — conservative for updates with LKG.
         if (imported <= 0) {
             return if (hadPrevious) PolicyDecision.REJECT_KEEP_LKG else PolicyDecision.REJECT_FIRST
         }
@@ -125,36 +103,23 @@ object PartialUpdatePolicy {
     }
 
     /**
-     * Infer stats reliability from a parser report.
-     * URI/Clash/Xray list paths track per-node accepts/rejects → COMPLETE.
-     * Native sing-box bulk path counts outbounds without per-node skip accounting → INCOMPLETE.
-     * Missing report → UNKNOWN.
+     * - null → UNKNOWN
+     * - URI/Clash/Xray accept() path: COMPLETE when imported+rejected == received
+     * - Native sing-box JSON: proxy outbound count, no per-node skips → COMPLETE when consistent
+     * - contradictory counters → UNKNOWN
      */
     internal fun reliabilityOf(report: SubscriptionImportReport?): StatsReliability {
         if (report == null) return StatsReliability.UNKNOWN
-        val fmt = report.format
-        if (fmt.contains("sing-box", ignoreCase = true)) {
-            return StatsReliability.INCOMPLETE
-        }
+        val received = report.received
+        val imported = report.imported
+        val rejected = report.issues.size
+        if (received < 0 || imported < 0 || rejected < 0) return StatsReliability.UNKNOWN
+        if (imported > received || rejected > received) return StatsReliability.UNKNOWN
+        if (received > 0 && imported + rejected != received) return StatsReliability.UNKNOWN
         return StatsReliability.COMPLETE
     }
-
 }
 
-/**
- * Contract sketch for B3-3c stale-safe confirmation (not implemented here).
- *
- * A pending candidate must capture the profile revision at prepare time.
- * [ProfileConfigCommit] generation tokens bump on every beginOperation — that alone is not a
- * durable "successful change" revision. B3-3c should introduce an explicit per-profile
- * content/revision counter incremented only after a successful file commit (or metadata-ok path),
- * store it on the pending holder together with content hash, and under the per-profile Mutex on
- * confirm:
- * 1. reject if tombstone / Room missing;
- * 2. reject if current revision != pending.expectedRevision;
- * 3. beginOperation + commit only if still matching;
- * so an older dialog cannot overwrite a newer successful update.
- */
 data class PendingImportCandidate(
     val profileId: Long,
     val expectedRevision: Long,

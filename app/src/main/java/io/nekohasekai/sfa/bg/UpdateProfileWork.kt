@@ -87,7 +87,6 @@ class UpdateProfileWork {
                 if (lastSeconds < profile.typed.autoUpdateInterval * 60) {
                     continue
                 }
-                val operationToken = ProfileConfigCommit.beginOperation(profile.id)
                 try {
                     val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
                     val content = result.config
@@ -106,7 +105,7 @@ class UpdateProfileWork {
                             ),
                         )
                     if (decision != PolicyDecision.APPLY) {
-                        // Permanent partial/uncertain rejection — keep LKG, do not retry as failure.
+                        // Product rejection — LKG untouched; worker may still return success.
                         Log.w(
                             TAG,
                             "event=profile_update_policy_rejected profileId=${profile.id} " +
@@ -115,6 +114,7 @@ class UpdateProfileWork {
                         )
                         continue
                     }
+                    val operationToken = ProfileConfigCommit.beginOperation(profile.id)
                     when (
                         val outcome =
                             ProfileConfigCommit.commit(

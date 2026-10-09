@@ -189,15 +189,14 @@ class PartialUpdatePolicyTest {
         )
     }
 
-    @Test
-    fun reliabilityOfSingBoxIsIncomplete() {
-        val report = SubscriptionImportReport(5, 5, emptyList(), format = "sing-box JSON")
-        assertEquals(StatsReliability.INCOMPLETE, PartialUpdatePolicy.reliabilityOf(report))
-    }
 
     @Test
     fun reliabilityOfUriListIsComplete() {
-        val report = SubscriptionImportReport(3, 2, emptyList(), format = "Список ссылок")
+        val issues =
+            listOf(
+                SubscriptionImportIssue(3, "n", "x", ImportIssueCode.PARSE_ERROR),
+            )
+        val report = SubscriptionImportReport(3, 2, issues, format = "Список ссылок")
         assertEquals(StatsReliability.COMPLETE, PartialUpdatePolicy.reliabilityOf(report))
     }
 
@@ -240,6 +239,84 @@ class PartialUpdatePolicyTest {
         )
     }
 }
+
+
+    @Test
+    fun reliabilityOfSingBoxFullConfigIsComplete() {
+        val report = SubscriptionImportReport(5, 5, emptyList(), format = "sing-box JSON")
+        assertEquals(StatsReliability.COMPLETE, PartialUpdatePolicy.reliabilityOf(report))
+    }
+
+    @Test
+    fun singBoxFullDoesNotBlockAuto() {
+        val report = SubscriptionImportReport(8, 8, emptyList(), format = "sing-box JSON")
+        val rel = PartialUpdatePolicy.reliabilityOf(report)
+        assertEquals(StatsReliability.COMPLETE, rel)
+        assertEquals(
+            PolicyDecision.APPLY,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    report.received,
+                    report.imported,
+                    report.issues.size,
+                    rel,
+                    true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun contradictoryCompleteTreatedAsUncertain() {
+        assertEquals(
+            PolicyDecision.REJECT_KEEP_LKG,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    received = 10,
+                    imported = 10,
+                    rejected = 1,
+                    reliability = StatsReliability.COMPLETE,
+                    hadPreviousConfig = true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun importedGreaterThanReceivedIsUncertain() {
+        assertEquals(
+            PolicyDecision.REJECT_KEEP_LKG,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    received = 5,
+                    imported = 9,
+                    rejected = 0,
+                    reliability = StatsReliability.COMPLETE,
+                    hadPreviousConfig = true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun negativeReceivedNotCoercedToApply() {
+        assertEquals(
+            PolicyDecision.REJECT_KEEP_LKG,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    received = -1,
+                    imported = 5,
+                    rejected = 0,
+                    reliability = StatsReliability.COMPLETE,
+                    hadPreviousConfig = true,
+                ),
+            ),
+        )
+    }
 
 @RunWith(Parameterized::class)
 class PartialUpdatePolicyTableTest(

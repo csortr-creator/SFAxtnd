@@ -53,7 +53,13 @@ internal class SubscriptionContentParser(
             val migrated = sanitizeAndMigrateConfig(content, mode, migrationWarnings)
             return SubscriptionImportResult(
                 migrated,
-                SubscriptionImportReport(count, count, emptyList(), migrationWarnings),
+                SubscriptionImportReport(
+                    count,
+                    count,
+                    emptyList(),
+                    migrationWarnings,
+                    format = "sing-box JSON",
+                ),
             )
         }
         shareLinkWarnings.clear()

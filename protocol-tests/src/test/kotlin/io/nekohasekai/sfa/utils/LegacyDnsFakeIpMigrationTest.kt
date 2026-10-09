@@ -23,12 +23,41 @@ class LegacyDnsFakeIpMigrationTest {
             .first { it.optString("type") == "fakeip" }
 
     private fun export(name: String, dns: JSONObject) {
+        // Residual legacy address-only DNS servers are not FakeIP-migrated; convert for
+        // sing-box 1.14 native check so the fixture validates FakeIP shape, not address→type.
+        val servers = dns.optJSONArray("servers")
+        if (servers != null) {
+            for (i in 0 until servers.length()) {
+                val s = servers.optJSONObject(i) ?: continue
+                if (s.has("address") && !s.has("type")) {
+                    val addr = s.remove("address").toString().trim()
+                    s.put("type", "udp")
+                    s.put("server", addr)
+                }
+            }
+        }
+        val serversOut = dns.optJSONArray("servers") ?: JSONArray().also { dns.put("servers", it) }
+        val hasDirect =
+            (0 until serversOut.length()).any {
+                serversOut.optJSONObject(it)?.optString("tag") == "dns-direct"
+            }
+        if (!hasDirect) {
+            serversOut.put(JSONObject().put("type", "local").put("tag", "dns-direct"))
+        }
         File("build/native-configs").mkdirs()
         File("build/native-configs/$name").writeText(
             JSONObject()
                 .put("dns", dns)
-                .put("outbounds", JSONArray().put(JSONObject().put("type", "direct").put("tag", "direct")))
-                .put("route", JSONObject().put("final", "direct"))
+                .put(
+                    "outbounds",
+                    JSONArray().put(JSONObject().put("type", "direct").put("tag", "direct")),
+                )
+                .put(
+                    "route",
+                    JSONObject()
+                        .put("final", "direct")
+                        .put("default_domain_resolver", "dns-direct"),
+                )
                 .toString(2),
         )
     }

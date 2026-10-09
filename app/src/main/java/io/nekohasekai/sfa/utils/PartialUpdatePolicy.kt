@@ -123,6 +123,22 @@ object PartialUpdatePolicy {
                 if (hadPrevious) PolicyDecision.AWAIT_CONFIRMATION else PolicyDecision.APPLY
         }
     }
+
+    /**
+     * Infer stats reliability from a parser report.
+     * URI/Clash/Xray list paths track per-node accepts/rejects → COMPLETE.
+     * Native sing-box bulk path counts outbounds without per-node skip accounting → INCOMPLETE.
+     * Missing report → UNKNOWN.
+     */
+    internal fun reliabilityOf(report: SubscriptionImportReport?): StatsReliability {
+        if (report == null) return StatsReliability.UNKNOWN
+        val fmt = report.format
+        if (fmt.contains("sing-box", ignoreCase = true)) {
+            return StatsReliability.INCOMPLETE
+        }
+        return StatsReliability.COMPLETE
+    }
+
 }
 
 /**

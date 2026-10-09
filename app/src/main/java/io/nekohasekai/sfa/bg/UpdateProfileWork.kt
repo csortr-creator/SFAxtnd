@@ -21,6 +21,11 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.PartialUpdatePolicy
+import io.nekohasekai.sfa.utils.PartialUpdateInput
+import io.nekohasekai.sfa.utils.UpdateTrigger
+import io.nekohasekai.sfa.utils.PolicyDecision
+import io.nekohasekai.sfa.utils.ImportResultFormatter
 import java.io.File
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -87,6 +92,29 @@ class UpdateProfileWork {
                     val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
                     val content = result.config
                     val file = File(profile.typed.path)
+                    val report = result.report
+                    val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
+                    val decision =
+                        PartialUpdatePolicy.decide(
+                            PartialUpdateInput(
+                                trigger = UpdateTrigger.AUTO_UPDATE,
+                                received = report.received,
+                                imported = report.imported,
+                                rejected = report.issues.size,
+                                reliability = PartialUpdatePolicy.reliabilityOf(report),
+                                hadPreviousConfig = hadPrevious,
+                            ),
+                        )
+                    if (decision != PolicyDecision.APPLY) {
+                        // Permanent partial/uncertain rejection — keep LKG, do not retry as failure.
+                        Log.w(
+                            TAG,
+                            "event=profile_update_policy_rejected profileId=${profile.id} " +
+                                "decision=$decision received=${report.received} " +
+                                "imported=${report.imported} rejected=${report.issues.size}",
+                        )
+                        continue
+                    }
                     when (
                         val outcome =
                             ProfileConfigCommit.commit(

@@ -74,7 +74,6 @@ class PartialUpdatePolicyTest {
 
     @Test
     fun shrink100to10FullImportIsApply() {
-        // Legitimate provider shrink: all received imported, zero rejected.
         assertEquals(
             PolicyDecision.APPLY,
             PartialUpdatePolicy.decide(input(UpdateTrigger.AUTO_UPDATE, 10, 10, 0)),
@@ -117,7 +116,6 @@ class PartialUpdatePolicyTest {
 
     @Test
     fun incompleteStatsNeverTreatedAsFull() {
-        // imported==received but INCOMPLETE → must not auto-apply over LKG
         assertEquals(
             PolicyDecision.REJECT_KEEP_LKG,
             PartialUpdatePolicy.decide(
@@ -185,10 +183,60 @@ class PartialUpdatePolicyTest {
 
     @Test
     fun noPercentageThresholdNinetyNinePercentStillPartial() {
-        // 99/100 is partial for AUTO — not "good enough"
         assertEquals(
             PolicyDecision.REJECT_KEEP_LKG,
             PartialUpdatePolicy.decide(input(UpdateTrigger.AUTO_UPDATE, 100, 99, 1)),
+        )
+    }
+
+    @Test
+    fun reliabilityOfSingBoxIsIncomplete() {
+        val report = SubscriptionImportReport(5, 5, emptyList(), format = "sing-box JSON")
+        assertEquals(StatsReliability.INCOMPLETE, PartialUpdatePolicy.reliabilityOf(report))
+    }
+
+    @Test
+    fun reliabilityOfUriListIsComplete() {
+        val report = SubscriptionImportReport(3, 2, emptyList(), format = "Список ссылок")
+        assertEquals(StatsReliability.COMPLETE, PartialUpdatePolicy.reliabilityOf(report))
+    }
+
+    @Test
+    fun reliabilityOfNullIsUnknown() {
+        assertEquals(StatsReliability.UNKNOWN, PartialUpdatePolicy.reliabilityOf(null))
+    }
+
+    @Test
+    fun autoIncompleteWithLkgRejects() {
+        assertEquals(
+            PolicyDecision.REJECT_KEEP_LKG,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    5,
+                    5,
+                    0,
+                    StatsReliability.INCOMPLETE,
+                    true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun autoWithoutLkgIncompleteStillApplyIfImported() {
+        assertEquals(
+            PolicyDecision.APPLY,
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    UpdateTrigger.AUTO_UPDATE,
+                    5,
+                    5,
+                    0,
+                    StatsReliability.INCOMPLETE,
+                    false,
+                ),
+            ),
         )
     }
 }

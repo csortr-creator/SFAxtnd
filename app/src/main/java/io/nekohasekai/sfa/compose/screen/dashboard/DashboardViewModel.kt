@@ -512,7 +512,7 @@ class DashboardViewModel :
         }
     }
 
-    fun moveProfile    fun moveProfile(from: Int, to: Int) {
+    fun moveProfile(from: Int, to: Int) {
         val currentProfiles = currentState.profiles.toMutableList()
 
         if (from < to) {

@@ -90,9 +90,9 @@ class LegacyDnsFakeIpMigrationTest {
             (0 until servers.length())
                 .map { servers.getJSONObject(it) }
                 .first { it.optString("type") == "fakeip" || it.optString("tag") == "fakeip" }
-        assertEquals("fakeip", fake.optString("type"))
-        assertEquals("198.18.0.0/15", fake.getString("inet4_range"))
-        assertEquals("fc00::/18", fake.getString("inet6_range"))
+        assertEquals("config=${result.config}", "fakeip", fake.optString("type"))
+        assertEquals("config=${result.config}", "198.18.0.0/15", fake.optString("inet4_range"))
+        assertEquals("config=${result.config}", "fc00::/18", fake.optString("inet6_range"))
         assertFalse(fake.has("address"))
         export("legacy-fakeip-enabled.json", result.config)
     }

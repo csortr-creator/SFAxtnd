@@ -395,7 +395,9 @@ internal class SubscriptionContentParser(
     private fun isLegacyFakeIpAddressServer(server: JSONObject): Boolean {
         if (server.optString("type") == "fakeip") return false
         val addr = server.optString("address").trim()
-        return addr == "fakeip" || addr.startsWith("fakeip://")
+        if (addr == "fakeip" || addr.startsWith("fakeip://")) return true
+        // Mis-mapped legacy: type=udp server=fakeip from older sanitize
+        return server.optString("type") == "udp" && server.optString("server") == "fakeip"
     }
 
     private fun convertLegacyFakeIpAddressServer(
@@ -405,8 +407,9 @@ internal class SubscriptionContentParser(
     ) {
         server.put("type", "fakeip")
         server.remove("address")
-        if (inet4 != null && !server.has("inet4_range")) server.put("inet4_range", inet4)
-        if (inet6 != null && !server.has("inet6_range")) server.put("inet6_range", inet6)
+        if (server.optString("server") == "fakeip") server.remove("server")
+        if (inet4 != null) server.put("inet4_range", inet4)
+        if (inet6 != null) server.put("inet6_range", inet6)
     }
 
     private fun tryDecodeBase64(text: String): String {

@@ -33,6 +33,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/ForeignSubscriptionParser.kt")
         kotlin.include("io/nekohasekai/sfa/utils/ImportIssueCode.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ImportOperationOutcome.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/PartialUpdatePolicy.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionImportReport.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionRouting.kt")
         kotlin.include("io/nekohasekai/sfa/utils/ProfileOverflowMenuModel.kt")

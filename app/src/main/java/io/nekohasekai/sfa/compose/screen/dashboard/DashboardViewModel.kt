@@ -13,6 +13,8 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.utils.ProfileSafeDelete
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
@@ -422,22 +424,62 @@ class DashboardViewModel :
         }
     }
 
+    /**
+     * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
+     * Does not use plain writeText — failed validate/write leaves the previous file intact.
+     */
     private suspend fun refreshProfile(profile: Profile) {
-        if (io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(profile.id)) return
+        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return
         if (ProfileManager.get(profile.id) == null) return
+
+        val operationToken = ProfileConfigCommit.beginOperation(profile.id)
         val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
-        if (io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(profile.id)) return
+
+        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return
         if (ProfileManager.get(profile.id) == null) return
-        Libbox.checkConfig(result.config)
+
         val file = File(profile.typed.path)
-        val changed = !file.exists() || file.readText() != result.config
-        if (changed) file.writeText(result.config)
-        result.report.save(profile.typed.path)
-        profile.typed.lastUpdated = Date()
-        ProfileManager.update(profile)
-        loadProfiles()
-        if (changed && profile.id == Settings.selectedProfile && _serviceStatus.value == Status.Started) {
-            sendGlobalEvent(UiEvent.RequestReconnectService)
+        when (
+            val outcome =
+                ProfileConfigCommit.commit(
+                    profileId = profile.id,
+                    operationToken = operationToken,
+                    target = file,
+                    content = result.config,
+                    validate = { Libbox.checkConfig(it) },
+                    afterFileCommit = {
+                        result.report.save(profile.typed.path)
+                        profile.typed.lastUpdated = Date()
+                        ProfileManager.update(profile)
+                    },
+                )
+        ) {
+            is CommitOutcome.Success -> {
+                loadProfiles()
+                if (outcome.replaced &&
+                    profile.id == Settings.selectedProfile &&
+                    _serviceStatus.value == Status.Started
+                ) {
+                    sendGlobalEvent(UiEvent.RequestReconnectService)
+                }
+            }
+            is CommitOutcome.FileCommittedMetadataFailed -> {
+                // File is the new LKG; report/DB may be incomplete — still reload UI.
+                loadProfiles()
+                if (outcome.replaced &&
+                    profile.id == Settings.selectedProfile &&
+                    _serviceStatus.value == Status.Started
+                ) {
+                    sendGlobalEvent(UiEvent.RequestReconnectService)
+                }
+                throw IllegalStateException("Config saved but metadata update failed")
+            }
+            is CommitOutcome.Stale -> {
+                // Superseded by delete or a newer update — leave LKG untouched.
+            }
+            is CommitOutcome.Failed -> {
+                throw outcome.error
+            }
         }
     }
 

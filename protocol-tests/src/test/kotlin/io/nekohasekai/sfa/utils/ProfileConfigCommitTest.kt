@@ -274,4 +274,63 @@ class ProfileConfigCommitTest {
         // Without lock discipline a plain write would resurrect — document the contract.
         ProfileConfigCommit.clearDeleted(303L)
     }
+
+
+    @Test
+    fun refreshPathFailedValidationLeavesFile() = runBlocking {
+        val target = tmp.newFile("refresh-lkg.json")
+        target.writeText("LKG")
+        val token = ProfileConfigCommit.beginOperation(401L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 401L,
+                operationToken = token,
+                target = target,
+                content = "BAD",
+                validate = { error("checkConfig failed") },
+                afterFileCommit = { error("should not run") },
+            )
+        assertTrue(outcome is CommitOutcome.Failed)
+        assertEquals("LKG", target.readText())
+    }
+
+    @Test
+    fun refreshPathDeleteDuringUpdateDoesNotResurrect() = runBlocking {
+        val target = tmp.newFile("refresh-del.json")
+        target.writeText("LKG")
+        val token = ProfileConfigCommit.beginOperation(402L)
+        ProfileConfigCommit.markDeleted(402L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 402L,
+                operationToken = token,
+                target = target,
+                content = "RESURRECT",
+                validate = {},
+                afterFileCommit = {},
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        assertEquals("LKG", target.readText())
+        ProfileConfigCommit.clearDeleted(402L)
+    }
+
+    @Test
+    fun refreshPathSuccessfulCommitRunsMetadata() = runBlocking {
+        val target = tmp.newFile("refresh-ok.json")
+        target.writeText("OLD")
+        var meta = false
+        val token = ProfileConfigCommit.beginOperation(403L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 403L,
+                operationToken = token,
+                target = target,
+                content = "NEW",
+                validate = {},
+                afterFileCommit = { meta = true },
+            )
+        assertTrue(outcome is CommitOutcome.Success)
+        assertTrue(meta)
+        assertEquals("NEW", target.readText())
+    }
 }

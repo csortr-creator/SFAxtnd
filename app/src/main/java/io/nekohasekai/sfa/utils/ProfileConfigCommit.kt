@@ -7,6 +7,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
@@ -28,6 +29,8 @@ object ProfileConfigCommit {
     private val generations = ConcurrentHashMap<Long, AtomicLong>()
     /** Profile ids removed by [markDeleted]; blocks further commits until cleared. */
     private val deletedIds = ConcurrentHashMap.newKeySet<Long>()
+    /** Process-local successful file-replace counter (B3-3c). Separate from operation tokens. */
+    private val writeGenerations = ConcurrentHashMap<Long, AtomicLong>()
 
     /**
      * Optional Room existence probe. Default allows commit (tests).
@@ -75,6 +78,96 @@ object ProfileConfigCommit {
     /** Run [block] under the per-profile commit/delete mutex. */
     suspend fun <T> withProfileLock(profileId: Long, block: suspend () -> T): T =
         mutexFor(profileId).withLock { block() }
+
+
+    fun currentWriteGeneration(profileId: Long): Long =
+        writeGenerations[profileId]?.get() ?: 0L
+
+    private fun bumpWriteGeneration(profileId: Long): Long =
+        writeGenerations.getOrPut(profileId) { AtomicLong(0L) }.incrementAndGet()
+
+    /** SHA-256 of file bytes, or null if missing/unreadable. */
+    fun fileSha256(file: File): String? {
+        if (!file.isFile) return null
+        return try {
+            val md = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buf = ByteArray(8192)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    md.update(buf, 0, n)
+                }
+            }
+            md.digest().joinToString("") { b -> "%02x".format(b) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Snapshot under the per-profile Mutex so hash and write-generation match one file state.
+     */
+    suspend fun snapshotExpectedState(
+        profileId: Long,
+        configPath: String,
+    ): ConfigExpectedState =
+        mutexFor(profileId).withLock {
+            val file = File(configPath)
+            ConfigExpectedState(
+                profileId = profileId,
+                configPath = configPath,
+                contentSha256 = fileSha256(file),
+                writeGeneration = currentWriteGeneration(profileId),
+            )
+        }
+
+    /**
+     * Conditional commit: apply [content] only if profile/file state still matches [expected].
+     * Acquires the per-profile Mutex itself — do not call from under [withProfileLock].
+     *
+     * writeGeneration is bumped only when [replaceAtomically] returns true (bytes changed).
+     */
+    suspend fun <T> commitIfUnchanged(
+        expected: ConfigExpectedState,
+        content: String,
+        validate: (String) -> Unit,
+        afterFileCommit: suspend () -> T,
+    ): CommitOutcome<T> {
+        val profileId = expected.profileId
+        mutexFor(profileId).withLock {
+            if (isMarkedDeleted(profileId)) return CommitOutcome.Stale
+            if (!profileStillExists(profileId)) return CommitOutcome.Stale
+            val target = File(expected.configPath)
+            // Path identity: target must still be the expected path string (caller binds path).
+            if (target.path != File(expected.configPath).path) return CommitOutcome.Stale
+            val currentHash = fileSha256(target)
+            if (currentHash != expected.contentSha256) return CommitOutcome.Stale
+            if (currentWriteGeneration(profileId) != expected.writeGeneration) {
+                return CommitOutcome.Stale
+            }
+            try {
+                validate(content)
+            } catch (e: Exception) {
+                return CommitOutcome.Failed(e)
+            }
+            val replaced =
+                try {
+                    replaceAtomically(target, content)
+                } catch (e: Exception) {
+                    return CommitOutcome.Failed(e)
+                }
+            if (replaced) {
+                bumpWriteGeneration(profileId)
+            }
+            return try {
+                val meta = afterFileCommit()
+                CommitOutcome.Success(replaced = replaced, metadata = meta)
+            } catch (e: Exception) {
+                CommitOutcome.FileCommittedMetadataFailed(replaced = replaced, error = e)
+            }
+        }
+    }
 
     /**
      * Atomically replace [target] with [content], or leave [target] unchanged on any failure.
@@ -179,12 +272,32 @@ object ProfileConfigCommit {
                 } catch (e: Exception) {
                     return CommitOutcome.Failed(e)
                 }
+            if (replaced) {
+                bumpWriteGeneration(profileId)
+            }
             return try {
                 val meta = afterFileCommit()
                 CommitOutcome.Success(replaced = replaced, metadata = meta)
             } catch (e: Exception) {
                 CommitOutcome.FileCommittedMetadataFailed(replaced = replaced, error = e)
             }
+        }
+    }
+
+
+    /**
+     * Editor save path: replace under mutex, bump write generation when bytes change.
+     * Call only outside outer withProfileLock (acquires mutex itself) OR use from
+     * code that does not already hold the lock — this acquires [mutexFor].
+     */
+    suspend fun applyEditorWrite(profileId: Long, target: File, content: String): Boolean {
+        mutexFor(profileId).withLock {
+            if (isMarkedDeleted(profileId) || !profileStillExists(profileId)) {
+                return false
+            }
+            val replaced = replaceAtomically(target, content)
+            if (replaced) bumpWriteGeneration(profileId)
+            return replaced
         }
     }
 
@@ -201,6 +314,13 @@ object ProfileConfigCommit {
         }
     }
 }
+
+data class ConfigExpectedState(
+    val profileId: Long,
+    val configPath: String,
+    val contentSha256: String?,
+    val writeGeneration: Long,
+)
 
 sealed class CommitOutcome<out T> {
     data class Success<T>(val replaced: Boolean, val metadata: T) : CommitOutcome<T>()

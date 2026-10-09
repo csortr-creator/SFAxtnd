@@ -195,15 +195,12 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                 // Save under the same per-profile lock as delete/commit so we cannot
                 // recreate a file after ProfileSafeDelete has marked the id deleted.
                 profile?.let { p ->
-                    io.nekohasekai.sfa.utils.ProfileConfigCommit.withProfileLock(p.id) {
-                        if (io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(p.id)) {
-                            return@withProfileLock
-                        }
-                        if (io.nekohasekai.sfa.database.ProfileManager.get(p.id) == null) {
-                            return@withProfileLock
-                        }
-                        File(p.typed.path).writeText(currentContent)
-                    }
+                    io.nekohasekai.sfa.utils.ProfileConfigCommit.applyEditorWrite(
+                        p.id,
+                        File(p.typed.path),
+                        currentContent,
+                    )
+
                 }
 
                 _uiState.update {

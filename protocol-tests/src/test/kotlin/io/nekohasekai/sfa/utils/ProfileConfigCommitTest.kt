@@ -333,4 +333,154 @@ class ProfileConfigCommitTest {
         assertTrue(meta)
         assertEquals("NEW", target.readText())
     }
+
+    @Test
+    fun snapshotUnderLockMatchesHashAndGeneration() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        target.writeText("""{"a":1}""")
+        ProfileConfigCommit.profileStillExists = { true }
+        val snap = ProfileConfigCommit.snapshotExpectedState(501L, target.path)
+        assertEquals(501L, snap.profileId)
+        assertEquals(target.path, snap.configPath)
+        assertEquals(ProfileConfigCommit.fileSha256(target), snap.contentSha256)
+        assertEquals(0L, snap.writeGeneration)
+    }
+
+    @Test
+    fun commitIfUnchangedAppliesWhenStateMatches() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        target.writeText("""{"old":true}""")
+        ProfileConfigCommit.profileStillExists = { true }
+        val expected = ProfileConfigCommit.snapshotExpectedState(502L, target.path)
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = expected,
+                content = """{"new":true}""",
+                validate = {},
+                afterFileCommit = { "ok" },
+            )
+        assertTrue(outcome is CommitOutcome.Success)
+        assertEquals("""{"new":true}""", target.readText())
+        assertEquals(1L, ProfileConfigCommit.currentWriteGeneration(502L))
+    }
+
+    @Test
+    fun commitIfUnchangedStaleOnHashChange() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        target.writeText("""{"a":1}""")
+        ProfileConfigCommit.profileStillExists = { true }
+        val expected = ProfileConfigCommit.snapshotExpectedState(503L, target.path)
+        target.writeText("""{"a":2}""") // direct edit
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = expected,
+                content = """{"b":3}""",
+                validate = {},
+                afterFileCommit = { Unit },
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        assertEquals("""{"a":2}""", target.readText())
+    }
+
+    @Test
+    fun abaWithinProcessDetectedByWriteGeneration() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        val contentA = """{"v":"A"}"""
+        val contentB = """{"v":"B"}"""
+        target.writeText(contentA)
+        ProfileConfigCommit.profileStillExists = { true }
+        val pending = ProfileConfigCommit.snapshotExpectedState(504L, target.path)
+        // A → B via normal commit
+        val token = ProfileConfigCommit.beginOperation(504L)
+        ProfileConfigCommit.commit(
+            profileId = 504L,
+            operationToken = token,
+            target = target,
+            content = contentB,
+            validate = {},
+            afterFileCommit = { Unit },
+        )
+        // B → A (bytes back to A)
+        val token2 = ProfileConfigCommit.beginOperation(504L)
+        ProfileConfigCommit.commit(
+            profileId = 504L,
+            operationToken = token2,
+            target = target,
+            content = contentA,
+            validate = {},
+            afterFileCommit = { Unit },
+        )
+        // Old pending must be Stale due to writeGeneration even if hash is A again
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = pending,
+                content = """{"v":"from-pending"}""",
+                validate = {},
+                afterFileCommit = { Unit },
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        assertEquals(contentA, target.readText())
+    }
+
+    @Test
+    fun identicalContentDoesNotBumpGeneration() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        val body = """{"same":true}"""
+        target.writeText(body)
+        ProfileConfigCommit.profileStillExists = { true }
+        val expected = ProfileConfigCommit.snapshotExpectedState(505L, target.path)
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = expected,
+                content = body,
+                validate = {},
+                afterFileCommit = { Unit },
+            )
+        assertTrue(outcome is CommitOutcome.Success)
+        val success = outcome as CommitOutcome.Success
+        assertFalse(success.replaced)
+        assertEquals(0L, ProfileConfigCommit.currentWriteGeneration(505L))
+    }
+
+    @Test
+    fun commitIfUnchangedStaleWhenDeleted() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        target.writeText("{}")
+        ProfileConfigCommit.profileStillExists = { true }
+        val expected = ProfileConfigCommit.snapshotExpectedState(506L, target.path)
+        ProfileConfigCommit.markDeleted(506L)
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = expected,
+                content = """{"x":1}""",
+                validate = {},
+                afterFileCommit = { Unit },
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        ProfileConfigCommit.clearDeleted(506L)
+    }
+
+    @Test
+    fun regularCommitBumpsWriteGenerationOnReplace() = runBlocking {
+        val dir = tmp.newFolder()
+        val target = File(dir, "cfg.json")
+        target.writeText("""{"old":1}""")
+        ProfileConfigCommit.profileStillExists = { true }
+        val token = ProfileConfigCommit.beginOperation(507L)
+        ProfileConfigCommit.commit(
+            profileId = 507L,
+            operationToken = token,
+            target = target,
+            content = """{"new":1}""",
+            validate = {},
+            afterFileCommit = { Unit },
+        )
+        assertEquals(1L, ProfileConfigCommit.currentWriteGeneration(507L))
+    }
 }

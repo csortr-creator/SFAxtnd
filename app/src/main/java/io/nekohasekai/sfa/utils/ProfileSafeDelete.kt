@@ -79,7 +79,9 @@ object ProfileSafeDelete {
             ProfileConfigCommit.invalidate(profile.id)
 
             ProfileConfigCommit.withProfileLock(profile.id) {
-                ProfileConfigCommit.invalidate(profile.id)
+                // Tombstone under lock so a concurrent updater cannot beginOperation+commit
+                // after we leave this section and recreate the config file.
+                ProfileConfigCommit.markDeleted(profile.id)
 
                 val selected = selection.getSelected()
                 val vpnUsesThis =

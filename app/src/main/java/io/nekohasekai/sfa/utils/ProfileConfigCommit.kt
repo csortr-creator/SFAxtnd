@@ -26,6 +26,8 @@ object ProfileConfigCommit {
 
     private val locks = ConcurrentHashMap<Long, Mutex>()
     private val generations = ConcurrentHashMap<Long, AtomicLong>()
+    /** Profile ids removed by [markDeleted]; blocks further commits until cleared. */
+    private val deletedIds = ConcurrentHashMap.newKeySet<Long>()
 
     /** Issue a monotonic operation token for [profileId]. Call before fetch. */
     fun beginOperation(profileId: Long): Long {
@@ -43,6 +45,22 @@ object ProfileConfigCommit {
      * Same effect as [beginOperation]; named for delete/update-cancel call sites.
      */
     fun invalidate(profileId: Long): Long = beginOperation(profileId)
+
+    /**
+     * Permanent (process-lifetime) tombstone for a deleted profile id.
+     * Prevents a late [beginOperation] + [commit] from recreating config files after delete.
+     * Call [clearDeleted] only if the same id is legitimately reused (rare with autoGenerate).
+     */
+    fun markDeleted(profileId: Long) {
+        deletedIds.add(profileId)
+        invalidate(profileId)
+    }
+
+    fun clearDeleted(profileId: Long) {
+        deletedIds.remove(profileId)
+    }
+
+    fun isMarkedDeleted(profileId: Long): Boolean = deletedIds.contains(profileId)
 
     fun mutexFor(profileId: Long): Mutex = locks.getOrPut(profileId) { Mutex() }
 
@@ -135,7 +153,7 @@ object ProfileConfigCommit {
         afterFileCommit: suspend () -> T,
     ): CommitOutcome<T> {
         mutexFor(profileId).withLock {
-            if (!isCurrent(profileId, operationToken)) {
+            if (isMarkedDeleted(profileId) || !isCurrent(profileId, operationToken)) {
                 return CommitOutcome.Stale
             }
             try {

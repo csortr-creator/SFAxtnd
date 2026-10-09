@@ -187,4 +187,28 @@ class ProfileConfigCommitTest {
         }
         assertEquals("LOCKED", target.readText())
     }
+
+
+    @Test
+    fun markDeletedBlocksNewCommitToken() = runBlocking {
+        val target = tmp.newFile("tomb.json")
+        target.writeText("GONE")
+        ProfileConfigCommit.markDeleted(77L)
+        // Fresh token after delete — still must not write (tombstone, not only generation).
+        val token = ProfileConfigCommit.beginOperation(77L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 77L,
+                operationToken = token,
+                target = target,
+                content = "RESURRECT",
+                validate = {},
+                afterFileCommit = {},
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        assertEquals("GONE", target.readText())
+        assertTrue(ProfileConfigCommit.isMarkedDeleted(77L))
+        ProfileConfigCommit.clearDeleted(77L)
+        assertFalse(ProfileConfigCommit.isMarkedDeleted(77L))
+    }
 }

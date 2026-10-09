@@ -423,7 +423,11 @@ class DashboardViewModel :
     }
 
     private suspend fun refreshProfile(profile: Profile) {
+        if (io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(profile.id)) return
+        if (ProfileManager.get(profile.id) == null) return
         val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
+        if (io.nekohasekai.sfa.utils.ProfileConfigCommit.isMarkedDeleted(profile.id)) return
+        if (ProfileManager.get(profile.id) == null) return
         Libbox.checkConfig(result.config)
         val file = File(profile.typed.path)
         val changed = !file.exists() || file.readText() != result.config

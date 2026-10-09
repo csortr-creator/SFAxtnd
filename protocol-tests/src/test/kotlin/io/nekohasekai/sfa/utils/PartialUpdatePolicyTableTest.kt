@@ -1,0 +1,47 @@
+package io.nekohasekai.sfa.utils
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
+
+@RunWith(Parameterized::class)
+class PartialUpdatePolicyTableTest(
+    private val trigger: UpdateTrigger,
+    private val received: Int,
+    private val imported: Int,
+    private val rejected: Int,
+    private val expected: PolicyDecision,
+) {
+    @Test
+    fun tableRow() {
+        val decision =
+            PartialUpdatePolicy.decide(
+                PartialUpdateInput(
+                    trigger = trigger,
+                    received = received,
+                    imported = imported,
+                    rejected = rejected,
+                    reliability = StatsReliability.COMPLETE,
+                    hadPreviousConfig = trigger != UpdateTrigger.FIRST_IMPORT,
+                ),
+            )
+        assertEquals(expected, decision)
+    }
+
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "{0}_r{1}_i{2}_rej{3}_{4}")
+        fun data(): Collection<Array<Any>> =
+            listOf(
+                arrayOf(UpdateTrigger.FIRST_IMPORT, 1, 1, 0, PolicyDecision.APPLY),
+                arrayOf(UpdateTrigger.FIRST_IMPORT, 3, 2, 1, PolicyDecision.APPLY),
+                arrayOf(UpdateTrigger.AUTO_UPDATE, 20, 20, 0, PolicyDecision.APPLY),
+                arrayOf(UpdateTrigger.AUTO_UPDATE, 20, 19, 1, PolicyDecision.REJECT_KEEP_LKG),
+                arrayOf(UpdateTrigger.MANUAL_UPDATE, 8, 8, 0, PolicyDecision.APPLY),
+                arrayOf(UpdateTrigger.MANUAL_UPDATE, 8, 7, 1, PolicyDecision.AWAIT_CONFIRMATION),
+                arrayOf(UpdateTrigger.AUTO_UPDATE, 100, 0, 100, PolicyDecision.REJECT_KEEP_LKG),
+                arrayOf(UpdateTrigger.FIRST_IMPORT, 5, 0, 5, PolicyDecision.REJECT_FIRST),
+            )
+    }
+}

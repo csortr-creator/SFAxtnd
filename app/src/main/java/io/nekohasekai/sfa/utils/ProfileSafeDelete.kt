@@ -26,7 +26,7 @@ object ProfileSafeDelete {
         suspend fun delete(profile: Profile): Int
     }
 
-    fun interface Selection {
+    interface Selection {
         fun getSelected(): Long
 
         fun setSelected(id: Long)

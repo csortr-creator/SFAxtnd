@@ -14,8 +14,8 @@ class ProfileOverflowMenuModelTest {
             ),
             ProfileOverflowMenuModel.primaryActions(),
         )
-        assertFalse(
-            "Delete must stay disabled until safe backend",
+        assertTrue(
+            "Delete is enabled after UI-1c/1d safe backend",
             ProfileOverflowMenuModel.DELETE_ENABLED,
         )
     }

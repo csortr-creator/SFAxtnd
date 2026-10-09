@@ -44,5 +44,5 @@ object ProfileOverflowMenuModel {
     }
 
     /** Delete is visible but not enabled until safe backend (UI-1b/c/d). */
-    const val DELETE_ENABLED: Boolean = false
+    const val DELETE_ENABLED: Boolean = true
 }

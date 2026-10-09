@@ -334,6 +334,7 @@ fun ProfilesCard(
                             isUpdating = profile.id in updatingProfileIds,
                             showUpdateSuccess = profile.id == updatedProfileId,
                             onEdit = { profile.let { onProfileEdit(it) } },
+                            onDelete = { profile.let { onProfileDelete(it) } },
                             onUpdate = { profile.let { onProfileUpdate(it) } },
                             onShareFile = {
                                 profile.let {
@@ -720,6 +721,7 @@ private fun ProfileActionRow(
     isUpdating: Boolean,
     showUpdateSuccess: Boolean,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onUpdate: () -> Unit,
     onShareFile: () -> Unit,
     onSaveFile: () -> Unit,
@@ -748,6 +750,7 @@ private fun ProfileActionRow(
         ShareButton(
             profile = profile,
             onEdit = onEdit,
+            onDelete = onDelete,
             onShareFile = onShareFile,
             onSaveFile = onSaveFile,
             onSaveJson = onSaveJson,
@@ -795,6 +798,7 @@ private fun ActionButton(
 private fun ShareButton(
     profile: Profile,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onShareFile: () -> Unit,
     onSaveFile: () -> Unit,
     onSaveJson: () -> Unit,
@@ -804,6 +808,8 @@ private fun ShareButton(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var shareExpanded by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
     val isRemote = profile.typed.type == TypedProfile.Type.Remote
 
     Box {
@@ -811,14 +817,16 @@ private fun ShareButton(
             icon = Icons.Default.MoreVert,
             contentDescription = "Действия с подпиской",
             onClick = {
+                if (deleting) return@ActionButton
                 shareExpanded = false
                 expanded = true
             },
+            enabled = !deleting,
+            isLoading = deleting,
         )
 
-        // Primary: Изменить / Поделиться / Удалить (disabled until safe backend).
         DropdownMenu(
-            expanded = expanded && !shareExpanded,
+            expanded = expanded && !shareExpanded && !confirmDelete,
             onDismissRequest = { expanded = false },
         ) {
             DropdownMenuItem(
@@ -840,25 +848,21 @@ private fun ShareButton(
                 },
                 onClick = { shareExpanded = true },
             )
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        if (ProfileOverflowMenuModel.DELETE_ENABLED) "Удалить"
-                        else "Удалить (скоро)"
-                    )
-                },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                enabled = ProfileOverflowMenuModel.DELETE_ENABLED,
-                onClick = {
-                    // Wired in UI-1d after safe ProfileManager delete.
-                    expanded = false
-                },
-            )
+            if (ProfileOverflowMenuModel.DELETE_ENABLED) {
+                DropdownMenuItem(
+                    text = { Text("Удалить") },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                    enabled = !deleting,
+                    onClick = {
+                        expanded = false
+                        confirmDelete = true
+                    },
+                )
+            }
         }
 
-        // Nested share/export — preserves all former top-level share actions.
         DropdownMenu(
-            expanded = expanded && shareExpanded,
+            expanded = expanded && shareExpanded && !confirmDelete,
             onDismissRequest = {
                 shareExpanded = false
                 expanded = false
@@ -965,6 +969,41 @@ private fun ShareButton(
                 }
             }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!deleting) confirmDelete = false
+            },
+            title = { Text("Удалить подписку?") },
+            text = {
+                Text(
+                    "«${profile.name}» будет удалена. Это действие нельзя отменить.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = {
+                        if (deleting) return@TextButton
+                        deleting = true
+                        confirmDelete = false
+                        onDelete()
+                    },
+                ) {
+                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = { confirmDelete = false },
+                ) {
+                    Text("Отмена")
+                }
+            },
+        )
     }
 }
 

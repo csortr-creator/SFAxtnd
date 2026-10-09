@@ -304,8 +304,6 @@ internal class SubscriptionContentParser(
             root.toString(2)
         } catch (e: LegacyDnsFakeIpIncompatibleException) {
             throw e
-        } catch (e: Exception) {
-            if (e is org.json.JSONException) jsonStr else throw e
         }
 
 

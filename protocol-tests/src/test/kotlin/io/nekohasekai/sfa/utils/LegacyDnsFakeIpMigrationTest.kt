@@ -39,6 +39,11 @@ class LegacyDnsFakeIpMigrationTest {
 
     private fun parse(json: String) = SubscriptionContentParser().parse(json)
 
+    private fun findFakeIp(dns: JSONObject): JSONObject =
+        (0 until dns.getJSONArray("servers").length())
+            .map { dns.getJSONArray("servers").getJSONObject(it) }
+            .first { it.optString("type") == "fakeip" }
+
     private fun export(name: String, config: String) {
         File("build/native-configs").mkdirs()
         File("build/native-configs/$name").writeText(config)
@@ -170,11 +175,7 @@ class LegacyDnsFakeIpMigrationTest {
                         .put("inet4_range", "10.0.0.0/8")
                         .put("inet6_range", "fd00::/8"),
                 )
-        val fake =
-            JSONObject(parse(wrap(dns)).config)
-                .getJSONObject("dns")
-                .getJSONArray("servers")
-                .getJSONObject(0)
+        val fake = findFakeIp(JSONObject(parse(wrap(dns)).config).getJSONObject("dns"))
         assertEquals("10.0.0.0/8", fake.getString("inet4_range"))
         assertEquals("fd00::/8", fake.getString("inet6_range"))
     }
@@ -188,11 +189,7 @@ class LegacyDnsFakeIpMigrationTest {
                     JSONArray().put(JSONObject().put("address", "fakeip").put("tag", "fp")),
                 )
                 .put("fakeip", JSONObject().put("enabled", true))
-        val fake =
-            JSONObject(parse(wrap(dns)).config)
-                .getJSONObject("dns")
-                .getJSONArray("servers")
-                .getJSONObject(0)
+        val fake = findFakeIp(JSONObject(parse(wrap(dns)).config).getJSONObject("dns"))
         assertEquals("fakeip", fake.getString("type"))
         assertFalse(fake.has("inet4_range"))
         assertFalse(fake.has("inet6_range"))
@@ -264,14 +261,8 @@ class LegacyDnsFakeIpMigrationTest {
         val b = JSONObject(twice).getJSONObject("dns")
         assertFalse(a.has("fakeip"))
         assertFalse(b.has("fakeip"))
-        assertEquals(
-            a.getJSONArray("servers").getJSONObject(0).getString("type"),
-            b.getJSONArray("servers").getJSONObject(0).getString("type"),
-        )
-        assertEquals(
-            a.getJSONArray("servers").getJSONObject(0).optString("inet4_range"),
-            b.getJSONArray("servers").getJSONObject(0).optString("inet4_range"),
-        )
+        assertEquals(findFakeIp(a).getString("type"), findFakeIp(b).getString("type"))
+        assertEquals(findFakeIp(a).optString("inet4_range"), findFakeIp(b).optString("inet4_range"))
     }
 
     @Test

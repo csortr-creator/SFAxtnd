@@ -34,6 +34,9 @@ import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Description
@@ -87,6 +90,7 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.shareProfile
+import io.nekohasekai.sfa.utils.ProfileOverflowMenuModel
 import io.nekohasekai.sfa.ktx.shareProfileAsJson
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -799,110 +803,167 @@ private fun ShareButton(
     onShareQRS: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var shareExpanded by remember { mutableStateOf(false) }
+    val isRemote = profile.typed.type == TypedProfile.Type.Remote
 
     Box {
         ActionButton(
             icon = Icons.Default.MoreVert,
             contentDescription = "Действия с подпиской",
-            onClick = { expanded = true },
+            onClick = {
+                shareExpanded = false
+                expanded = true
+            },
         )
 
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // Primary: Изменить / Поделиться / Удалить (disabled until safe backend).
+        DropdownMenu(
+            expanded = expanded && !shareExpanded,
+            onDismissRequest = { expanded = false },
+        ) {
             DropdownMenuItem(
-                text = { Text("Изменить подписку") },
-                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                text = { Text("Изменить") },
+                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                 onClick = {
                     expanded = false
                     onEdit()
                 },
             )
-            HorizontalDivider()
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.save_as_file)) },
-                onClick = {
-                    expanded = false
-                    onSaveFile()
-                },
-                leadingIcon = {
+                text = { Text("Поделиться") },
+                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                trailingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Save,
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
                     )
                 },
+                onClick = { shareExpanded = true },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.share_as_file)) },
-                onClick = {
-                    expanded = false
-                    onShareFile()
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.IosShare,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                text = {
+                    Text(
+                        if (ProfileOverflowMenuModel.DELETE_ENABLED) "Удалить"
+                        else "Удалить (скоро)"
                     )
                 },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.save_content_json)) },
+                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                enabled = ProfileOverflowMenuModel.DELETE_ENABLED,
                 onClick = {
+                    // Wired in UI-1d after safe ProfileManager delete.
                     expanded = false
-                    onSaveJson()
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.DataObject,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
                 },
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.share_content_json)) },
-                onClick = {
-                    expanded = false
-                    onShareJson()
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.DataObject,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                },
-            )
-            if (profile.typed.type == TypedProfile.Type.Remote) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.profile_share_url)) },
-                    onClick = {
-                        expanded = false
-                        onShareURL()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.QrCode2,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+        }
+
+        // Nested share/export — preserves all former top-level share actions.
+        DropdownMenu(
+            expanded = expanded && shareExpanded,
+            onDismissRequest = {
+                shareExpanded = false
+                expanded = false
+            },
+        ) {
+            for (action in ProfileOverflowMenuModel.shareActions(isRemote)) {
+                when (action) {
+                    ProfileOverflowMenuModel.ShareAction.SaveFile ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.save_as_file)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Save,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onSaveFile()
+                            },
                         )
-                    },
-                )
+                    ProfileOverflowMenuModel.ShareAction.ShareFile ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.share_as_file)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.IosShare,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onShareFile()
+                            },
+                        )
+                    ProfileOverflowMenuModel.ShareAction.SaveJson ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.save_content_json)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.DataObject,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onSaveJson()
+                            },
+                        )
+                    ProfileOverflowMenuModel.ShareAction.ShareJson ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.share_content_json)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.DataObject,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onShareJson()
+                            },
+                        )
+                    ProfileOverflowMenuModel.ShareAction.ShareUrl ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.profile_share_url)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.QrCode2,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onShareURL()
+                            },
+                        )
+                    ProfileOverflowMenuModel.ShareAction.ShareQrs ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.share_as_qrs)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.QrCode2,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            onClick = {
+                                shareExpanded = false
+                                expanded = false
+                                onShareQRS()
+                            },
+                        )
+                }
             }
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.share_as_qrs)) },
-                onClick = {
-                    expanded = false
-                    onShareQRS()
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.QrCode2,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                },
-            )
         }
     }
 }

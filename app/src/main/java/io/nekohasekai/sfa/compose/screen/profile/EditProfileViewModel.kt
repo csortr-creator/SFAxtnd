@@ -18,6 +18,9 @@ import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.NetworkErrorKind
 import io.nekohasekai.sfa.utils.NetworkErrorPresentation
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
+import io.nekohasekai.sfa.utils.ManualPrepareResult
+import io.nekohasekai.sfa.utils.PendingImportHolder
 import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.ImportResultFormatter
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,9 @@ data class EditProfileUiState(
     val errorMessage: String? = null,
     val autoUpdateIntervalError: String? = null,
     val showIconDialog: Boolean = false,
+    /** In-memory partial-import candidate (B3-3c); never persisted. */
+    val pendingImport: PendingImportHolder? = null,
+    val showPartialImportDialog: Boolean = false,
 )
 
 class EditProfileViewModel(application: Application) : AndroidViewModel(application) {
@@ -251,136 +257,113 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
     fun updateRemoteProfile() {
         val state = _uiState.value
         val profile = state.profile ?: return
-
         if (profile.typed.type != TypedProfile.Type.Remote) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isUpdating = true) }
-
-            try {
-                var selectedProfileUpdated = false
-                val operationToken = ProfileConfigCommit.beginOperation(profile.id)
-
-                val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
-                val content = result.config
-                val file = File(profile.typed.path)
-
-                when (
-                    val outcome =
-                        ProfileConfigCommit.commit(
-                            profileId = profile.id,
-                            operationToken = operationToken,
-                            target = file,
-                            content = content,
-                            validate = { Libbox.checkConfig(it) },
-                            afterFileCommit = {
-                                result.report.save(profile.typed.path)
-                                profile.typed.lastUpdated = Date()
-                                ProfileManager.update(profile)
-                            },
+            _uiState.update { it.copy(isUpdating = true, errorMessage = null) }
+            when (val result = ManualSubscriptionUpdate.prepare(profile)) {
+                is ManualPrepareResult.Applied -> {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                    _uiState.update {
+                        it.copy(
+                            lastUpdated = profile.typed.lastUpdated,
+                            isUpdating = false,
+                            showUpdateSuccess =
+                                result.outcome == ImportOperationOutcome.APPLIED ||
+                                    result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
+                                    result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
+                            pendingImport = null,
+                            showPartialImportDialog = false,
                         )
-                ) {
-                    is CommitOutcome.Success -> {
-                        if (outcome.replaced && profile.id == Settings.selectedProfile) {
-                            selectedProfileUpdated = true
-                        }
-                        val op =
-                            ImportResultFormatter.fromCommit(
-                                replaced = outcome.replaced,
-                                report = result.report,
-                            )
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, op)
-                        _uiState.update {
-                            it.copy(
-                                lastUpdated = profile.typed.lastUpdated,
-                                isUpdating = false,
-                                showUpdateSuccess = true,
-                                errorMessage = null,
-                            )
-                        }
                     }
-                    is CommitOutcome.FileCommittedMetadataFailed -> {
-                        if (outcome.replaced && profile.id == Settings.selectedProfile) {
-                            selectedProfileUpdated = true
-                        }
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(
-                            profile,
-                            ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
-                        )
-                        _uiState.update {
-                            it.copy(
-                                isUpdating = false,
-                                showUpdateSuccess = false,
-                                errorMessage =
-                                    ImportResultFormatter.outcomeLine(
-                                        ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
-                                        hadPreviousConfig = true,
-                                    ),
-                            )
-                        }
-                    }
-                    is CommitOutcome.Stale -> {
-                        _uiState.update {
-                            it.copy(
-                                isUpdating = false,
-                                showUpdateSuccess = false,
-                                errorMessage =
-                                    ImportResultFormatter.outcomeLine(
-                                        ImportOperationOutcome.KEPT_LKG,
-                                        hadPreviousConfig =
-                                            ImportResultFormatter.configFileExists(profile.typed.path),
-                                    ),
-                            )
-                        }
-                    }
-                    is CommitOutcome.Failed -> {
-                        _uiState.update {
-                            it.copy(
-                                isUpdating = false,
-                                showUpdateSuccess = false,
-                                errorMessage =
-                                    ImportResultFormatter.outcomeLine(
-                                        ImportOperationOutcome.KEPT_LKG,
-                                        hadPreviousConfig =
-                                            ImportResultFormatter.configFileExists(profile.typed.path),
-                                    ),
-                            )
-                        }
+                    if (result.replaced && profile.id == Settings.selectedProfile) {
+                        runCatching { Libbox.newStandaloneCommandClient().serviceReload() }
                     }
                 }
-
-                if (selectedProfileUpdated) {
-                    try {
-                        Libbox.newStandaloneCommandClient().serviceReload()
-                    } catch (_: Exception) {
-                        // Service reload errors are not critical for file durability
+                is ManualPrepareResult.AwaitConfirmation -> {
+                    _uiState.update {
+                        it.copy(
+                            isUpdating = false,
+                            pendingImport = result.pending,
+                            showPartialImportDialog = true,
+                        )
                     }
                 }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isUpdating = false,
-                        errorMessage = subscriptionFetchUserMessage(e),
-                    )
+                is ManualPrepareResult.Rejected -> {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                    _uiState.update {
+                        it.copy(
+                            isUpdating = false,
+                            showUpdateSuccess = false,
+                            pendingImport = null,
+                            showPartialImportDialog = false,
+                        )
+                    }
+                }
+                is ManualPrepareResult.Failed -> {
+                    _uiState.update {
+                        it.copy(
+                            isUpdating = false,
+                            errorMessage = result.safeMessage,
+                            pendingImport = null,
+                            showPartialImportDialog = false,
+                        )
+                    }
                 }
             }
         }
     }
 
-    private fun subscriptionFetchUserMessage(error: Throwable): String {
-        val res =
-            when (NetworkErrorPresentation.classify(error).kind) {
-                NetworkErrorKind.TLS_TIMEOUT -> R.string.error_subscription_tls_timeout
-                NetworkErrorKind.TLS -> R.string.error_subscription_tls
-                NetworkErrorKind.DNS -> R.string.error_subscription_dns
-                NetworkErrorKind.TIMEOUT -> R.string.error_subscription_timeout
-                NetworkErrorKind.HTTP_AUTH -> R.string.error_subscription_http_auth
-                NetworkErrorKind.HTTP_STATUS -> R.string.error_subscription_http
-                NetworkErrorKind.CONNECTION -> R.string.error_subscription_connection
-                NetworkErrorKind.UNKNOWN -> R.string.error_subscription_unknown
+    fun confirmPartialImport() {
+        val pending = _uiState.value.pendingImport ?: return
+        val profile = _uiState.value.profile
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isUpdating = true, showPartialImportDialog = false) }
+            when (val result = ManualSubscriptionUpdate.confirm(pending)) {
+                is ManualPrepareResult.Applied -> {
+                    if (profile != null) {
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            lastUpdated = profile?.typed?.lastUpdated ?: it.lastUpdated,
+                            isUpdating = false,
+                            showUpdateSuccess =
+                                result.outcome == ImportOperationOutcome.APPLIED ||
+                                    result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
+                                    result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
+                            pendingImport = null,
+                        )
+                    }
+                    if (result.replaced && profile != null && profile.id == Settings.selectedProfile) {
+                        runCatching { Libbox.newStandaloneCommandClient().serviceReload() }
+                    }
+                }
+                is ManualPrepareResult.Rejected,
+                is ManualPrepareResult.Failed,
+                is ManualPrepareResult.AwaitConfirmation,
+                -> {
+                    _uiState.update {
+                        it.copy(
+                            isUpdating = false,
+                            errorMessage =
+                                "Обновление не применено: конфигурация изменилась или профиль недоступен",
+                            pendingImport = null,
+                        )
+                    }
+                }
             }
-        return getApplication<Application>().getString(res)
+        }
     }
+
+    fun cancelPartialImport() {
+        val pending = _uiState.value.pendingImport
+        if (pending != null) ManualSubscriptionUpdate.cancel(pending)
+        _uiState.update {
+            it.copy(pendingImport = null, showPartialImportDialog = false)
+        }
+    }
+
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }

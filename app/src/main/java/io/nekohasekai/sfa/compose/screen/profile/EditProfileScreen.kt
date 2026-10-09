@@ -93,6 +93,34 @@ fun EditProfileScreen(
 
     // Dialog states
     var showErrorDialog by remember { mutableStateOf(false) }
+
+    if (uiState.showPartialImportDialog && uiState.pendingImport != null) {
+        val pending = uiState.pendingImport!!
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelPartialImport() },
+            title = { Text("Частичный импорт") },
+            text = {
+                Text(
+                    "Получено: ${pending.received}\n" +
+                        "Импортировано: ${pending.imported}\n" +
+                        "Отклонено: ${pending.rejected}\n\n" +
+                        "Часть серверов не удалось импортировать. " +
+                        "Применение может уменьшить список доступных серверов.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmPartialImport() }) {
+                    Text("Применить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelPartialImport() }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
+
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
 
     // Launch icon selection screen when needed

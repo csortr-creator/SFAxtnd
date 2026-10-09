@@ -14,6 +14,10 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.utils.ProfileSafeDelete
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
+import io.nekohasekai.sfa.utils.ManualPrepareResult
+import io.nekohasekai.sfa.utils.PendingImportHolder
+import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.ImportResultFormatter
@@ -71,6 +75,8 @@ data class DashboardUiState(
     val deletingProfileIds: Set<Long> = emptySet(),
     val updatedProfileId: Long? = null,
     val isUpdatingAll: Boolean = false,
+    val pendingImport: PendingImportHolder? = null,
+    val showPartialImportDialog: Boolean = false,
     // Status
     val memory: String = "",
     val goroutines: String = "",
@@ -457,60 +463,76 @@ class DashboardViewModel :
         if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
         if (ProfileManager.get(profile.id) == null) return null
 
-        val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
-        val operationToken = ProfileConfigCommit.beginOperation(profile.id)
-        val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
-
-        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
-        if (ProfileManager.get(profile.id) == null) return null
-
-        val file = File(profile.typed.path)
-        return when (
-            val outcome =
-                ProfileConfigCommit.commit(
-                    profileId = profile.id,
-                    operationToken = operationToken,
-                    target = file,
-                    content = result.config,
-                    validate = { Libbox.checkConfig(it) },
-                    afterFileCommit = {
-                        result.report.save(profile.typed.path)
-                        profile.typed.lastUpdated = Date()
-                        ProfileManager.update(profile)
-                    },
-                )
-        ) {
-            is CommitOutcome.Success -> {
+        return when (val result = ManualSubscriptionUpdate.prepare(profile)) {
+            is ManualPrepareResult.Applied -> {
                 loadProfiles()
-                if (outcome.replaced &&
+                if (result.replaced &&
                     profile.id == Settings.selectedProfile &&
                     _serviceStatus.value == Status.Started
                 ) {
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                 }
-                ImportResultFormatter.fromCommit(
-                    replaced = outcome.replaced,
-                    report = result.report,
-                    metadataFailed = false,
-                )
+                result.outcome
             }
-            is CommitOutcome.FileCommittedMetadataFailed -> {
-                loadProfiles()
-                if (outcome.replaced &&
-                    profile.id == Settings.selectedProfile &&
-                    _serviceStatus.value == Status.Started
-                ) {
-                    sendGlobalEvent(UiEvent.RequestReconnectService)
+            is ManualPrepareResult.AwaitConfirmation -> {
+                updateState {
+                    copy(
+                        pendingImport = result.pending,
+                        showPartialImportDialog = true,
+                    )
                 }
-                ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED
+                null // UI will confirm; no false success
             }
-            is CommitOutcome.Stale -> null
-            is CommitOutcome.Failed -> {
-                if (hadPrevious) ImportOperationOutcome.KEPT_LKG
-                else throw outcome.error
+            is ManualPrepareResult.Rejected -> result.outcome
+            is ManualPrepareResult.Failed -> ImportOperationOutcome.KEPT_LKG
+        }
+    }
+
+    fun confirmPartialImport() {
+        val pending = currentState.pendingImport ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            updateState { copy(showPartialImportDialog = false) }
+            when (val result = ManualSubscriptionUpdate.confirm(pending)) {
+                is ManualPrepareResult.Applied -> {
+                    loadProfiles()
+                    if (result.replaced &&
+                        pending.profileId == Settings.selectedProfile &&
+                        _serviceStatus.value == Status.Started
+                    ) {
+                        sendGlobalEvent(UiEvent.RequestReconnectService)
+                    }
+                    val profile = ProfileManager.get(pending.profileId)
+                    if (profile != null) {
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(
+                            profile,
+                            result.outcome,
+                        )
+                    }
+                    updateState { copy(pendingImport = null) }
+                }
+                else -> {
+                    updateState {
+                        copy(
+                            pendingImport = null,
+                        )
+                    }
+                    io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(
+                        UiEvent.ImportReport(
+                            "Обновление подписки",
+                            "Обновление не применено: конфигурация изменилась или профиль недоступен",
+                        ),
+                    )
+                }
             }
         }
     }
+
+    fun cancelPartialImport() {
+        val pending = currentState.pendingImport
+        if (pending != null) ManualSubscriptionUpdate.cancel(pending)
+        updateState { copy(pendingImport = null, showPartialImportDialog = false) }
+    }
+
 
     fun moveProfile(from: Int, to: Int) {
         val currentProfiles = currentState.profiles.toMutableList()

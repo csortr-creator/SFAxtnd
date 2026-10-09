@@ -7,6 +7,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.bg.BoxService
+import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.compose.base.BaseViewModel
 import io.nekohasekai.sfa.compose.base.UiEvent
 import io.nekohasekai.sfa.constant.Status
@@ -256,7 +257,12 @@ class DashboardViewModel :
                 ProfileManager.get(profileId) ?: return@launch
                 // Persist target before rebuild/start so BoxService reads the new profile.
                 Settings.selectedProfile = profileId
-                Log.i(TAG, "SELECT_REQUEST target=$profileId previous=$previousProfileId running=$wasRunning")
+                val switchId = RuntimeProfileState.nextSwitchRequestId()
+                Log.i(
+                    TAG,
+                    "SELECT_REQUEST id=$switchId target=$profileId previous=$previousProfileId " +
+                        "running=$wasRunning loaded=${RuntimeProfileState.loadedProfileId}",
+                )
 
                 if (wasRunning) {
                     BoxService.stop()
@@ -313,7 +319,13 @@ class DashboardViewModel :
                         )
                         return@launch
                     }
-                    Log.i(TAG, "CONNECTED target=$profileId")
+                    Log.i(
+                        TAG,
+                        "CONNECTED id=$switchId target=$profileId " +
+                            "loaded=${RuntimeProfileState.loadedProfileId} " +
+                            "fp=${RuntimeProfileState.loadedConfigFingerprint} " +
+                            "match=${RuntimeProfileState.selectedMatchesLoaded(profileId)}",
+                    )
                 }
 
                 withContext(Dispatchers.Main) { loadProfiles() }

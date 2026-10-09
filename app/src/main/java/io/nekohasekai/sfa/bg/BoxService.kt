@@ -184,6 +184,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 }
             }
 
+            RuntimeProfileState.markLoaded(selectedProfileId, runtimeContent)
+            android.util.Log.i(TAG, "RUNTIME_LOADED profileId=$selectedProfileId fp=${RuntimeProfileState.loadedConfigFingerprint}")
             status.postValue(Status.Started)
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_started)
@@ -280,6 +282,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
         }
+        RuntimeProfileState.markLoaded(selectedProfileId, runtimeContent)
+        android.util.Log.i(TAG, "RUNTIME_LOADED profileId=$selectedProfileId fp=${RuntimeProfileState.loadedConfigFingerprint}")
         status.postValue(Status.Started)
         withContext(Dispatchers.Main) {
             notification.show(lastProfileName, R.string.status_started)
@@ -313,6 +317,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private fun stopService() {
         if (status.value != Status.Started) return
         status.value = Status.Stopping
+        RuntimeProfileState.clear()
         if (receiverRegistered) {
             service.unregisterReceiver(receiver)
             receiverRegistered = false
@@ -348,6 +353,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private suspend fun stopAndAlert(type: Alert, message: String? = null) {
+        RuntimeProfileState.clear()
         Settings.startedByUser = false
         val pfd = fileDescriptor
         if (pfd != null) {

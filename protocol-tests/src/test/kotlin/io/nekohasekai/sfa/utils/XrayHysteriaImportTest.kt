@@ -140,6 +140,111 @@ class XrayHysteriaImportTest {
         )
     }
 
+
+    @Test
+    fun finalmaskQuicSubsetMapsNativeHysteria2FieldsAndRejectsWireMasks() {
+        // Full supported quicParams subset → native sing-box 1.14.2 field names.
+        val fm =
+            URLEncoder.encode(
+                """{"quicParams":{"congestion":"bbr","debug":false,"bbrProfile":"conservative","disablePathMTUDiscovery":true,"udpHop":{"ports":"1000-2000","interval":30}},"udp":[],"tcp":[]}""",
+                "UTF-8",
+            )
+        val node =
+            ProxyLinkParser.hysteria(
+                "hy2://secret@example.org:443?sni=front.example.org&fm=$fm"
+            )
+        assertEquals("hysteria2", node.getString("type"))
+        assertEquals("conservative", node.getString("bbr_profile"))
+        assertTrue(node.getBoolean("disable_path_mtu_discovery"))
+        assertTrue(node.has("server_ports"))
+        assertTrue(node.getJSONArray("server_ports").length() >= 1)
+        assertEquals("30s", node.getString("hop_interval"))
+        // congestion=bbr is validated but not emitted as a separate outbound field
+        // (sing-box uses BBR via profile / default path — not a JSON congestion key).
+        assertFalse(node.has("congestion"))
+
+        // Absent finalmask → no native hop/bbr fields forced.
+        val plain = ProxyLinkParser.hysteria("hy2://secret@example.org:443?sni=front.example.org")
+        assertFalse(plain.has("bbr_profile"))
+        assertFalse(plain.has("server_ports"))
+        assertFalse(plain.has("hop_interval"))
+
+        // Publish full subscription config for CI patched sing-box check.
+        val imported =
+            SubscriptionContentParser()
+                .parse("hy2://secret@example.org:443?sni=front.example.org&fm=$fm#a2a")
+        assertEquals(1, imported.report.imported)
+        val root = JSONObject(imported.config)
+        val out =
+            root.getJSONArray("outbounds").let { arr ->
+                (0 until arr.length()).map { arr.getJSONObject(it) }.single { it.has("server") }
+            }
+        assertEquals("conservative", out.getString("bbr_profile"))
+        assertTrue(out.getBoolean("disable_path_mtu_discovery"))
+        java.io.File("build/native-configs").mkdirs()
+        java.io.File("build/native-configs/import-finalmask-quic-subset.json").writeText(imported.config)
+
+        // Wire obfuscation must hard-fail (not silent ignore).
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.hysteria(
+                        "hy2://secret@example.org:443?fm=" +
+                            URLEncoder.encode("""{"udp":[{"type":"sudoku"}]}""", "UTF-8")
+                    )
+                }
+                .isFailure
+        )
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.hysteria(
+                        "hy2://secret@example.org:443?fm=" +
+                            URLEncoder.encode("""{"tcp":[{"type":"noise"}]}""", "UTF-8")
+                    )
+                }
+                .isFailure
+        )
+
+        // Unknown critical quicParams key.
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.applyFinalMask(
+                        ProxyLinkParser.hysteria("hy2://secret@example.org:443"),
+                        JSONObject("""{"quicParams":{"unknownCritical":true}}"""),
+                    )
+                }
+                .isFailure
+        )
+
+        // Incompatible values.
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.applyFinalMask(
+                        ProxyLinkParser.hysteria("hy2://secret@example.org:443"),
+                        JSONObject("""{"quicParams":{"bbrProfile":"turbo"}}"""),
+                    )
+                }
+                .isFailure
+        )
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.applyFinalMask(
+                        ProxyLinkParser.hysteria("hy2://secret@example.org:443"),
+                        JSONObject("""{"quicParams":{"congestion":"brutal"}}"""),
+                    )
+                }
+                .isFailure
+        )
+        assertTrue(
+            runCatching {
+                    ProxyLinkParser.applyFinalMask(
+                        ProxyLinkParser.hysteria("hy2://secret@example.org:443"),
+                        JSONObject("""{"quicParams":{"debug":true}}"""),
+                    )
+                }
+                .isFailure
+        )
+    }
+
     @Test
     fun vlessAndTrojanCertificateAliasesKeepSniSeparateFromVerificationName() {
         for (uri in

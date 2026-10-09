@@ -250,7 +250,11 @@ internal object ProxyLinkParser {
                 val interval = it.getDouble("interval")
                 require(interval.isFinite() && interval > 0) { "Invalid port hopping interval" }
                 require(!node.has("hop_interval")) { "Invalid conflicting port hopping interval" }
-                node.put("hop_interval", "${interval}s")
+                // Prefer integer seconds when the value is whole (sing-box duration style).
+                val rendered =
+                    if (interval == interval.toLong().toDouble()) "${interval.toLong()}s"
+                    else "${interval}s"
+                node.put("hop_interval", rendered)
             }
         }
     }

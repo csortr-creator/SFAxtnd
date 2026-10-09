@@ -99,3 +99,17 @@ Required by `scripts/validate.sh` (`REQUIRED_CORE_PATCHES`):
 | CORE_CHECKED | yes (XHTTP patch `XPaddingBytes`; native fixture import-xhttp-padding.json) |
 | RUNTIME_VERIFIED | partial — Go `TestXHTTPXRayInteropParameters` with padding range in core patch; not device |
 | Conflict query≠extra | reject |
+
+
+## finalmask A+2a (QUIC subset only)
+
+| Parameter | PARSED | MAPPED | CORE_CHECKED | WIRE | ANDROID |
+|-----------|--------|--------|--------------|------|---------|
+| quicParams.congestion=bbr | yes | validated only (no outbound field) | n/a | no | no |
+| bbrProfile → bbr_profile | yes | yes | native H2 option | no | no |
+| disablePathMTUDiscovery → disable_path_mtu_discovery | yes | yes | QUICOptions | no | no |
+| udpHop.ports → server_ports | yes | yes | native H2 | no | no |
+| udpHop.interval → hop_interval | yes | yes (`Ns`) | native H2 | no | no |
+| non-empty udp/tcp wire masks | yes | reject | n/a | **UNSUPPORTED** (open) | no |
+
+Wire FinalMask (Sudoku, noise, salamander, …): **UNSUPPORTED** in A+2a; A+2b/c HOLD. Not roadmap-excluded permanently.

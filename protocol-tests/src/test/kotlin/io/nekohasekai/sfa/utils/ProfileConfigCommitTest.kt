@@ -257,4 +257,21 @@ class ProfileConfigCommitTest {
             ProfileConfigCommit.profileStillExists = prev
         }
     }
+
+
+    @Test
+    fun editUnderLockRespectsTombstone() = runBlocking {
+        val target = tmp.newFile("edit-race.json")
+        target.writeText("ORIGINAL")
+        // Simulate delete completing while editor was open.
+        ProfileConfigCommit.markDeleted(303L)
+        ProfileConfigCommit.withProfileLock(303L) {
+            if (!ProfileConfigCommit.isMarkedDeleted(303L)) {
+                target.writeText("FROM_EDITOR")
+            }
+        }
+        assertEquals("ORIGINAL", target.readText())
+        // Without lock discipline a plain write would resurrect — document the contract.
+        ProfileConfigCommit.clearDeleted(303L)
+    }
 }

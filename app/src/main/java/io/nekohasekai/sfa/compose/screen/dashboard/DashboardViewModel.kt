@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.screen.dashboard
 
+import io.nekohasekai.sfa.Application
+
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
@@ -10,6 +12,7 @@ import io.nekohasekai.sfa.compose.base.UiEvent
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
+import io.nekohasekai.sfa.utils.ProfileSafeDelete
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
@@ -327,21 +330,43 @@ class DashboardViewModel :
 
     fun deleteProfile(profile: Profile) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Update UI immediately for responsiveness
-                withContext(Dispatchers.Main) {
-                    updateState {
-                        copy(
-                            profiles = profiles.filter { p -> p.id != profile.id },
-                        )
+            val snapshot = currentState.profiles
+            val status = _serviceStatus.value
+            val outcome =
+                ProfileSafeDelete.delete(
+                    profile = profile,
+                    allProfiles = snapshot,
+                    filesDir = Application.application.filesDir,
+                    serviceStatus = status,
+                    stopVpnAndAwait = {
+                        if (_serviceStatus.value == Status.Stopped) return@delete true
+                        withContext(Dispatchers.Main) { stopService() }
+                        val deadline = System.currentTimeMillis() + 15_000L
+                        while (System.currentTimeMillis() < deadline) {
+                            if (_serviceStatus.value == Status.Stopped) return@delete true
+                            delay(100)
+                        }
+                        _serviceStatus.value == Status.Stopped
+                    },
+                )
+            when (outcome) {
+                is ProfileSafeDelete.Outcome.Success -> {
+                    withContext(Dispatchers.Main) {
+                        updateState {
+                            val cleared = selectedProfileId == profile.id
+                            copy(
+                                profiles = profiles.filter { p -> p.id != profile.id },
+                                selectedProfileId = if (cleared) -1L else selectedProfileId,
+                                selectedProfileName = if (cleared) null else selectedProfileName,
+                            )
+                        }
                     }
+                    loadProfiles()
                 }
-                // Then delete from database
-                ProfileManager.delete(profile)
-            } catch (e: Exception) {
-                // Reload profiles if deletion fails
-                loadProfiles()
-                sendError(e)
+                is ProfileSafeDelete.Outcome.Failed -> {
+                    loadProfiles()
+                    sendErrorMessage("Не удалось удалить подписку: ${outcome.message}")
+                }
             }
         }
     }

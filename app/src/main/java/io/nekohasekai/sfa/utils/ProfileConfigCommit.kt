@@ -38,7 +38,17 @@ object ProfileConfigCommit {
         return gen.get() == operationToken
     }
 
+    /**
+     * Bump generation so in-flight fetches with older tokens become [CommitOutcome.Stale].
+     * Same effect as [beginOperation]; named for delete/update-cancel call sites.
+     */
+    fun invalidate(profileId: Long): Long = beginOperation(profileId)
+
     fun mutexFor(profileId: Long): Mutex = locks.getOrPut(profileId) { Mutex() }
+
+    /** Run [block] under the per-profile commit/delete mutex. */
+    suspend fun <T> withProfileLock(profileId: Long, block: suspend () -> T): T =
+        mutexFor(profileId).withLock { block() }
 
     /**
      * Atomically replace [target] with [content], or leave [target] unchanged on any failure.

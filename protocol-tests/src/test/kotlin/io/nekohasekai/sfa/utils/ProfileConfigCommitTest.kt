@@ -157,4 +157,34 @@ class ProfileConfigCommitTest {
         assertFalse(lastUpdated)
         assertEquals("OLD", target.readText())
     }
+
+
+    @Test
+    fun invalidateBlocksStaleCommitAfterDelete() = runBlocking {
+        val target = tmp.newFile("del-race.json")
+        target.writeText("LIVE")
+        val fetchToken = ProfileConfigCommit.beginOperation(55L)
+        ProfileConfigCommit.invalidate(55L)
+        val outcome =
+            ProfileConfigCommit.commit(
+                profileId = 55L,
+                operationToken = fetchToken,
+                target = target,
+                content = "RESURRECT",
+                validate = {},
+                afterFileCommit = {},
+            )
+        assertTrue(outcome is CommitOutcome.Stale)
+        assertEquals("LIVE", target.readText())
+    }
+
+    @Test
+    fun withProfileLockAllowsExclusiveSection() = runBlocking {
+        val target = tmp.newFile("lock.json")
+        target.writeText("A")
+        ProfileConfigCommit.withProfileLock(88L) {
+            target.writeText("LOCKED")
+        }
+        assertEquals("LOCKED", target.readText())
+    }
 }

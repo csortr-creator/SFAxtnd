@@ -18,6 +18,8 @@ import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.NetworkErrorKind
 import io.nekohasekai.sfa.utils.NetworkErrorPresentation
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.ImportOperationOutcome
+import io.nekohasekai.sfa.utils.ImportResultFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -282,7 +284,12 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         if (outcome.replaced && profile.id == Settings.selectedProfile) {
                             selectedProfileUpdated = true
                         }
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
+                        val op =
+                            ImportResultFormatter.fromCommit(
+                                replaced = outcome.replaced,
+                                report = result.report,
+                            )
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, op)
                         _uiState.update {
                             it.copy(
                                 lastUpdated = profile.typed.lastUpdated,
@@ -296,12 +303,19 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                         if (outcome.replaced && profile.id == Settings.selectedProfile) {
                             selectedProfileUpdated = true
                         }
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(
+                            profile,
+                            ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
+                        )
                         _uiState.update {
                             it.copy(
                                 isUpdating = false,
                                 showUpdateSuccess = false,
                                 errorMessage =
-                                    "Config saved but metadata update failed",
+                                    ImportResultFormatter.outcomeLine(
+                                        ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
+                                        hadPreviousConfig = true,
+                                    ),
                             )
                         }
                     }
@@ -310,7 +324,12 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                             it.copy(
                                 isUpdating = false,
                                 showUpdateSuccess = false,
-                                errorMessage = "Update skipped (a newer update is in progress)",
+                                errorMessage =
+                                    ImportResultFormatter.outcomeLine(
+                                        ImportOperationOutcome.KEPT_LKG,
+                                        hadPreviousConfig =
+                                            ImportResultFormatter.configFileExists(profile.typed.path),
+                                    ),
                             )
                         }
                     }
@@ -319,7 +338,12 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                             it.copy(
                                 isUpdating = false,
                                 showUpdateSuccess = false,
-                                errorMessage = "Configuration validation or save failed",
+                                errorMessage =
+                                    ImportResultFormatter.outcomeLine(
+                                        ImportOperationOutcome.KEPT_LKG,
+                                        hadPreviousConfig =
+                                            ImportResultFormatter.configFileExists(profile.typed.path),
+                                    ),
                             )
                         }
                     }

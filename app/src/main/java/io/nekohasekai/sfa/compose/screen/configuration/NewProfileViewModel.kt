@@ -207,7 +207,22 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                     }
 
                 if (state.profileType == ProfileType.Remote || state.profileSource == ProfileSource.Import) {
-                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
+                    run {
+                        val report =
+                            io.nekohasekai.sfa.utils.SubscriptionImportReport.read(profile.typed.path)
+                        val op =
+                            when {
+                                report == null ->
+                                    io.nekohasekai.sfa.utils.ImportOperationOutcome.APPLIED
+                                report.received > 0 && report.imported < report.received ->
+                                    io.nekohasekai.sfa.utils.ImportOperationOutcome.PARTIAL_APPLIED
+                                report.imported == 0 && report.received > 0 ->
+                                    io.nekohasekai.sfa.utils.ImportOperationOutcome.REJECTED
+                                else ->
+                                    io.nekohasekai.sfa.utils.ImportOperationOutcome.APPLIED
+                            }
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, op)
+                    }
                 }
                 _uiState.update {
                     it.copy(
@@ -220,7 +235,7 @@ class NewProfileViewModel(application: Application) : AndroidViewModel(applicati
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        errorMessage = e.message ?: "Unknown error",
+                        errorMessage = "Не удалось создать профиль: ошибка импорта или сохранения",
                     )
                 }
             }

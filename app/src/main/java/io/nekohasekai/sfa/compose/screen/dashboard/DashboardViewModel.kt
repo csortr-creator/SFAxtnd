@@ -15,6 +15,8 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.utils.ProfileSafeDelete
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import io.nekohasekai.sfa.utils.CommitOutcome
+import io.nekohasekai.sfa.utils.ImportOperationOutcome
+import io.nekohasekai.sfa.utils.ImportResultFormatter
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
@@ -393,11 +395,24 @@ class DashboardViewModel :
         updateState { copy(updatingProfileIds = updatingProfileIds + profile.id) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                refreshProfile(profile)
-                io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
-                updateState { copy(updatedProfileId = profile.id) }
+                val outcome = refreshProfile(profile)
+                if (outcome != null) {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, outcome)
+                    when (outcome) {
+                        ImportOperationOutcome.APPLIED,
+                        ImportOperationOutcome.APPLIED_UNCHANGED,
+                        ImportOperationOutcome.PARTIAL_APPLIED,
+                        ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
+                        -> updateState { copy(updatedProfileId = profile.id) }
+                        ImportOperationOutcome.KEPT_LKG,
+                        ImportOperationOutcome.REJECTED,
+                        -> { /* dialog only */ }
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { sendErrorMessage("Не удалось обновить подписку ${profile.name}: ${e.message}") }
+            catch (e: Exception) {
+                sendErrorMessage("Не удалось обновить подписку: ошибка загрузки или проверки конфигурации")
+            }
             finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
             delay(1500)
             updateState { if (updatedProfileId == profile.id) copy(updatedProfileId = null) else this }
@@ -413,10 +428,16 @@ class DashboardViewModel :
             try {
                 val reports = io.nekohasekai.sfa.utils.parallelTasks(profiles) { profile ->
                     try {
-                        refreshProfile(profile)
-                        "${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile)}"
+                        val outcome = refreshProfile(profile)
+                        if (outcome != null) {
+                            "${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, outcome)}"
+                        } else {
+                            "${profile.name}\nОбновление пропущено"
+                        }
                     } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                    catch (e: Exception) { "${profile.name}\nНе удалось обновить: ${e.message}" }
+                    catch (e: Exception) {
+                        "${profile.name}\nНе удалось обновить: ошибка загрузки или проверки конфигурации"
+                    }
                     finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
                 }
                 io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(UiEvent.ImportReport("Обновление всех подписок", reports.joinToString("\n\n")))
@@ -428,18 +449,23 @@ class DashboardViewModel :
      * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
      * Does not use plain writeText — failed validate/write leaves the previous file intact.
      */
-    private suspend fun refreshProfile(profile: Profile) {
-        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return
-        if (ProfileManager.get(profile.id) == null) return
+    /**
+     * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
+     * @return operation outcome, or null if skipped (deleted / missing / stale).
+     */
+    private suspend fun refreshProfile(profile: Profile): ImportOperationOutcome? {
+        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
+        if (ProfileManager.get(profile.id) == null) return null
 
+        val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
         val operationToken = ProfileConfigCommit.beginOperation(profile.id)
         val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
 
-        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return
-        if (ProfileManager.get(profile.id) == null) return
+        if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
+        if (ProfileManager.get(profile.id) == null) return null
 
         val file = File(profile.typed.path)
-        when (
+        return when (
             val outcome =
                 ProfileConfigCommit.commit(
                     profileId = profile.id,
@@ -462,9 +488,13 @@ class DashboardViewModel :
                 ) {
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                 }
+                ImportResultFormatter.fromCommit(
+                    replaced = outcome.replaced,
+                    report = result.report,
+                    metadataFailed = false,
+                )
             }
             is CommitOutcome.FileCommittedMetadataFailed -> {
-                // File is the new LKG; report/DB may be incomplete — still reload UI.
                 loadProfiles()
                 if (outcome.replaced &&
                     profile.id == Settings.selectedProfile &&
@@ -472,18 +502,17 @@ class DashboardViewModel :
                 ) {
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                 }
-                throw IllegalStateException("Config saved but metadata update failed")
+                ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED
             }
-            is CommitOutcome.Stale -> {
-                // Superseded by delete or a newer update — leave LKG untouched.
-            }
+            is CommitOutcome.Stale -> null
             is CommitOutcome.Failed -> {
-                throw outcome.error
+                if (hadPrevious) ImportOperationOutcome.KEPT_LKG
+                else throw outcome.error
             }
         }
     }
 
-    fun moveProfile(from: Int, to: Int) {
+    fun moveProfile    fun moveProfile(from: Int, to: Int) {
         val currentProfiles = currentState.profiles.toMutableList()
 
         if (from < to) {

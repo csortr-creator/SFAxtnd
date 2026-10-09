@@ -1,31 +1,36 @@
 package io.nekohasekai.sfa.compose.base
 
 import io.nekohasekai.sfa.database.Profile
+import io.nekohasekai.sfa.utils.ImportOperationOutcome
+import io.nekohasekai.sfa.utils.ImportResultFormatter
 import io.nekohasekai.sfa.utils.SubscriptionImportReport
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 internal object ImportReportNotifier {
-    suspend fun text(profile: Profile): String =
+    suspend fun text(
+        profile: Profile,
+        outcome: ImportOperationOutcome? = null,
+    ): String =
         withContext(Dispatchers.IO) {
-            SubscriptionImportReport.read(profile.typed.path)?.displayText()
-                ?: run {
-                    val outbounds =
-                        JSONObject(File(profile.typed.path).readText()).optJSONArray("outbounds")
-                    val count =
-                        if (outbounds == null) 0
-                        else
-                            (0 until outbounds.length()).count {
-                                outbounds.optJSONObject(it)?.has("server") == true
-                            }
-                    SubscriptionImportReport(count, count, emptyList(), format = "sing-box JSON")
-                        .displayText()
-                }
+            val report = SubscriptionImportReport.read(profile.typed.path)
+            val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
+            when {
+                outcome != null && report != null ->
+                    ImportResultFormatter.format(outcome, report, hadPrevious)
+                outcome != null ->
+                    ImportResultFormatter.format(outcome, null, hadPrevious)
+                report != null ->
+                    report.displayText()
+                else ->
+                    "Отчёт об импорте недоступен"
+            }
         }
 
-    suspend fun show(profile: Profile) {
-        GlobalEventBus.emit(UiEvent.ImportReport(profile.name, text(profile)))
+    suspend fun show(
+        profile: Profile,
+        outcome: ImportOperationOutcome? = null,
+    ) {
+        GlobalEventBus.emit(UiEvent.ImportReport(profile.name, text(profile, outcome)))
     }
 }

@@ -68,18 +68,35 @@ internal class SubscriptionContentParser(
                     parseNode()
                 } catch (e: Exception) {
                     if (e is java.util.concurrent.CancellationException) throw e
-                    issues.add(SubscriptionImportIssue(line, name, safeParserReason(e)))
+                    val classified = classifyParserError(e)
+                    issues.add(
+                        SubscriptionImportIssue(line, name, classified.second, classified.first)
+                    )
                     return
                 }
             try {
                 if (independent) validateNode(node)
             } catch (e: Exception) {
                 if (e is java.util.concurrent.CancellationException) throw e
+                // NODE_CORE_INVALID only — harness/core unavailable does not skip (no issue).
+                if (e is NodeCoreNodeInvalidException) {
+                    issues.add(
+                        SubscriptionImportIssue(
+                            line,
+                            name,
+                            "Ядро отклонило параметры сервера",
+                            ImportIssueCode.NODE_CORE_INVALID,
+                        )
+                    )
+                    return
+                }
+                // Unexpected validate throw: safe unknown, still skip node.
                 issues.add(
                     SubscriptionImportIssue(
                         line,
                         name,
-                        "Ядро отклонило параметры сервера (${node.optString("type")})",
+                        "Некорректные параметры или кодировка ссылки",
+                        ImportIssueCode.UNKNOWN,
                     )
                 )
                 return
@@ -119,36 +136,60 @@ internal class SubscriptionContentParser(
         return SubscriptionImportResult(buildSingBoxConfig(nodes, mode), report)
     }
 
-    private fun safeParserReason(error: Exception): String {
+    /**
+     * Maps a parser exception to a typed code + user-safe reason (no URLs/secrets/raw traces).
+     */
+    private fun classifyParserError(error: Exception): Pair<ImportIssueCode, String> {
+        if (error is NodeCoreNodeInvalidException) {
+            return ImportIssueCode.NODE_CORE_INVALID to "Ядро отклонило параметры сервера"
+        }
         val rawMessage = error.message.orEmpty()
         val detail = rawMessage.substringAfter(": ", "")
-        val detailedPrefixes = setOf("Unsupported share-link parameter", "Unsupported Hysteria parameter", "Unsupported XHTTP xmux parameter", "Unsupported XHTTP parameter", "Unsupported server field")
+        val detailedPrefixes =
+            setOf(
+                "Unsupported share-link parameter",
+                "Unsupported Hysteria parameter",
+                "Unsupported XHTTP xmux parameter",
+                "Unsupported XHTTP parameter",
+                "Unsupported server field",
+            )
         val prefix = rawMessage.substringBefore(": ")
         if (prefix in detailedPrefixes && Regex("[A-Za-z][A-Za-z0-9_.-]{0,49}").matches(detail)) {
-            return "Неподдерживаемый параметр: $detail ($prefix)"
+            return ImportIssueCode.UNSUPPORTED_FEATURE to
+                "Неподдерживаемый параметр: $detail"
         }
         val message = prefix
-        val safePrefixes =
+        if (message.startsWith("Expected ") || message.startsWith("Подписка")) {
+            return ImportIssueCode.FORMAT_ERROR to "Некорректный формат записи"
+        }
+        val parsePrefixes =
             listOf(
                 "Missing ",
                 "Invalid ",
-                "Unsupported ",
                 "Unknown ",
                 "Port hopping",
                 "IPv6 addresses",
-                "Expected ",
                 "Hysteria supports",
                 "Reality requires",
                 "VLESS requires",
             )
-        return if (
-            safePrefixes.any { message.startsWith(it) } &&
+        if (
+            parsePrefixes.any { message.startsWith(it) } &&
                 !message.contains("://") &&
                 message.length <= 160 &&
                 message.all { !it.isISOControl() }
-        )
-            message
-        else "Некорректные параметры или кодировка ссылки"
+        ) {
+            return ImportIssueCode.PARSE_ERROR to message
+        }
+        if (
+            message.startsWith("Unsupported ") &&
+                !message.contains("://") &&
+                message.length <= 160 &&
+                message.all { !it.isISOControl() }
+        ) {
+            return ImportIssueCode.UNSUPPORTED_FEATURE to message
+        }
+        return ImportIssueCode.UNKNOWN to "Некорректные параметры или кодировка ссылки"
     }
 
     /**

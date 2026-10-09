@@ -4,7 +4,12 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal data class SubscriptionImportIssue(val line: Int, val name: String, val reason: String)
+internal data class SubscriptionImportIssue(
+    val line: Int,
+    val name: String,
+    val reason: String,
+    val code: ImportIssueCode = ImportIssueCode.UNKNOWN,
+)
 
 internal data class SubscriptionImportReport(
     val received: Int,
@@ -41,6 +46,7 @@ internal data class SubscriptionImportReport(
                                 .put("line", it.line)
                                 .put("name", it.name)
                                 .put("reason", it.reason)
+                                .put("code", it.code.name)
                         }
                     ),
                 )
@@ -61,6 +67,7 @@ internal data class SubscriptionImportReport(
                                 issue.getInt("line"),
                                 issue.getString("name"),
                                 issue.getString("reason"),
+                                ImportIssueCode.fromWire(issue.optString("code", null)),
                             )
                         },
                         json.optJSONArray("warnings")?.let { list -> (0 until list.length()).map { list.getString(it) } }.orEmpty(),

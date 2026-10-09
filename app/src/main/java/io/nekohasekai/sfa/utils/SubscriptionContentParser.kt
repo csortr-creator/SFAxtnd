@@ -49,9 +49,11 @@ internal class SubscriptionContentParser(
                     nodes.optJSONObject(it)?.optString("type") !in
                         setOf("selector", "urltest", "direct", "block", "dns")
                 }
+            val migrationWarnings = mutableListOf<String>()
+            val migrated = sanitizeAndMigrateConfig(content, mode, migrationWarnings)
             return SubscriptionImportResult(
-                sanitizeAndMigrateConfig(content, mode),
-                SubscriptionImportReport(count, count, emptyList()),
+                migrated,
+                SubscriptionImportReport(count, count, emptyList(), migrationWarnings),
             )
         }
         shareLinkWarnings.clear()
@@ -149,7 +151,15 @@ internal class SubscriptionContentParser(
         else "Некорректные параметры или кодировка ссылки"
     }
 
-    private fun sanitizeAndMigrateConfig(jsonStr: String, mode: SubscriptionRouting.Mode): String =
+    /**
+     * Import-time config sanitize. FakeIP migration follows sing-box 1.11/1.12 semantics
+     * (enabled store + existing fakeip server), not doc-only defaults or auto DNS rules.
+     */
+    private fun sanitizeAndMigrateConfig(
+        jsonStr: String,
+        mode: SubscriptionRouting.Mode,
+        migrationWarnings: MutableList<String> = mutableListOf(),
+    ): String =
         try {
             val fixedRaw =
                 jsonStr
@@ -192,6 +202,8 @@ internal class SubscriptionContentParser(
                             val addr = server.remove("address").toString().trim()
                             try {
                                 when {
+                                    // Defer to migrateLegacyDnsFakeIp (do not map to udp).
+                                    addr == "fakeip" || addr.startsWith("fakeip://") -> Unit
                                     addr == "local" || addr.startsWith("rcode://") ->
                                         server.put("type", "local")
                                     addr.startsWith("https://") -> {
@@ -287,9 +299,16 @@ internal class SubscriptionContentParser(
                 root.put("outbounds", cleanedOutbounds)
             }
 
+            val dnsAfterServers = root.optJSONObject("dns")
+            if (dnsAfterServers != null) {
+                migrateLegacyDnsFakeIp(dnsAfterServers, migrationWarnings)
+            }
+
             SubscriptionRouting.apply(root, mode, blockIpv6)
 
             root.toString(2)
+        } catch (e: LegacyDnsFakeIpIncompatibleException) {
+            throw e
         } catch (e: Exception) {
             jsonStr
         }
@@ -975,3 +994,6 @@ internal class SubscriptionContentParser(
         return root.toString(2)
     }
 }
+
+/** Safe import-time error; message is a stable code (+ short detail), no config body. */
+internal class LegacyDnsFakeIpIncompatibleException(message: String) : IllegalArgumentException(message)

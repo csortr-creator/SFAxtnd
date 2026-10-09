@@ -310,7 +310,8 @@ internal class SubscriptionContentParser(
         } catch (e: LegacyDnsFakeIpIncompatibleException) {
             throw e
         } catch (e: Exception) {
-            jsonStr
+            // Soft-fail only for unparseable input; never hide FakeIP migration outcomes.
+            if (e is org.json.JSONException) jsonStr else throw e
         }
 
 

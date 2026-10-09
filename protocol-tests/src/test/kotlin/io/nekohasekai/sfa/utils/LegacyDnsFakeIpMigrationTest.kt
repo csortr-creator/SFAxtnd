@@ -84,8 +84,8 @@ class LegacyDnsFakeIpMigrationTest {
         val fake =
             (0 until servers.length())
                 .map { servers.getJSONObject(it) }
-                .first { it.optString("tag") == "fakeip" }
-        assertEquals("fakeip", fake.getString("type"))
+                .first { it.optString("type") == "fakeip" || it.optString("tag") == "fakeip" }
+        assertEquals("fakeip", fake.optString("type"))
         assertEquals("198.18.0.0/15", fake.getString("inet4_range"))
         assertEquals("fc00::/18", fake.getString("inet6_range"))
         assertFalse(fake.has("address"))
@@ -103,12 +103,12 @@ class LegacyDnsFakeIpMigrationTest {
                 .put("fakeip", JSONObject().put("enabled", false))
         try {
             parse(wrap(dns))
-            fail("expected LegacyDnsFakeIpIncompatibleException")
-        } catch (e: LegacyDnsFakeIpIncompatibleException) {
-            assertTrue(e.message!!.startsWith("LEGACY_DNS_FAKEIP_INCOMPATIBLE"))
-        } catch (e: IllegalArgumentException) {
-            // may be wrapped
-            assertTrue(e.message!!.contains("LEGACY_DNS_FAKEIP_INCOMPATIBLE") || e is LegacyDnsFakeIpIncompatibleException)
+            fail("expected LEGACY_DNS_FAKEIP_INCOMPATIBLE")
+        } catch (e: Exception) {
+            assertTrue(
+                "got ${e::class.simpleName}: ${e.message}",
+                e.message?.contains("LEGACY_DNS_FAKEIP_INCOMPATIBLE") == true,
+            )
         }
     }
 

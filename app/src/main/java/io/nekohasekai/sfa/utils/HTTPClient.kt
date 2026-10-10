@@ -2,6 +2,7 @@ package io.nekohasekai.sfa.utils
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.ktx.unwrap
 import java.io.Closeable
@@ -9,8 +10,6 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import org.json.JSONArray
-import org.json.JSONObject
 
 private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 
@@ -26,43 +25,7 @@ class HTTPClient : Closeable {
     }
 
     internal fun getSubscription(url: String): SubscriptionImportResult {
-        val request = client.newRequest()
-        request.setURL(url)
-
-        val hwid = getOrCreateHwid(url)
-
-        val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
-        val rawModel = Build.MODEL
-        val model =
-            if (rawModel.startsWith(manufacturer, ignoreCase = true)) rawModel
-            else "$manufacturer $rawModel"
-        val androidVer = Build.VERSION.RELEASE
-        val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
-
-        val userAgentStr =
-            "sing-box/1.14.2 SFAxtnd/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
-
-        request.setUserAgent(userAgentStr)
-        request.setHeader("HWID", hwid)
-        request.setHeader("hwid", hwid)
-        request.setHeader("X-HWID", hwid)
-        request.setHeader("Device-ID", hwid)
-        request.setHeader("Happ-HWID", hwid)
-
-        val fullDeviceTitle = "$model (Android $androidVer)"
-        request.setHeader("Device-Name", fullDeviceTitle)
-        request.setHeader("X-Device-Name", fullDeviceTitle)
-        request.setHeader("Happ-Device-Name", fullDeviceTitle)
-        request.setHeader("Device-Model", model)
-        request.setHeader("X-Device-Model", model)
-        request.setHeader("Device-OS", "Android $androidVer")
-        request.setHeader("X-Device-OS", "Android $androidVer")
-
-        request.setHeader("App-Name", "SFAxtnd")
-        request.setHeader("Platform", "Android")
-        request.setHeader("Accept", "*/*")
-
-        val response = request.execute()
+        val response = executeFetch(url)
         val rawContent = response.content.unwrap
 
         return parseSubscription(rawContent).copy(
@@ -70,6 +33,61 @@ class HTTPClient : Closeable {
             updateIntervalMinutes = SubscriptionMetadata.intervalMinutes(response.getHeader("profile-update-interval")),
         )
     }
+
+    /**
+     * Builds a request (HWID + headers unchanged) and executes with retry on
+     * transient TLS/timeout/connection failures. Does not log the URL.
+     *
+     * Libbox HTTP client timeout API is not configured here (no public timeout setters
+     * used in this codebase); resilience is provided by [SubscriptionFetchRetry].
+     */
+    private fun executeFetch(url: String) =
+        SubscriptionFetchRetry.run(
+            onAttempt = { attempt, code, willRetry ->
+                Log.i(
+                    FETCH_TAG,
+                    "event=subscription_fetch_attempt attempt=$attempt code=$code willRetry=$willRetry",
+                )
+            },
+        ) {
+            val request = client.newRequest()
+            request.setURL(url)
+
+            val hwid = getOrCreateHwid(url)
+
+            val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+            val rawModel = Build.MODEL
+            val model =
+                if (rawModel.startsWith(manufacturer, ignoreCase = true)) rawModel
+                else "$manufacturer $rawModel"
+            val androidVer = Build.VERSION.RELEASE
+            val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
+
+            val userAgentStr =
+                "sing-box/1.14.2 SFAxtnd/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
+
+            request.setUserAgent(userAgentStr)
+            request.setHeader("HWID", hwid)
+            request.setHeader("hwid", hwid)
+            request.setHeader("X-HWID", hwid)
+            request.setHeader("Device-ID", hwid)
+            request.setHeader("Happ-HWID", hwid)
+
+            val fullDeviceTitle = "$model (Android $androidVer)"
+            request.setHeader("Device-Name", fullDeviceTitle)
+            request.setHeader("X-Device-Name", fullDeviceTitle)
+            request.setHeader("Happ-Device-Name", fullDeviceTitle)
+            request.setHeader("Device-Model", model)
+            request.setHeader("X-Device-Model", model)
+            request.setHeader("Device-OS", "Android $androidVer")
+            request.setHeader("X-Device-OS", "Android $androidVer")
+
+            request.setHeader("App-Name", "SFAxtnd")
+            request.setHeader("Platform", "Android")
+            request.setHeader("Accept", "*/*")
+
+            request.execute()
+        }
 
     private fun getOrCreateHwid(url: String): String {
         val normalizedUrl = url.trim()
@@ -155,5 +173,6 @@ class HTTPClient : Closeable {
 
     companion object {
         const val userAgent = "SFAxtnd"
+        private const val FETCH_TAG = "SFA.Fetch"
     }
 }

@@ -53,11 +53,28 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         private const val TAG = "BoxService"
         private const val SWITCH_TAG = "SFA.Switch"
 
-        fun start() {
+        /** Optional explicit profile for R2b switch; absent/≤0 → Settings.selectedProfile. */
+        const val EXTRA_TARGET_PROFILE_ID = "io.nekohasekai.sfa.extra.TARGET_PROFILE_ID"
+        /** Optional switch generation; absent/≤0 → RuntimeProfileState.currentSwitchRequestId(). */
+        const val EXTRA_SWITCH_REQUEST_ID = "io.nekohasekai.sfa.extra.SWITCH_REQUEST_ID"
+
+        /**
+         * Start VPN/proxy service.
+         * @param targetProfileId profile to load; ≤0 keeps legacy Settings.selectedProfile
+         * @param switchRequestId R2a generation for stale guards; ≤0 uses current id
+         */
+        fun start(targetProfileId: Long = -1L, switchRequestId: Long = -1L) {
             val intent =
                 runBlocking {
                     withContext(Dispatchers.IO) {
-                        Intent(Application.application, Settings.serviceClass())
+                        Intent(Application.application, Settings.serviceClass()).apply {
+                            if (targetProfileId > 0L) {
+                                putExtra(EXTRA_TARGET_PROFILE_ID, targetProfileId)
+                            }
+                            if (switchRequestId > 0L) {
+                                putExtra(EXTRA_SWITCH_REQUEST_ID, switchRequestId)
+                            }
+                        }
                     }
                 }
             ContextCompat.startForegroundService(Application.application, intent)
@@ -114,13 +131,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             content, Settings.routingBlockIpv6, Settings.tunStack, Settings.coreOptionsJson,
         )
 
-    private suspend fun startService(requestId: Long) {
+    private suspend fun startService(requestId: Long, profileId: Long) {
         try {
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_starting)
             }
 
-            val selectedProfileId = Settings.selectedProfile
+            val selectedProfileId = profileId
             if (selectedProfileId == -1L) {
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
@@ -196,6 +213,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 // Do not publish Started for a superseded generation.
                 quietStopAfterStaleStart()
                 return
+            }
+            // R2b: persist selected only after successful load of this generation.
+            if (SwitchStartResolver.shouldPersistSelectedAfterLoad(
+                    targetProfileId = selectedProfileId,
+                    markLoadedSucceeded = true,
+                    requestIdStillCurrent = requestId == RuntimeProfileState.currentSwitchRequestId(),
+                )
+            ) {
+                Settings.selectedProfile = selectedProfileId
             }
             android.util.Log.i(
                 SWITCH_TAG,
@@ -440,7 +466,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("SameReturnValue")
-    internal fun onStartCommand(): Int {
+    internal fun onStartCommand(intent: Intent? = null): Int {
         if (status.value != Status.Stopped) return Service.START_NOT_STICKY
         status.value = Status.Starting
 
@@ -459,18 +485,31 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             receiverRegistered = true
         }
 
+        val intentTarget = intent?.getLongExtra(EXTRA_TARGET_PROFILE_ID, -1L) ?: -1L
+        val intentSwitch = intent?.getLongExtra(EXTRA_SWITCH_REQUEST_ID, -1L) ?: -1L
+
         GlobalScope.launch(Dispatchers.IO) {
             lifecycleMutex.withLock {
                 Settings.startedByUser = true
-                val requestId = RuntimeProfileState.currentSwitchRequestId()
-                android.util.Log.i(SWITCH_TAG, "START_BEGIN requestId=$requestId")
+                val requestId =
+                    SwitchStartResolver.resolveRequestId(
+                        intentSwitch,
+                        RuntimeProfileState.currentSwitchRequestId(),
+                    )
+                val profileId =
+                    SwitchStartResolver.resolveProfileId(intentTarget, Settings.selectedProfile)
+                android.util.Log.i(
+                    SWITCH_TAG,
+                    "START_BEGIN requestId=$requestId profileId=$profileId " +
+                        "intentTarget=$intentTarget",
+                )
                 try {
                     startCommandServer()
                 } catch (e: Exception) {
                     stopAndAlert(Alert.StartCommandServer, e.message)
                     return@withLock
                 }
-                startService(requestId)
+                startService(requestId, profileId)
             }
         }
         return Service.START_NOT_STICKY

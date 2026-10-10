@@ -260,8 +260,6 @@ class DashboardViewModel :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 ProfileManager.get(profileId) ?: return@launch
-                // Persist target before rebuild/start so BoxService reads the new profile (R2a keeps early write).
-                Settings.selectedProfile = profileId
                 val switchId = RuntimeProfileState.nextSwitchRequestId()
                 Log.i(
                     TAG,
@@ -270,6 +268,7 @@ class DashboardViewModel :
                 )
 
                 if (wasRunning) {
+                    // R2b: do not write Settings.selectedProfile until BoxService tryMarkLoaded succeeds.
                     BoxService.stop()
                     Log.i(TAG, "STOP_OLD requested")
                     val stopped =
@@ -281,8 +280,7 @@ class DashboardViewModel :
                         } == true
                     if (!stopped) {
                         Log.e(TAG, "STOP_OLD timeout status=${_serviceStatus.value}")
-                        RuntimeProfileState.nextSwitchRequestId() // invalidate in-flight start generation
-                        Settings.selectedProfile = previousProfileId
+                        RuntimeProfileState.nextSwitchRequestId()
                         sendError(IllegalStateException("VPN stop timeout while switching subscription"))
                         return@launch
                     }
@@ -290,10 +288,9 @@ class DashboardViewModel :
 
                     Settings.rebuildServiceMode()
                     sendGlobalEvent(UiEvent.RequestReconnectService)
-                    sendGlobalEvent(UiEvent.RequestStartService)
-                    Log.i(TAG, "START_NEW requested")
+                    BoxService.start(targetProfileId = profileId, switchRequestId = switchId)
+                    Log.i(TAG, "START_NEW requested target=$profileId id=$switchId")
 
-                    // Wait until start leaves Stopped (Starting/Started), then until terminal.
                     val leftStopped =
                         withTimeoutOrNull(START_BEGIN_TIMEOUT_MS) {
                             while (_serviceStatus.value == Status.Stopped) {
@@ -304,7 +301,6 @@ class DashboardViewModel :
                     if (!leftStopped) {
                         Log.e(TAG, "START_NEW never left Stopped")
                         RuntimeProfileState.nextSwitchRequestId()
-                        Settings.selectedProfile = previousProfileId
                         sendError(IllegalStateException("VPN start did not begin after subscription switch"))
                         return@launch
                     }
@@ -319,7 +315,6 @@ class DashboardViewModel :
                     if (terminal != Status.Started) {
                         Log.e(TAG, "START_NEW failed terminal=$terminal")
                         RuntimeProfileState.nextSwitchRequestId()
-                        Settings.selectedProfile = previousProfileId
                         sendError(
                             IllegalStateException(
                                 "VPN failed to start with the selected subscription (status=$terminal)",
@@ -340,15 +335,18 @@ class DashboardViewModel :
                             TAG,
                             "CONNECTED id=$switchId target=$profileId " +
                                 "loaded=${RuntimeProfileState.loadedProfileId} " +
-                                "fp=${RuntimeProfileState.loadedConfigFingerprint} match=true",
+                                "fp=${RuntimeProfileState.loadedConfigFingerprint} match=true " +
+                                "settingsSelected=${Settings.selectedProfile}",
                         )
                     }
+                } else {
+                    // Not running: selection only (next start uses Settings).
+                    Settings.selectedProfile = profileId
                 }
 
                 withContext(Dispatchers.Main) { loadProfiles() }
             } catch (e: Exception) {
                 RuntimeProfileState.nextSwitchRequestId()
-                Settings.selectedProfile = previousProfileId
                 Log.e(TAG, "SELECT_FAILED target=$profileId", e)
                 sendError(e)
             } finally {

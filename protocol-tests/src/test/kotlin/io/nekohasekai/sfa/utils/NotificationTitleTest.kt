@@ -16,6 +16,6 @@ class NotificationTitleTest {
         assertEquals("Geodema", NotificationTitle.resolve("server", "Geodema", emptyList()))
         assertEquals("Geodema", NotificationTitle.resolve("server", "Geodema", listOf(
             NotificationTitle.Group("a", "b"), NotificationTitle.Group("b", "a"))))
-        assertEquals("SFAxtnd", NotificationTitle.resolve("server", "", emptyList()))
+        assertEquals("notemp", NotificationTitle.resolve("server", "", emptyList()))
     }
 }

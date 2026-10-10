@@ -66,7 +66,7 @@ class HTTPClient : Closeable {
             val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
 
             val userAgentStr =
-                "sing-box/1.14.2 SFAxtnd/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
+                "sing-box/1.14.0 notemp/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
 
             request.setUserAgent(userAgentStr)
             request.setHeader("HWID", hwid)
@@ -84,7 +84,7 @@ class HTTPClient : Closeable {
             request.setHeader("Device-OS", "Android $androidVer")
             request.setHeader("X-Device-OS", "Android $androidVer")
 
-            request.setHeader("App-Name", "SFAxtnd")
+            request.setHeader("App-Name", "notemp")
             request.setHeader("Platform", "Android")
             request.setHeader("Accept", "*/*")
 
@@ -174,7 +174,7 @@ class HTTPClient : Closeable {
     }
 
     companion object {
-        const val userAgent = "SFAxtnd"
+        const val userAgent = "notemp"
         private const val FETCH_TAG = "SFA.Fetch"
     }
 }

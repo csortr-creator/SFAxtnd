@@ -73,7 +73,7 @@ android {
         targetSdk = 37
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
-        base.archivesName.set("SFA-${versionName}")
+        base.archivesName.set("notemp-${versionName}")
         resourceConfigurations += listOf("en", "ru", "ru-rRU")
     }
 

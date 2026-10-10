@@ -65,6 +65,8 @@ data class DashboardUiState(
     val profiles: List<Profile> = emptyList(),
     val selectedProfileId: Long = -1L,
     val selectedProfileName: String? = null,
+    /** In-flight switch target; null when idle. Distinct from [selectedProfileId]. */
+    val requestedProfileId: Long? = null,
     val isLoading: Boolean = false,
     val hasGroups: Boolean = false,
     val groupsCount: Int = 0,
@@ -173,9 +175,12 @@ class DashboardViewModel :
                 RemoteControlManager.isConnected,
                 _serviceStatus,
             ) { foreground, remoteServer, remoteConnected, status ->
+                val localReady =
+                    status == Status.Started &&
+                        RuntimeProfileState.selectedMatchesLoaded(Settings.selectedProfile)
                 SessionTarget(
                     connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
+                        if (remoteServer != null) remoteConnected else localReady,
                     remoteServerId = remoteServer?.id,
                 )
             }.distinctUntilChanged().collect { target ->
@@ -248,14 +253,14 @@ class DashboardViewModel :
         ) {
             return
         }
-        updateState { copy(isLoading = true) }
+        updateState { copy(isLoading = true, requestedProfileId = profileId) }
         val previousProfileId = Settings.selectedProfile
         val wasRunning = _serviceStatus.value == Status.Started
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 ProfileManager.get(profileId) ?: return@launch
-                // Persist target before rebuild/start so BoxService reads the new profile.
+                // Persist target before rebuild/start so BoxService reads the new profile (R2a keeps early write).
                 Settings.selectedProfile = profileId
                 val switchId = RuntimeProfileState.nextSwitchRequestId()
                 Log.i(
@@ -276,6 +281,7 @@ class DashboardViewModel :
                         } == true
                     if (!stopped) {
                         Log.e(TAG, "STOP_OLD timeout status=${_serviceStatus.value}")
+                        RuntimeProfileState.nextSwitchRequestId() // invalidate in-flight start generation
                         Settings.selectedProfile = previousProfileId
                         sendError(IllegalStateException("VPN stop timeout while switching subscription"))
                         return@launch
@@ -297,6 +303,7 @@ class DashboardViewModel :
                         } == true
                     if (!leftStopped) {
                         Log.e(TAG, "START_NEW never left Stopped")
+                        RuntimeProfileState.nextSwitchRequestId()
                         Settings.selectedProfile = previousProfileId
                         sendError(IllegalStateException("VPN start did not begin after subscription switch"))
                         return@launch
@@ -311,6 +318,7 @@ class DashboardViewModel :
                         }
                     if (terminal != Status.Started) {
                         Log.e(TAG, "START_NEW failed terminal=$terminal")
+                        RuntimeProfileState.nextSwitchRequestId()
                         Settings.selectedProfile = previousProfileId
                         sendError(
                             IllegalStateException(
@@ -319,22 +327,32 @@ class DashboardViewModel :
                         )
                         return@launch
                     }
-                    Log.i(
-                        TAG,
-                        "CONNECTED id=$switchId target=$profileId " +
-                            "loaded=${RuntimeProfileState.loadedProfileId} " +
-                            "fp=${RuntimeProfileState.loadedConfigFingerprint} " +
-                            "match=${RuntimeProfileState.selectedMatchesLoaded(profileId)}",
-                    )
+                    val match = RuntimeProfileState.selectedMatchesLoaded(profileId)
+                    if (!match) {
+                        Log.w(
+                            TAG,
+                            "SWITCHING_MISMATCH id=$switchId target=$profileId " +
+                                "loaded=${RuntimeProfileState.loadedProfileId} " +
+                                "fp=${RuntimeProfileState.loadedConfigFingerprint}",
+                        )
+                    } else {
+                        Log.i(
+                            TAG,
+                            "CONNECTED id=$switchId target=$profileId " +
+                                "loaded=${RuntimeProfileState.loadedProfileId} " +
+                                "fp=${RuntimeProfileState.loadedConfigFingerprint} match=true",
+                        )
+                    }
                 }
 
                 withContext(Dispatchers.Main) { loadProfiles() }
             } catch (e: Exception) {
+                RuntimeProfileState.nextSwitchRequestId()
                 Settings.selectedProfile = previousProfileId
                 Log.e(TAG, "SELECT_FAILED target=$profileId", e)
                 sendError(e)
             } finally {
-                updateState { copy(isLoading = false) }
+                updateState { copy(isLoading = false, requestedProfileId = null) }
             }
         }
     }

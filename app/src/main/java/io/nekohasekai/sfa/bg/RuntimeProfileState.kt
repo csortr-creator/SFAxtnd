@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicLong
  * Not a substitute for Status.Started and does not imply network reachability.
  *
  * Safe diagnostics only: profile ids and short content fingerprints — no URLs/keys/JSON.
+ *
+ * R2a: [tryMarkLoaded] applies only when [requestId] is still the latest switch id
+ * ([currentSwitchRequestId]), discarding stale start completions after supersede/timeout.
  */
 object RuntimeProfileState {
     private val switchIds = AtomicLong(0L)
@@ -21,10 +24,22 @@ object RuntimeProfileState {
     var loadedConfigFingerprint: String = ""
         private set
 
-    /** Monotonic id for switch/start attempts (diagnostics / future stale guards). */
+    /** Monotonic id for switch/start attempts. */
     fun nextSwitchRequestId(): Long = switchIds.incrementAndGet()
 
     fun currentSwitchRequestId(): Long = switchIds.get()
+
+    /**
+     * Accept a successful start only if [requestId] is still the current switch generation.
+     * @return true if loaded state was updated; false if the completion is stale/superseded.
+     */
+    fun tryMarkLoaded(requestId: Long, profileId: Long, runtimeConfig: String): Boolean {
+        if (requestId != currentSwitchRequestId()) {
+            return false
+        }
+        markLoaded(profileId, runtimeConfig)
+        return true
+    }
 
     fun markLoaded(profileId: Long, runtimeConfig: String) {
         loadedProfileId = profileId

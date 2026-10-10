@@ -51,6 +51,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     companion object {
         private const val PROFILE_UPDATE_INTERVAL = 15L * 60 * 1000 // 15 minutes in milliseconds
         private const val TAG = "BoxService"
+        private const val SWITCH_TAG = "SFA.Switch"
 
         fun start() {
             val intent =
@@ -105,13 +106,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private var lastProfileName = ""
     private val reloadMutex = Mutex()
+    /** Serializes stop vs start body so start cannot overlap an in-flight stop. */
+    private val lifecycleMutex = Mutex()
 
     private fun sanitizeRuntimeConfig(content: String): String =
         io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
             content, Settings.routingBlockIpv6, Settings.tunStack, Settings.coreOptionsJson,
         )
 
-    private suspend fun startService() {
+    private suspend fun startService(requestId: Long) {
         try {
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_starting)
@@ -184,8 +187,21 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 }
             }
 
-            RuntimeProfileState.markLoaded(selectedProfileId, runtimeContent)
-            android.util.Log.i(TAG, "RUNTIME_LOADED profileId=$selectedProfileId fp=${RuntimeProfileState.loadedConfigFingerprint}")
+            if (!RuntimeProfileState.tryMarkLoaded(requestId, selectedProfileId, runtimeContent)) {
+                android.util.Log.w(
+                    SWITCH_TAG,
+                    "STALE_DISCARD requestId=$requestId current=${RuntimeProfileState.currentSwitchRequestId()} " +
+                        "profileId=$selectedProfileId (start completion superseded)",
+                )
+                // Do not publish Started for a superseded generation.
+                quietStopAfterStaleStart()
+                return
+            }
+            android.util.Log.i(
+                SWITCH_TAG,
+                "RUNTIME_LOADED requestId=$requestId profileId=$selectedProfileId " +
+                    "fp=${RuntimeProfileState.loadedConfigFingerprint}",
+            )
             status.postValue(Status.Started)
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_started)
@@ -282,8 +298,20 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
         }
-        RuntimeProfileState.markLoaded(selectedProfileId, runtimeContent)
-        android.util.Log.i(TAG, "RUNTIME_LOADED profileId=$selectedProfileId fp=${RuntimeProfileState.loadedConfigFingerprint}")
+        val requestId = RuntimeProfileState.currentSwitchRequestId()
+        if (!RuntimeProfileState.tryMarkLoaded(requestId, selectedProfileId, runtimeContent)) {
+            android.util.Log.w(
+                SWITCH_TAG,
+                "STALE_DISCARD requestId=$requestId current=${RuntimeProfileState.currentSwitchRequestId()} " +
+                    "profileId=$selectedProfileId (reload completion superseded)",
+            )
+            return
+        }
+        android.util.Log.i(
+            SWITCH_TAG,
+            "RUNTIME_LOADED requestId=$requestId profileId=$selectedProfileId " +
+                "fp=${RuntimeProfileState.loadedConfigFingerprint}",
+        )
         status.postValue(Status.Started)
         withContext(Dispatchers.Main) {
             notification.show(lastProfileName, R.string.status_started)
@@ -324,22 +352,25 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         notification.close()
         GlobalScope.launch(Dispatchers.IO) {
-            val pfd = fileDescriptor
-            if (pfd != null) {
-                pfd.close()
-                fileDescriptor = null
-            }
-            DefaultNetworkMonitor.stop()
-            closeService()
-            commandServer.apply {
-                close()
-//                Seq.destroyRef(refnum)
-            }
-            PowerReportManager.refresh()
-            Settings.startedByUser = false
-            withContext(Dispatchers.Main) {
-                status.value = Status.Stopped
-                service.stopSelf()
+            lifecycleMutex.withLock {
+                val pfd = fileDescriptor
+                if (pfd != null) {
+                    pfd.close()
+                    fileDescriptor = null
+                }
+                DefaultNetworkMonitor.stop()
+                if (::commandServer.isInitialized) {
+                    closeService()
+                    commandServer.apply {
+                        close()
+                    }
+                }
+                PowerReportManager.refresh()
+                Settings.startedByUser = false
+                withContext(Dispatchers.Main) {
+                    status.value = Status.Stopped
+                    service.stopSelf()
+                }
             }
         }
     }
@@ -349,6 +380,34 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             commandServer.closeService()
         }.onFailure {
             commandServer.setError("android: close service: ${it.message}")
+        }
+    }
+
+    /**
+     * Tear down after a start completed with a superseded switchRequestId.
+     * Does not broadcast a user-facing Alert (expected under rapid switch / timeout).
+     */
+    private suspend fun quietStopAfterStaleStart() {
+        RuntimeProfileState.clear()
+        Settings.startedByUser = false
+        val pfd = fileDescriptor
+        if (pfd != null) {
+            pfd.close()
+            fileDescriptor = null
+        }
+        DefaultNetworkMonitor.stop()
+        if (::commandServer.isInitialized) {
+            closeService()
+            runCatching { commandServer.close() }
+        }
+        withContext(Dispatchers.Main) {
+            if (receiverRegistered) {
+                service.unregisterReceiver(receiver)
+                receiverRegistered = false
+            }
+            notification.close()
+            status.value = Status.Stopped
+            service.stopSelf()
         }
     }
 
@@ -401,14 +460,18 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
 
         GlobalScope.launch(Dispatchers.IO) {
-            Settings.startedByUser = true
-            try {
-                startCommandServer()
-            } catch (e: Exception) {
-                stopAndAlert(Alert.StartCommandServer, e.message)
-                return@launch
+            lifecycleMutex.withLock {
+                Settings.startedByUser = true
+                val requestId = RuntimeProfileState.currentSwitchRequestId()
+                android.util.Log.i(SWITCH_TAG, "START_BEGIN requestId=$requestId")
+                try {
+                    startCommandServer()
+                } catch (e: Exception) {
+                    stopAndAlert(Alert.StartCommandServer, e.message)
+                    return@withLock
+                }
+                startService(requestId)
             }
-            startService()
         }
         return Service.START_NOT_STICKY
     }

@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 

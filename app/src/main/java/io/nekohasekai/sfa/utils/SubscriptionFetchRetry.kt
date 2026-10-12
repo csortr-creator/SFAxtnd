@@ -26,6 +26,7 @@ object SubscriptionFetchRetry {
             NetworkErrorKind.DNS,
             -> true
             NetworkErrorKind.UTLS_UNSUPPORTED,
+            NetworkErrorKind.REALITY_VERIFICATION,
             NetworkErrorKind.TLS,
             NetworkErrorKind.HTTP_AUTH,
             NetworkErrorKind.HTTP_STATUS,

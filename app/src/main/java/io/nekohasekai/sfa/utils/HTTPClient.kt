@@ -27,13 +27,17 @@ class HTTPClient : Closeable {
     }
 
     internal fun getSubscription(url: String): SubscriptionImportResult {
-        val response = executeFetch(url)
-        val rawContent = response.content.unwrap
-
-        return parseSubscription(rawContent).copy(
-            profileName = SubscriptionMetadata.title(response.getHeader("profile-title"), rawContent),
-            updateIntervalMinutes = SubscriptionMetadata.intervalMinutes(response.getHeader("profile-update-interval")),
-        )
+        val response = SubscriptionDiagnostics.at(SubscriptionStage.FETCH) { executeFetch(url) }
+        val (rawContent, parsed) = SubscriptionDiagnostics.at(SubscriptionStage.PARSE) {
+            val raw = response.content.unwrap
+            raw to parseSubscription(raw)
+        }
+        return SubscriptionDiagnostics.at(SubscriptionStage.METADATA) {
+            parsed.copy(
+                profileName = SubscriptionMetadata.title(response.getHeader("profile-title"), rawContent),
+                updateIntervalMinutes = SubscriptionMetadata.intervalMinutes(response.getHeader("profile-update-interval")),
+            )
+        }
     }
 
     /**

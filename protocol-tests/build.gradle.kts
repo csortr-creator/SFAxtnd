@@ -32,6 +32,7 @@ sourceSets.main {
     kotlin.include("io/nekohasekai/sfa/utils/QuicTlsCompatibility.kt")
     kotlin.include("io/nekohasekai/sfa/utils/XrayCompatibility.kt")
     kotlin.include("io/nekohasekai/sfa/utils/SubscriptionContentParser.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/SubscriptionDiagnostics.kt")
     kotlin.include("io/nekohasekai/sfa/utils/DnsFakeIpMigration.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ForeignSubscriptionParser.kt")
         kotlin.include("io/nekohasekai/sfa/utils/ImportIssueCode.kt")

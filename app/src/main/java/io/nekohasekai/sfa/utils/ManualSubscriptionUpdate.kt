@@ -33,7 +33,7 @@ sealed class ManualPrepareResult {
     data class Applied(val outcome: ImportOperationOutcome, val replaced: Boolean, val report: SubscriptionImportReport? = null) : ManualPrepareResult()
     data class AwaitConfirmation(val pending: PendingImportHolder) : ManualPrepareResult()
     data class Rejected(val outcome: ImportOperationOutcome, val safeMessage: String = "Обновление не применено", val report: SubscriptionImportReport? = null) : ManualPrepareResult()
-    data class Failed(val safeMessage: String) : ManualPrepareResult()
+    data class Failed(val safeMessage: String, val report: SubscriptionImportReport? = null) : ManualPrepareResult()
 }
 
 object ManualSubscriptionUpdate {
@@ -85,7 +85,7 @@ object ManualSubscriptionUpdate {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            ManualPrepareResult.Failed(ImportResultFormatter.fetchFailureReason(e))
+            ManualPrepareResult.Failed(ImportResultFormatter.fetchFailureReason(e), SubscriptionDiagnostics.reportOf(e))
         }
     }
 

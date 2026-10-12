@@ -45,7 +45,7 @@ internal object ImportResultFormatter {
                     for (issue in report.issues.take(20)) {
                         // Legacy reports and provider names can contain arbitrary text.
                         // Show the typed category and position, never raw name/reason/URI.
-                        val category = when (issue.code) {
+                        val category = SubscriptionDiagnostics.issueDetail(issue) ?: when (issue.code) {
                             ImportIssueCode.FORMAT_ERROR -> "Некорректный формат записи"
                             ImportIssueCode.PARSE_ERROR -> "Не удалось разобрать параметры"
                             ImportIssueCode.UNSUPPORTED_FEATURE -> "Параметры не поддерживаются"
@@ -73,7 +73,7 @@ internal object ImportResultFormatter {
         }
 
     fun fetchFailureReason(error: Throwable): String =
-        "${NetworkErrorPresentation.logCode(error)}: не удалось загрузить или разобрать ответ подписки"
+        SubscriptionDiagnostics.reason(error)
 
     fun outcomeLine(outcome: ImportOperationOutcome, hadPreviousConfig: Boolean): String =
         when (outcome) {

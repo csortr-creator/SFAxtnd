@@ -49,7 +49,7 @@ internal object ImportReportNotifier {
                     result.outcome, result.report, hadPrevious, reason = result.safeMessage,
                 )
                 is ManualPrepareResult.Failed -> ImportResultFormatter.format(
-                    ImportOperationOutcome.KEPT_LKG, hadPreviousConfig = hadPrevious, reason = result.safeMessage,
+                    ImportOperationOutcome.KEPT_LKG, result.report, hadPreviousConfig = hadPrevious, reason = result.safeMessage,
                 )
                 is ManualPrepareResult.AwaitConfirmation -> "Ожидается подтверждение частичного обновления"
             }

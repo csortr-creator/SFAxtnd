@@ -35,10 +35,10 @@ internal class SubscriptionContentParser(
 
     fun parse(raw: String): SubscriptionImportResult {
         val trimmed = raw.trim().removePrefix("\uFEFF").trim()
-        require(trimmed.length <= 8 * 1024 * 1024) { "Подписка превышает допустимый размер (8 МиБ)" }
+        if (trimmed.length > 8 * 1024 * 1024) throw SubscriptionResponseFailure(SubscriptionResponseProblem.TOO_LARGE)
         val mode = SubscriptionRouting.detectMode(trimmed)
         val content = tryDecodeBase64(trimmed)
-        require(!content.trimStart().startsWith('<')) { "Сервер вернул HTML вместо подписки. Проверьте прямой URL подписки и доступ к нему." }
+        if (content.trimStart().startsWith('<')) throw SubscriptionResponseFailure(SubscriptionResponseProblem.HTML)
         val foreign = ForeignSubscriptionParser.decode(content)
         if (foreign == null && content.startsWith("{")) {
             val root = JSONObject(content)
@@ -136,9 +136,7 @@ internal class SubscriptionContentParser(
         }
         shareLinkWarnings.clear()
         val report = SubscriptionImportReport(received, nodes.size, issues, warnings, foreign?.format ?: "Список ссылок")
-        require(nodes.isNotEmpty()) {
-            "Нет пригодных серверов. ${report.summary()}\n${issues.take(5).joinToString("\n") { "Строка ${it.line}: ${it.reason}" }}"
-        }
+        if (nodes.isEmpty()) throw SubscriptionResponseFailure(SubscriptionResponseProblem.NO_USABLE_NODES, report)
         return SubscriptionImportResult(buildSingBoxConfig(nodes, mode), report)
     }
 

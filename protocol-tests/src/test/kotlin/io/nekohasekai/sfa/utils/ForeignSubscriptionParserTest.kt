@@ -417,7 +417,10 @@ class ForeignSubscriptionParserTest {
             SubscriptionContentParser().parse(link)
             fail("Expected rejection")
         } catch (e: IllegalArgumentException) {
-            assertTrue(e.message.orEmpty().contains("Unsupported VMess TLS mode"))
+            assertTrue(e is SubscriptionResponseFailure)
+            val report = requireNotNull((e as SubscriptionResponseFailure).report)
+            assertEquals(0, report.imported)
+            assertTrue(report.issues.single().reason.contains("Unsupported VMess TLS mode"))
         }
     }
 

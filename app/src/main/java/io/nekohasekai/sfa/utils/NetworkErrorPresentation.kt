@@ -8,6 +8,7 @@ package io.nekohasekai.sfa.utils
  */
 enum class NetworkErrorKind {
     UTLS_UNSUPPORTED,
+    REALITY_VERIFICATION,
     TLS_TIMEOUT,
     TLS,
     DNS,
@@ -42,6 +43,7 @@ object NetworkErrorPresentation {
         val kind =
             when {
                 "unsupported usage for utls" in hintBlob -> NetworkErrorKind.UTLS_UNSUPPORTED
+                "reality verification failed" in hintBlob -> NetworkErrorKind.REALITY_VERIFICATION
                 "tls handshake timeout" in hintBlob -> NetworkErrorKind.TLS_TIMEOUT
                 hasType(typeBlob, "sslhandshakeexception", "sslexception") ||
                     (hasHint(hintBlob, "tls", "ssl", "handshake", "certificate", "x509") &&
@@ -99,6 +101,7 @@ object NetworkErrorPresentation {
         val known =
             listOf(
                 "unsupported usage for utls",
+                "reality verification failed",
                 "tls handshake timeout",
                 "handshake failure",
                 "handshake timeout",

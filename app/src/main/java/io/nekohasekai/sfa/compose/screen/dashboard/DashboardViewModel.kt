@@ -503,18 +503,11 @@ class DashboardViewModel :
         updateState { copy(updatingProfileIds = updatingProfileIds + profile.id) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val outcome = refreshProfile(profile)
-                if (outcome != null) {
-                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, outcome)
-                    when (outcome) {
-                        ImportOperationOutcome.APPLIED,
-                        ImportOperationOutcome.APPLIED_UNCHANGED,
-                        ImportOperationOutcome.PARTIAL_APPLIED,
-                        ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
-                        -> updateState { copy(updatedProfileId = profile.id) }
-                        ImportOperationOutcome.KEPT_LKG,
-                        ImportOperationOutcome.REJECTED,
-                        -> { /* dialog only */ }
+                val result = refreshProfile(profile)
+                if (result != null) {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result)
+                    if (result is ManualPrepareResult.Applied) {
+                        updateState { copy(updatedProfileId = profile.id) }
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -536,9 +529,9 @@ class DashboardViewModel :
             try {
                 val reports = io.nekohasekai.sfa.utils.parallelTasks(profiles) { profile ->
                     try {
-                        val outcome = refreshProfile(profile)
-                        if (outcome != null) {
-                            "${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, outcome)}"
+                        val result = refreshProfile(profile)
+                        if (result != null) {
+                            "${profile.name}\n${io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)}"
                         } else {
                             "${profile.name}\nОбновление пропущено"
                         }
@@ -559,9 +552,9 @@ class DashboardViewModel :
      */
     /**
      * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
-     * @return operation outcome, or null if skipped (deleted / missing / stale).
+     * @return current attempt result, or null if skipped / awaiting confirmation.
      */
-    private suspend fun refreshProfile(profile: Profile): ImportOperationOutcome? {
+    private suspend fun refreshProfile(profile: Profile): ManualPrepareResult? {
         if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
         if (ProfileManager.get(profile.id) == null) return null
 
@@ -574,7 +567,7 @@ class DashboardViewModel :
                 ) {
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                 }
-                result.outcome
+                result
             }
             is ManualPrepareResult.AwaitConfirmation -> {
                 updateState {
@@ -585,8 +578,8 @@ class DashboardViewModel :
                 }
                 null // UI will confirm; no false success
             }
-            is ManualPrepareResult.Rejected -> result.outcome
-            is ManualPrepareResult.Failed -> ImportOperationOutcome.KEPT_LKG
+            is ManualPrepareResult.Rejected -> result
+            is ManualPrepareResult.Failed -> result
         }
     }
 
@@ -607,7 +600,7 @@ class DashboardViewModel :
                     if (profile != null) {
                         io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(
                             profile,
-                            result.outcome,
+                            result,
                         )
                     }
                     updateState { copy(pendingImport = null) }
@@ -618,10 +611,14 @@ class DashboardViewModel :
                             pendingImport = null,
                         )
                     }
+                    val profile = ProfileManager.get(pending.profileId)
+                    val message = if (profile != null) {
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
+                    } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
                     io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(
                         UiEvent.ImportReport(
                             "Обновление подписки",
-                            "Обновление не применено: конфигурация изменилась или профиль недоступен",
+                            message,
                         ),
                     )
                 }

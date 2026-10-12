@@ -30,14 +30,31 @@ internal object ImportResultFormatter {
         outcome: ImportOperationOutcome,
         report: SubscriptionImportReport? = null,
         hadPreviousConfig: Boolean = true,
+        reportIsCurrent: Boolean = true,
+        reason: String? = null,
     ): String =
         buildString {
             append(outcomeLine(outcome, hadPreviousConfig))
+            if (reason != null) append("\nПричина: $reason")
             if (report != null) {
                 append("\n")
+                if (!reportIsCurrent) append("Сохранённый отчёт предыдущего импорта:\n")
                 append(statsLine(report))
                 if (report.issues.isNotEmpty()) {
                     append("\nОтклонено записей: ${report.issues.size}")
+                    for (issue in report.issues.take(20)) {
+                        // Legacy reports and provider names can contain arbitrary text.
+                        // Show the typed category and position, never raw name/reason/URI.
+                        val category = when (issue.code) {
+                            ImportIssueCode.FORMAT_ERROR -> "Некорректный формат записи"
+                            ImportIssueCode.PARSE_ERROR -> "Не удалось разобрать параметры"
+                            ImportIssueCode.UNSUPPORTED_FEATURE -> "Параметры не поддерживаются"
+                            ImportIssueCode.NODE_CORE_INVALID -> "Ядро отклонило параметры сервера"
+                            ImportIssueCode.UNKNOWN -> "Причина пока не определена"
+                        }
+                        append("\nЗапись ${issue.line}: $category [${issue.code.name}]")
+                    }
+                    if (report.issues.size > 20) append("\nЕщё отклонено: ${report.issues.size - 20}")
                 }
                 if (outcome == ImportOperationOutcome.PARTIAL_APPLIED &&
                     report.received > 0 &&
@@ -47,6 +64,16 @@ internal object ImportResultFormatter {
                 }
             }
         }
+
+    fun commitFailureReason(error: Throwable): String =
+        if (generateSequence(error) { it.cause }.any { it is ImportValidationFailure }) {
+            "CONFIG_INVALID: ядро отклонило итоговую конфигурацию; файл не изменён"
+        } else {
+            "WRITE_FAILED: не удалось записать файл конфигурации"
+        }
+
+    fun fetchFailureReason(error: Throwable): String =
+        "${NetworkErrorPresentation.logCode(error)}: не удалось загрузить или разобрать ответ подписки"
 
     fun outcomeLine(outcome: ImportOperationOutcome, hadPreviousConfig: Boolean): String =
         when (outcome) {
@@ -94,3 +121,6 @@ internal object ImportResultFormatter {
     fun configFileExists(path: String): Boolean =
         path.isNotBlank() && File(path).exists()
 }
+
+/** Carries the validation stage without exposing the native exception text to UI. */
+internal class ImportValidationFailure(cause: Throwable) : Exception(cause)

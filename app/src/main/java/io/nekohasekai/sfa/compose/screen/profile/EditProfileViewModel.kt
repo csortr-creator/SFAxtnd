@@ -263,7 +263,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update { it.copy(isUpdating = true, errorMessage = null) }
             when (val result = ManualSubscriptionUpdate.prepare(profile)) {
                 is ManualPrepareResult.Applied -> {
-                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result)
                     _uiState.update {
                         it.copy(
                             lastUpdated = profile.typed.lastUpdated,
@@ -290,7 +290,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                     }
                 }
                 is ManualPrepareResult.Rejected -> {
-                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result)
                     _uiState.update {
                         it.copy(
                             isUpdating = false,
@@ -322,7 +322,7 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
             when (val result = ManualSubscriptionUpdate.confirm(pending)) {
                 is ManualPrepareResult.Applied -> {
                     if (profile != null) {
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result.outcome)
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result)
                     }
                     _uiState.update {
                         it.copy(
@@ -343,11 +343,14 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 is ManualPrepareResult.Failed,
                 is ManualPrepareResult.AwaitConfirmation,
                 -> {
+                    val message = if (profile != null) {
+                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
+                    } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
                     _uiState.update {
                         it.copy(
                             isUpdating = false,
                             errorMessage =
-                                "Обновление не применено: конфигурация изменилась или профиль недоступен",
+                                message,
                             pendingImport = null,
                         )
                     }

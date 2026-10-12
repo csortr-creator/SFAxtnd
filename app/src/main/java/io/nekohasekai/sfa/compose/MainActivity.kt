@@ -418,6 +418,11 @@ class MainActivity :
                     }
                 },
                 confirmButton = { TextButton(onClick = { importReports.removeAt(0) }) { Text("Готово") } },
+                dismissButton = {
+                    TextButton(onClick = {
+                        io.nekohasekai.sfa.ktx.clipboardText = "${report.profileName}\n${report.text}"
+                    }) { Text("Копировать") }
+                },
             )
         }
         var pendingApplyServiceChangeMode by remember { mutableStateOf<UiEvent.ApplyServiceChange.Mode?>(null) }

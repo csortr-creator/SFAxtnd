@@ -30,9 +30,9 @@ class PendingImportHolder(
 }
 
 sealed class ManualPrepareResult {
-    data class Applied(val outcome: ImportOperationOutcome, val replaced: Boolean) : ManualPrepareResult()
+    data class Applied(val outcome: ImportOperationOutcome, val replaced: Boolean, val report: SubscriptionImportReport? = null) : ManualPrepareResult()
     data class AwaitConfirmation(val pending: PendingImportHolder) : ManualPrepareResult()
-    data class Rejected(val outcome: ImportOperationOutcome) : ManualPrepareResult()
+    data class Rejected(val outcome: ImportOperationOutcome, val safeMessage: String = "Обновление не применено", val report: SubscriptionImportReport? = null) : ManualPrepareResult()
     data class Failed(val safeMessage: String) : ManualPrepareResult()
 }
 
@@ -43,14 +43,14 @@ object ManualSubscriptionUpdate {
             return ManualPrepareResult.Failed("Профиль не является удалённой подпиской")
         }
         if (ProfileConfigCommit.isMarkedDeleted(profile.id) || ProfileManager.get(profile.id) == null) {
-            return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+            return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, "PROFILE_UNAVAILABLE: профиль удалён или недоступен")
         }
         val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
         return try {
             val expected = ProfileConfigCommit.beginUpdate(profile.id, profile.typed.path)
             val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
             if (!ProfileConfigCommit.isCurrent(profile.id, requireNotNull(expected.operationToken))) {
-                return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+                return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, "STALE: начато более новое обновление", result.report)
             }
             val report = result.report
             val decision =
@@ -80,12 +80,12 @@ object ManualSubscriptionUpdate {
                 }
                 PolicyDecision.REJECT_KEEP_LKG,
                 PolicyDecision.REJECT_FIRST,
-                -> ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+                -> ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, "POLICY_REJECTED: нет пригодного результата для применения", report)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
-            ManualPrepareResult.Failed("Не удалось обновить: ошибка загрузки или проверки конфигурации")
+        } catch (e: Exception) {
+            ManualPrepareResult.Failed(ImportResultFormatter.fetchFailureReason(e))
         }
     }
 
@@ -99,7 +99,7 @@ object ManualSubscriptionUpdate {
                 ProfileConfigCommit.commitIfUnchanged(
                     expected = expected,
                     content = result.config,
-                    validate = { Libbox.checkConfig(it) },
+                    validate = ::validateConfig,
                     afterFileCommit = {
                         result.report.save(profile.typed.path)
                         profile.typed.lastUpdated = Date()
@@ -111,21 +111,29 @@ object ManualSubscriptionUpdate {
                 ManualPrepareResult.Applied(
                     ImportResultFormatter.fromCommit(outcome.replaced, result.report),
                     outcome.replaced,
+                    result.report,
                 )
             is CommitOutcome.FileCommittedMetadataFailed ->
                 ManualPrepareResult.Applied(
                     ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
                     outcome.replaced,
+                    result.report,
                 )
-            is CommitOutcome.Stale,
-            is CommitOutcome.Failed,
-            -> ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+            is CommitOutcome.Stale -> ManualPrepareResult.Rejected(
+                ImportOperationOutcome.KEPT_LKG, "STALE: профиль или конфигурация изменились", result.report,
+            )
+            is CommitOutcome.Failed -> {
+                if (outcome.error is kotlinx.coroutines.CancellationException) throw outcome.error
+                ManualPrepareResult.Rejected(
+                    ImportOperationOutcome.KEPT_LKG, ImportResultFormatter.commitFailureReason(outcome.error), result.report,
+                )
+            }
         }
     }
 
     suspend fun confirm(pending: PendingImportHolder): ManualPrepareResult {
         if (!pending.phase.compareAndSet(PendingPhase.PENDING, PendingPhase.APPLYING)) {
-            return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+            return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, "CONFIRM_NOT_PENDING: подтверждение отменено или уже обработано", pending.report)
         }
         val profile = ProfileManager.get(pending.profileId)
         return when (
@@ -133,7 +141,7 @@ object ManualSubscriptionUpdate {
                 ProfileConfigCommit.commitIfUnchanged(
                     expected = pending.expected,
                     content = pending.content,
-                    validate = { Libbox.checkConfig(it) },
+                    validate = ::validateConfig,
                     afterFileCommit = {
                         pending.report.save(pending.configPath)
                         if (profile != null) {
@@ -148,6 +156,7 @@ object ManualSubscriptionUpdate {
                 ManualPrepareResult.Applied(
                     ImportResultFormatter.fromCommit(outcome.replaced, pending.report),
                     outcome.replaced,
+                    pending.report,
                 )
             }
             is CommitOutcome.FileCommittedMetadataFailed -> {
@@ -155,16 +164,28 @@ object ManualSubscriptionUpdate {
                 ManualPrepareResult.Applied(
                     ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
                     outcome.replaced,
+                    pending.report,
                 )
             }
             is CommitOutcome.Stale -> {
                 pending.phase.set(PendingPhase.STALE)
-                ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+                ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, "STALE: профиль или конфигурация изменились", pending.report)
             }
             is CommitOutcome.Failed -> {
                 pending.phase.set(PendingPhase.STALE)
-                ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+                if (outcome.error is kotlinx.coroutines.CancellationException) throw outcome.error
+                ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG, ImportResultFormatter.commitFailureReason(outcome.error), pending.report)
             }
+        }
+    }
+
+    private fun validateConfig(content: String) {
+        try {
+            Libbox.checkConfig(content)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw ImportValidationFailure(e)
         }
     }
 

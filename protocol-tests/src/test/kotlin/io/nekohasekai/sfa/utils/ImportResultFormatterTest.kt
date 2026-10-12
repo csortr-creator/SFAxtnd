@@ -9,6 +9,45 @@ import org.junit.rules.TemporaryFolder
 class ImportResultFormatterTest {
     @get:Rule val tmp = TemporaryFolder()
 
+    @Test fun previousCountsAreExplicitlyHistorical() {
+        val text = ImportResultFormatter.format(
+            ImportOperationOutcome.KEPT_LKG, report(33, 33, 0), reportIsCurrent = false,
+        )
+        assertTrue(text.contains("Сохранённый отчёт предыдущего импорта"))
+    }
+
+    @Test fun failedFetchHasItsOwnReasonAndNoInventedCounts() {
+        val reason = ImportResultFormatter.fetchFailureReason(
+            java.net.UnknownHostException("private-subscription.invalid"),
+        )
+        val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, reason = reason)
+        assertTrue(text.contains("NET_DNS"))
+        assertFalse(text.contains("Получено:"))
+        assertFalse(text.contains("private-subscription.invalid"))
+    }
+
+    @Test fun validationAndWriteFailuresRemainDistinctWithoutLeakingCause() {
+        val raw = java.io.IOException("vless://private-uuid@example.invalid?token=private-key")
+        val validation = ImportResultFormatter.commitFailureReason(ImportValidationFailure(raw))
+        val write = ImportResultFormatter.commitFailureReason(raw)
+        assertTrue(validation.contains("CONFIG_INVALID"))
+        assertTrue(write.contains("WRITE_FAILED"))
+        assertFalse((validation + write).contains("private"))
+        assertFalse((validation + write).contains("://"))
+    }
+
+    @Test fun rejectedNodeShowsPositionAndCategoryWithoutProviderSecrets() {
+        val report = SubscriptionImportReport(430, 429, listOf(
+            SubscriptionImportIssue(42, "private-name", "vless://private-uuid?secret=private-key", ImportIssueCode.NODE_CORE_INVALID),
+        ))
+        val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, report, reason = "STALE: конфигурация изменилась")
+        assertTrue(text.contains("Запись 42"))
+        assertTrue(text.contains("NODE_CORE_INVALID"))
+        assertTrue(text.contains("STALE"))
+        assertFalse(text.contains("private"))
+        assertFalse(text.contains("://"))
+    }
+
     private fun report(received: Int, imported: Int, issues: Int = received - imported) =
         SubscriptionImportReport(
             received = received,

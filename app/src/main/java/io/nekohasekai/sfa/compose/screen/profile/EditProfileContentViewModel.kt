@@ -184,32 +184,37 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
 
     fun saveConfiguration() {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update {
+                it.copy(isLoading = true, showSaveSuccessMessage = false, errorMessage = null)
+            }
 
             try {
+                val currentProfile = profile ?: throw IllegalStateException("Профиль не загружен")
                 val currentContent =
                     withContext(Dispatchers.Main) {
-                        editor?.getText() ?: ""
+                        editor?.getText() ?: throw IllegalStateException("Редактор недоступен")
                     }
 
                 // Save under the same per-profile lock as delete/commit so we cannot
                 // recreate a file after ProfileSafeDelete has marked the id deleted.
-                profile?.let { p ->
-                    io.nekohasekai.sfa.utils.ProfileConfigCommit.applyEditorWrite(
-                        p.id,
-                        File(p.typed.path),
-                        currentContent,
-                    )
+                io.nekohasekai.sfa.utils.ProfileConfigCommit.applyEditorWrite(
+                    currentProfile.id,
+                    File(currentProfile.typed.path),
+                    currentContent,
+                )
 
-                }
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        originalContent = currentContent,
-                        hasUnsavedChanges = false,
-                        showSaveSuccessMessage = true,
-                    )
+                withContext(Dispatchers.Main) {
+                    val latestContent = editor?.getText()
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            originalContent = currentContent,
+                            hasUnsavedChanges =
+                                latestContent?.let { text -> text != currentContent }
+                                    ?: it.hasUnsavedChanges,
+                            showSaveSuccessMessage = true,
+                        )
+                    }
                 }
 
                 // Hide success message after delay
@@ -219,6 +224,7 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        showSaveSuccessMessage = false,
                         errorMessage = e.message ?: "Save failed",
                     )
                 }

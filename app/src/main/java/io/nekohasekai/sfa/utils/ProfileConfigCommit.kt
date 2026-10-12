@@ -299,11 +299,12 @@ object ProfileConfigCommit {
      * Editor save path: replace under mutex, bump write generation when bytes change.
      * Call only outside outer withProfileLock (acquires mutex itself) OR use from
      * code that does not already hold the lock — this acquires [mutexFor].
+     * Returns false only for identical content; unavailable profiles throw before any write.
      */
     suspend fun applyEditorWrite(profileId: Long, target: File, content: String): Boolean {
         mutexFor(profileId).withLock {
-            if (isMarkedDeleted(profileId) || !profileStillExists(profileId)) {
-                return false
+            check(!isMarkedDeleted(profileId) && profileStillExists(profileId)) {
+                "Профиль удалён или недоступен"
             }
             val replaced = replaceAtomically(target, content)
             if (replaced) bumpWriteGeneration(profileId)

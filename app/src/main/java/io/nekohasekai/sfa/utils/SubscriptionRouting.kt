@@ -155,6 +155,7 @@ object SubscriptionRouting {
     private fun appendSystemRules(target: JSONArray, source: JSONArray) {
         var hasSniff = false
         var hasHijackDns = false
+        val copiedRules = mutableListOf<JSONObject>()
 
         for (i in 0 until source.length()) {
             val rule = source.optJSONObject(i) ?: continue
@@ -164,19 +165,21 @@ object SubscriptionRouting {
             if (action == "sniff") hasSniff = true
             if (action == "hijack-dns" || protocol == "dns") hasHijackDns = true
 
-            target.put(JSONObject(rule.toString()))
+            copiedRules.add(JSONObject(rule.toString()))
         }
 
         if (!hasSniff) {
-            target.put(0, JSONObject().apply { put("action", "sniff") })
+            copiedRules.add(0, JSONObject().apply { put("action", "sniff") })
         }
         if (!hasHijackDns) {
             val dnsRule = JSONObject().apply {
                 put("protocol", "dns")
                 put("action", "hijack-dns")
             }
-            target.put(if (hasSniff) 1 else 1, dnsRule)
+            val sniffIndex = copiedRules.indexOfFirst { it.optString("action") == "sniff" }
+            copiedRules.add(sniffIndex + 1, dnsRule)
         }
+        copiedRules.forEach { target.put(it) }
     }
 
     private fun appendCommonDirectRules(rules: JSONArray, blockIpv6: Boolean) {

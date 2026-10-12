@@ -508,6 +508,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                     )
                 val profileId =
                     SwitchStartResolver.resolveProfileId(intentTarget, Settings.selectedProfile)
+                if (profileId != -1L && !RuntimeProfileState.beginStart(requestId, profileId)) {
+                    quietStopAfterStaleStart()
+                    return@withLock
+                }
                 android.util.Log.i(
                     SWITCH_TAG,
                     "START_BEGIN requestId=$requestId profileId=$profileId " +

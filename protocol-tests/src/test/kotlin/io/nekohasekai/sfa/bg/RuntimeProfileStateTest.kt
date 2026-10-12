@@ -96,6 +96,7 @@ class RuntimeProfileStateTest {
         try {
             assertTrue(RuntimeProfileState.blockProfileForDeletion(target))
             assertTrue(RuntimeProfileState.usesProfile(target))
+            assertTrue(RuntimeProfileState.shouldStopForDeletion(target, 999L, true))
             assertFalse(RuntimeProfileState.isStartCurrent(request, target))
             assertFalse(RuntimeProfileState.tryMarkLoaded(request, target, "late"))
             assertEquals(-1L, RuntimeProfileState.loadedProfileId)
@@ -128,6 +129,7 @@ class RuntimeProfileStateTest {
         assertTrue(RuntimeProfileState.beginStart(request, target))
         try {
             assertFalse(RuntimeProfileState.blockProfileForDeletion(unrelated))
+            assertFalse(RuntimeProfileState.shouldStopForDeletion(unrelated, unrelated, true))
             assertEquals(request, RuntimeProfileState.currentSwitchRequestId())
             assertTrue(RuntimeProfileState.tryMarkLoaded(request, target, "current"))
         } finally {
@@ -160,6 +162,16 @@ class RuntimeProfileStateTest {
         } finally {
             RuntimeProfileState.unblockProfileAfterFailedDelete(target)
         }
+    }
+
+    @Test
+    fun selectedProfileIsFallbackOnlyWhenRuntimeOwnershipIsUnknown() {
+        assertTrue(RuntimeProfileState.shouldStopForDeletion(62007L, 62007L, true))
+        assertFalse(RuntimeProfileState.shouldStopForDeletion(62007L, 62008L, true))
+        assertFalse(RuntimeProfileState.shouldStopForDeletion(62007L, 62007L, false))
+        RuntimeProfileState.markLoaded(62008L, "actual")
+        assertFalse(RuntimeProfileState.shouldStopForDeletion(62007L, 62007L, true))
+        assertTrue(RuntimeProfileState.shouldStopForDeletion(62008L, 62007L, true))
     }
 
     // --- R2b resolve / persist policy ---

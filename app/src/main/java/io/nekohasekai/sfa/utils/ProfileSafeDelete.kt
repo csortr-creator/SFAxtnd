@@ -94,7 +94,9 @@ object ProfileSafeDelete {
                 val selected = selection.getSelected()
                 val vpnUsesThis =
                     serviceStatus in setOf(Status.Started, Status.Starting, Status.Stopping)
-                if (runtimeUsesThis || (vpnUsesThis && selected == profile.id)) {
+                val shouldStop = runtimeUsesThis ||
+                    RuntimeProfileState.shouldStopForDeletion(profile.id, selected, vpnUsesThis)
+                if (shouldStop) {
                     val stopped = try {
                         stopVpnAndAwait()
                     } catch (e: kotlinx.coroutines.CancellationException) {

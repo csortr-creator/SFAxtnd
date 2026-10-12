@@ -60,6 +60,12 @@ object RuntimeProfileState {
     fun usesProfile(profileId: Long): Boolean =
         startingProfileId == profileId || loadedProfileId == profileId
 
+    /** Prefer actual ownership; selectedProfile is only a fallback before runtime is known. */
+    @Synchronized
+    fun shouldStopForDeletion(profileId: Long, selectedProfileId: Long, serviceActive: Boolean): Boolean =
+        if (startingProfileId != -1L || loadedProfileId != -1L) usesProfile(profileId)
+        else serviceActive && selectedProfileId == profileId
+
     @Synchronized
     fun unblockProfileAfterFailedDelete(profileId: Long) {
         deletingProfileIds.remove(profileId)

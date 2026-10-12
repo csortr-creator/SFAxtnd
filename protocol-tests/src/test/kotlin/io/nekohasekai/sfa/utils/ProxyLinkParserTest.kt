@@ -489,25 +489,18 @@ class ProxyLinkParserTest {
     }
 
     @Test
-    fun hysteria2AppliesFingerprintAndChromeParrot() {
-        val node =
-            ProxyLinkParser.hysteria(
-                "hysteria2://secret@example.org:443?sni=example.org&fp=firefox&insecure=1#test",
-            )
-        assertEquals(
-            "firefox",
-            node.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
+    fun hysteria2UsesQuicChromeParrotWithoutTcpUtls() {
+        val chrome = ProxyLinkParser.hysteria(
+            "hysteria2://secret@example.org:443?sni=example.org&fp=chrome#test",
         )
-        assertTrue(node.getBoolean("disable_chrome_parrot"))
-        val chrome =
-            ProxyLinkParser.hysteria(
-                "hysteria2://secret@example.org:443?sni=example.org&fp=chrome#test",
-            )
-        assertEquals(
-            "chrome",
-            chrome.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
-        )
-        assertFalse(chrome.optBoolean("disable_chrome_parrot", true))
+        assertFalse(chrome.getJSONObject("tls").has("utls"))
+        assertFalse(chrome.getBoolean("disable_chrome_parrot"))
+        assertEquals("example.org", chrome.getJSONObject("tls").getString("server_name"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun hysteria2RejectsUnsupportedFirefoxInsteadOfProducingUnusableTls() {
+        ProxyLinkParser.hysteria("hysteria2://secret@example.org:443?fp=firefox#test")
     }
 
     @Test

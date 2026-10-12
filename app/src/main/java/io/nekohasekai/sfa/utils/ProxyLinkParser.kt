@@ -598,7 +598,7 @@ internal object ProxyLinkParser {
         params["fp"]
             ?.takeIf { it.isNotBlank() }
             ?.let { fp ->
-                // Applied to tls.utls; for QUIC the core also uses chrome parrot for Chrome-like fingerprints.
+                // Normalize below to Hysteria2 QUIC Chrome parrot, not TCP uTLS.
                 tls.put(
                     "utls",
                     JSONObject().put("enabled", true).put("fingerprint", fp),
@@ -671,7 +671,7 @@ internal object ProxyLinkParser {
         }
         applyXrayVerification(tls, params["pcs"], params["vcn"])
         params["fm"]?.takeIf { it.isNotBlank() }?.let { applyFinalMask(result, JSONObject(it)) }
-        return result
+        return QuicTlsCompatibility.normalize(result)
     }
 
     private fun bandwidth(

@@ -71,7 +71,7 @@ internal class SubscriptionContentParser(
             received++
             val node =
                 try {
-                    parseNode()
+                    QuicTlsCompatibility.normalize(parseNode())
                 } catch (e: Exception) {
                     if (e is java.util.concurrent.CancellationException) throw e
                     val classified = classifyParserError(e)
@@ -338,7 +338,7 @@ internal class SubscriptionContentParser(
                 for (i in 0 until outbounds.length()) {
                     val ob = outbounds.optJSONObject(i) ?: continue
                     if (ob.optString("type") != "dns") {
-                        cleanedOutbounds.put(ob)
+                        cleanedOutbounds.put(QuicTlsCompatibility.normalize(ob))
                     }
                 }
                 root.put("outbounds", cleanedOutbounds)

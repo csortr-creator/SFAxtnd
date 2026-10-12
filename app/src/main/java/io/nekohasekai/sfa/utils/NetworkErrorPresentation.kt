@@ -7,6 +7,7 @@ package io.nekohasekai.sfa.utils
  * Classification prefers exception types and fixed diagnostic phrases that do not embed URLs.
  */
 enum class NetworkErrorKind {
+    UTLS_UNSUPPORTED,
     TLS_TIMEOUT,
     TLS,
     DNS,
@@ -40,6 +41,7 @@ object NetworkErrorPresentation {
 
         val kind =
             when {
+                "unsupported usage for utls" in hintBlob -> NetworkErrorKind.UTLS_UNSUPPORTED
                 "tls handshake timeout" in hintBlob -> NetworkErrorKind.TLS_TIMEOUT
                 hasType(typeBlob, "sslhandshakeexception", "sslexception") ||
                     (hasHint(hintBlob, "tls", "ssl", "handshake", "certificate", "x509") &&
@@ -96,6 +98,7 @@ object NetworkErrorPresentation {
             "://" in message || "?" in message || "@" in message || "get \"" in lower
         val known =
             listOf(
+                "unsupported usage for utls",
                 "tls handshake timeout",
                 "handshake failure",
                 "handshake timeout",

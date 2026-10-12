@@ -546,7 +546,8 @@ internal object ForeignSubscriptionParser {
                 .optString("client-fingerprint")
                 .takeIf { it.isNotBlank() }
                 ?.let {
-                    require(mapped !in setOf("tuic", "hysteria", "hysteria2")) {
+                    require(mapped !in setOf("tuic", "hysteria") &&
+                        (mapped != "hysteria2" || it.equals("chrome", ignoreCase = true))) {
                         "Unsupported QUIC uTLS fingerprint"
                     }
                     tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", it))
@@ -603,7 +604,7 @@ internal object ForeignSubscriptionParser {
                     "idle-session-timeout" to "idle_session_timeout",
                     "min-idle-session" to "min_idle_session",
                 )) if (source.has(from)) node.put(to, source.get(from))
-        return node
+        return QuicTlsCompatibility.normalize(node)
     }
 
     private fun bandwidth(value: String): Int =
@@ -827,7 +828,7 @@ internal object ForeignSubscriptionParser {
                 node.put("disable_chrome_parrot", !chromeLike)
             }
         stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
-        return node
+        return QuicTlsCompatibility.normalize(node)
     }
 
     private fun xrayNode(
@@ -1086,6 +1087,6 @@ internal object ForeignSubscriptionParser {
                 "Unsupported Xray Mux.Cool; not equivalent to sing-box multiplex"
             }
         }
-        return node
+        return QuicTlsCompatibility.normalize(node)
     }
 }

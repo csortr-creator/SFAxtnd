@@ -20,7 +20,7 @@ class XrayHysteriaImportTest {
         val tls =
             JSONObject()
                 .put("serverName", sni)
-                .put("fingerprint", "firefox")
+                .put("fingerprint", "chrome")
                 .put("enableSessionResumption", false)
                 .put("alpn", JSONArray(listOf("h3")))
         if (pinned) tls.put("pinnedPeerCertSha256", pin)
@@ -89,11 +89,8 @@ class XrayHysteriaImportTest {
         nodes.forEach {
             assertEquals("hysteria2", it.getString("type"))
             assertEquals("fixture-password", it.getString("password"))
-            assertEquals(
-                "firefox",
-                it.getJSONObject("tls").getJSONObject("utls").getString("fingerprint"),
-            )
-            assertTrue(it.getBoolean("disable_chrome_parrot"))
+            assertFalse(it.getJSONObject("tls").has("utls"))
+            assertFalse(it.getBoolean("disable_chrome_parrot"))
         }
         assertEquals("www.amd.com", nodes[2].getJSONObject("tls").getString("server_name"))
         assertEquals(

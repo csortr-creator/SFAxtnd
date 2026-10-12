@@ -63,9 +63,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         /**
          * Start VPN/proxy service.
          * @param targetProfileId profile to load; ≤0 keeps legacy Settings.selectedProfile
-         * @param switchRequestId R2a generation for stale guards; ≤0 uses current id
+         * @param switchRequestId R2a generation for stale guards; ≤0 allocates a new manual-start id
          */
         fun start(targetProfileId: Long = -1L, switchRequestId: Long = -1L) {
+            val requestId = if (switchRequestId > 0L) switchRequestId else RuntimeProfileState.nextSwitchRequestId()
             val intent =
                 runBlocking {
                     withContext(Dispatchers.IO) {
@@ -73,9 +74,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                             if (targetProfileId > 0L) {
                                 putExtra(EXTRA_TARGET_PROFILE_ID, targetProfileId)
                             }
-                            if (switchRequestId > 0L) {
-                                putExtra(EXTRA_SWITCH_REQUEST_ID, switchRequestId)
-                            }
+                            putExtra(EXTRA_SWITCH_REQUEST_ID, requestId)
                         }
                     }
                 }

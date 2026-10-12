@@ -97,6 +97,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.CrashReportManager
 import io.nekohasekai.sfa.bg.OOMReportManager
@@ -351,6 +352,7 @@ class MainActivity :
     }
 
     private fun startService0() {
+        val requestId = RuntimeProfileState.nextSwitchRequestId()
         lifecycleScope.launch(Dispatchers.IO) {
             if (Settings.rebuildServiceMode()) {
                 connection.reconnect()
@@ -360,7 +362,9 @@ class MainActivity :
                     return@launch
                 }
             }
-            val intent = Intent(Application.application, Settings.serviceClass())
+            val intent = Intent(Application.application, Settings.serviceClass()).apply {
+                putExtra(BoxService.EXTRA_SWITCH_REQUEST_ID, requestId)
+            }
             withContext(Dispatchers.Main) {
                 ContextCompat.startForegroundService(this@MainActivity, intent)
             }

@@ -94,6 +94,17 @@ class ProfileSelectionQueueTest {
         assertFalse(runtime.tryMarkLoaded(dispatched, 2, "test"))
     }
 
+    @Test fun newerManualStartSupersedesEarlierScopedStop() {
+        val runtime = io.nekohasekai.sfa.bg.RuntimeProfileState
+        val oldStart = runtime.nextSwitchRequestId()
+        val stop = runtime.nextSwitchRequestId()
+        assertFalse(runtime.beginStart(oldStart, 23456))
+        val manualStart = runtime.nextSwitchRequestId()
+        assertNotEquals(stop, runtime.currentSwitchRequestId())
+        assertTrue(runtime.beginStart(manualStart, 23456))
+        runtime.clear()
+    }
+
     @Test fun skippedRequestCanImmediatelyDrainNewPendingSelection() {
         val queue = ProfileSelectionQueue()
         queue.offer(2, false)

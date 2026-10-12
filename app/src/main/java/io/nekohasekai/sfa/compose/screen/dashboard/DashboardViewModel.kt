@@ -18,6 +18,7 @@ import io.nekohasekai.sfa.utils.ProfileSafeDelete
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
 import io.nekohasekai.sfa.utils.ManualPrepareResult
+import io.nekohasekai.sfa.utils.ImportConfirmationQueue
 import io.nekohasekai.sfa.utils.PendingImportHolder
 import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.CommitOutcome
@@ -83,8 +84,7 @@ data class DashboardUiState(
     val deletingProfileIds: Set<Long> = emptySet(),
     val updatedProfileId: Long? = null,
     val isUpdatingAll: Boolean = false,
-    val pendingImport: PendingImportHolder? = null,
-    val showPartialImportDialog: Boolean = false,
+    val importConfirmations: ImportConfirmationQueue<PendingImportHolder> = ImportConfirmationQueue(),
     // Status
     val memory: String = "",
     val goroutines: String = "",
@@ -134,6 +134,8 @@ data class DashboardUiState(
         ),
     val showCardSettingsDialog: Boolean = false,
 ) {
+    val pendingImport: PendingImportHolder? get() = importConfirmations.current
+    val showPartialImportDialog: Boolean get() = importConfirmations.showDialog
 }
 
 // DashboardViewModel now only uses UiEvent for all events
@@ -504,7 +506,7 @@ class DashboardViewModel :
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val result = refreshProfile(profile)
-                if (result != null) {
+                if (result != null && result !is ManualPrepareResult.AwaitConfirmation) {
                     io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile, result)
                     if (result is ManualPrepareResult.Applied) {
                         updateState { copy(updatedProfileId = profile.id) }
@@ -546,14 +548,7 @@ class DashboardViewModel :
         }
     }
 
-    /**
-     * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
-     * Does not use plain writeText — failed validate/write leaves the previous file intact.
-     */
-    /**
-     * Remote subscription refresh via [ProfileConfigCommit] (same LKG path as Edit/Work).
-     * @return current attempt result, or null if skipped / awaiting confirmation.
-     */
+    /** Failed validation/write preserves LKG; partial results enter the confirmation FIFO. */
     private suspend fun refreshProfile(profile: Profile): ManualPrepareResult? {
         if (ProfileConfigCommit.isMarkedDeleted(profile.id)) return null
         if (ProfileManager.get(profile.id) == null) return null
@@ -570,25 +565,24 @@ class DashboardViewModel :
                 result
             }
             is ManualPrepareResult.AwaitConfirmation -> {
-                updateState {
-                    copy(
-                        pendingImport = result.pending,
-                        showPartialImportDialog = true,
-                    )
+                withContext(Dispatchers.Main.immediate) {
+                    updateState { copy(importConfirmations = importConfirmations.offer(result.pending)) }
                 }
-                null // UI will confirm; no false success
+                result
             }
             is ManualPrepareResult.Rejected -> result
             is ManualPrepareResult.Failed -> result
         }
     }
 
-    fun confirmPartialImport() {
-        val pending = currentState.pendingImport ?: return
+    fun confirmPartialImport(pending: PendingImportHolder) {
+        // UI callbacks capture the displayed holder, never a later subscription's request.
+        if (!currentState.importConfirmations.canBegin(pending)) return
+        updateState { copy(importConfirmations = importConfirmations.begin(pending)) }
         viewModelScope.launch(Dispatchers.IO) {
-            updateState { copy(showPartialImportDialog = false) }
-            when (val result = ManualSubscriptionUpdate.confirm(pending)) {
-                is ManualPrepareResult.Applied -> {
+            try {
+                val result = ManualSubscriptionUpdate.confirm(pending)
+                if (result is ManualPrepareResult.Applied) {
                     loadProfiles()
                     if (result.replaced &&
                         pending.profileId == Settings.selectedProfile &&
@@ -596,40 +590,30 @@ class DashboardViewModel :
                     ) {
                         sendGlobalEvent(UiEvent.RequestReconnectService)
                     }
-                    val profile = ProfileManager.get(pending.profileId)
-                    if (profile != null) {
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(
-                            profile,
-                            result,
-                        )
-                    }
-                    updateState { copy(pendingImport = null) }
                 }
-                else -> {
-                    updateState {
-                        copy(
-                            pendingImport = null,
-                        )
-                    }
-                    val profile = ProfileManager.get(pending.profileId)
-                    val message = if (profile != null) {
-                        io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
-                    } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
-                    io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(
-                        UiEvent.ImportReport(
-                            "Обновление подписки",
-                            message,
-                        ),
-                    )
+                val profile = ProfileManager.get(pending.profileId)
+                val message = if (profile != null) {
+                    io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
+                } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
+                io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(
+                    UiEvent.ImportReport(pending.profileName, message),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                sendErrorMessage("Не удалось завершить обработку подтверждения: проверьте отчёт и список серверов")
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    updateState { copy(importConfirmations = importConfirmations.complete(pending)) }
                 }
             }
         }
     }
 
-    fun cancelPartialImport() {
-        val pending = currentState.pendingImport
-        if (pending != null) ManualSubscriptionUpdate.cancel(pending)
-        updateState { copy(pendingImport = null, showPartialImportDialog = false) }
+    fun cancelPartialImport(pending: PendingImportHolder) {
+        if (!currentState.importConfirmations.canBegin(pending)) return
+        ManualSubscriptionUpdate.cancel(pending)
+        updateState { copy(importConfirmations = importConfirmations.complete(pending)) }
     }
 
 

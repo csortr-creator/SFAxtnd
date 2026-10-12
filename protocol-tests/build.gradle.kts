@@ -36,6 +36,7 @@ sourceSets.main {
         kotlin.include("io/nekohasekai/sfa/utils/ImportIssueCode.kt")
     kotlin.include("io/nekohasekai/sfa/utils/ImportOperationOutcome.kt")
     kotlin.include("io/nekohasekai/sfa/utils/PartialUpdatePolicy.kt")
+    kotlin.include("io/nekohasekai/sfa/utils/ImportConfirmationQueue.kt")
     kotlin.include("io/nekohasekai/sfa/bg/RuntimeProfileState.kt")
     kotlin.include("io/nekohasekai/sfa/bg/ProfileSelectionQueue.kt")
     kotlin.include("io/nekohasekai/sfa/bg/SwitchStartResolver.kt")

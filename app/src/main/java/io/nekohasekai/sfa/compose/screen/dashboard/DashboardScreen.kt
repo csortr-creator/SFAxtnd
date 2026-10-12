@@ -61,11 +61,12 @@ fun DashboardScreen(
     if (uiState.showPartialImportDialog && uiState.pendingImport != null) {
         val pending = uiState.pendingImport!!
         AlertDialog(
-            onDismissRequest = { viewModel.cancelPartialImport() },
+            onDismissRequest = { viewModel.cancelPartialImport(pending) },
             title = { Text("Частичный импорт") },
             text = {
                 Text(
-                    "Получено: ${pending.received}\n" +
+                    "${pending.profileName}\n\n" +
+                        "Получено: ${pending.received}\n" +
                         "Импортировано: ${pending.imported}\n" +
                         "Отклонено: ${pending.rejected}\n\n" +
                         "Часть серверов не удалось импортировать. " +
@@ -73,12 +74,12 @@ fun DashboardScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmPartialImport() }) {
+                TextButton(onClick = { viewModel.confirmPartialImport(pending) }) {
                     Text("Применить")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.cancelPartialImport() }) {
+                TextButton(onClick = { viewModel.cancelPartialImport(pending) }) {
                     Text("Отмена")
                 }
             },

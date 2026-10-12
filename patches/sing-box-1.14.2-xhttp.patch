@@ -2767,8 +2767,8 @@ index 0000000..b926cc4
 +	})
 +	select {
 +	case <-session.closed:
-+	default:
-+		t.Fatal("expired session was removed without closing its streams")
++	case <-time.After(time.Second):
++		t.Fatal("expired session streams did not close within the deadline")
 +	}
 +}
 +

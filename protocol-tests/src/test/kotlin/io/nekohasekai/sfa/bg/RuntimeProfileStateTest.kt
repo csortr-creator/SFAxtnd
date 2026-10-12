@@ -87,6 +87,81 @@ class RuntimeProfileStateTest {
         assertTrue(RuntimeProfileState.loadedConfigFingerprint.isNotEmpty())
     }
 
+    @Test
+    fun deletingStartingTargetRejectsItsLateCompletion() {
+        val target = 62001L
+        val request = RuntimeProfileState.nextSwitchRequestId()
+        assertTrue(RuntimeProfileState.beginStart(request, target))
+        assertEquals(target, RuntimeProfileState.startingProfileId)
+        try {
+            assertTrue(RuntimeProfileState.blockProfileForDeletion(target))
+            assertTrue(RuntimeProfileState.usesProfile(target))
+            assertFalse(RuntimeProfileState.isStartCurrent(request, target))
+            assertFalse(RuntimeProfileState.tryMarkLoaded(request, target, "late"))
+            assertEquals(-1L, RuntimeProfileState.loadedProfileId)
+            assertFalse(RuntimeProfileState.beginStart(RuntimeProfileState.currentSwitchRequestId(), target))
+            RuntimeProfileState.clear()
+            assertFalse(RuntimeProfileState.usesProfile(target))
+        } finally {
+            RuntimeProfileState.unblockProfileAfterFailedDelete(target)
+        }
+    }
+
+    @Test
+    fun deletionFindsLoadedProfileWithoutUsingSelectedProfile() {
+        val loaded = 62002L
+        val request = RuntimeProfileState.nextSwitchRequestId()
+        assertTrue(RuntimeProfileState.tryMarkLoaded(request, loaded, "loaded-b"))
+        try {
+            assertTrue(RuntimeProfileState.blockProfileForDeletion(loaded))
+            assertFalse(RuntimeProfileState.tryMarkLoaded(request, loaded, "late"))
+        } finally {
+            RuntimeProfileState.unblockProfileAfterFailedDelete(loaded)
+        }
+    }
+
+    @Test
+    fun deletingUnrelatedProfileDoesNotCancelStart() {
+        val target = 62003L
+        val unrelated = 62004L
+        val request = RuntimeProfileState.nextSwitchRequestId()
+        assertTrue(RuntimeProfileState.beginStart(request, target))
+        try {
+            assertFalse(RuntimeProfileState.blockProfileForDeletion(unrelated))
+            assertEquals(request, RuntimeProfileState.currentSwitchRequestId())
+            assertTrue(RuntimeProfileState.tryMarkLoaded(request, target, "current"))
+        } finally {
+            RuntimeProfileState.unblockProfileAfterFailedDelete(unrelated)
+        }
+    }
+
+    @Test
+    fun failedDeleteAllowsNewStartButNotCancelledCompletion() {
+        val target = 62005L
+        val old = RuntimeProfileState.nextSwitchRequestId()
+        assertTrue(RuntimeProfileState.beginStart(old, target))
+        assertTrue(RuntimeProfileState.blockProfileForDeletion(target))
+        RuntimeProfileState.unblockProfileAfterFailedDelete(target)
+        assertFalse(RuntimeProfileState.tryMarkLoaded(old, target, "cancelled"))
+        val fresh = RuntimeProfileState.nextSwitchRequestId()
+        assertTrue(RuntimeProfileState.beginStart(fresh, target))
+        assertTrue(RuntimeProfileState.tryMarkLoaded(fresh, target, "fresh"))
+        assertEquals(-1L, RuntimeProfileState.startingProfileId)
+    }
+
+    @Test
+    fun stoppedRuntimeDoesNotUnblockDeletedProfile() {
+        val target = 62006L
+        RuntimeProfileState.blockProfileForDeletion(target)
+        RuntimeProfileState.clear()
+        try {
+            assertEquals(-1L, RuntimeProfileState.startingProfileId)
+            assertFalse(RuntimeProfileState.beginStart(RuntimeProfileState.nextSwitchRequestId(), target))
+        } finally {
+            RuntimeProfileState.unblockProfileAfterFailedDelete(target)
+        }
+    }
+
     // --- R2b resolve / persist policy ---
 
     @Test

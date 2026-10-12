@@ -380,14 +380,22 @@ class DashboardViewModel :
                         filesDir = Application.application.filesDir,
                         serviceStatus = status,
                         stopVpnAndAwait = {
-                            if (_serviceStatus.value == Status.Stopped) return@delete true
+                            fun confirmedStopped() =
+                                _serviceStatus.value == Status.Stopped &&
+                                    !RuntimeProfileState.usesProfile(profile.id)
+                            if (confirmedStopped()) return@delete true
                             withContext(Dispatchers.Main) { stopService() }
                             val deadline = System.currentTimeMillis() + 15_000L
                             while (System.currentTimeMillis() < deadline) {
-                                if (_serviceStatus.value == Status.Stopped) return@delete true
+                                if (confirmedStopped()) return@delete true
+                                // A stop sent during Starting may be ignored by BoxService.
+                                // Retry once it becomes Started; otherwise wait for stale-start teardown.
+                                if (_serviceStatus.value == Status.Started ||
+                                    RuntimeProfileState.usesProfile(profile.id)
+                                ) BoxService.stop()
                                 delay(100)
                             }
-                            _serviceStatus.value == Status.Stopped
+                            confirmedStopped()
                         },
                     )
                 when (outcome) {

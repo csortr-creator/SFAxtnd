@@ -143,6 +143,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 return
             }
 
+            if (!RuntimeProfileState.beginStart(requestId, selectedProfileId)) {
+                quietStopAfterStaleStart()
+                return
+            }
+
             val profile = ProfileManager.get(selectedProfileId)
             if (profile == null) {
                 stopAndAlert(Alert.EmptyConfiguration)
@@ -166,6 +171,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             }
 
             DefaultNetworkMonitor.start()
+
+            if (!RuntimeProfileState.isStartCurrent(requestId, selectedProfileId)) {
+                quietStopAfterStaleStart()
+                return
+            }
 
             try {
                 commandServer.startOrReloadService(
@@ -371,7 +381,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private fun stopService() {
         if (status.value != Status.Started) return
         status.value = Status.Stopping
-        RuntimeProfileState.clear()
         if (receiverRegistered) {
             service.unregisterReceiver(receiver)
             receiverRegistered = false
@@ -394,6 +403,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 PowerReportManager.refresh()
                 Settings.startedByUser = false
                 withContext(Dispatchers.Main) {
+                    RuntimeProfileState.clear()
                     status.value = Status.Stopped
                     service.stopSelf()
                 }
@@ -414,7 +424,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
      * Does not broadcast a user-facing Alert (expected under rapid switch / timeout).
      */
     private suspend fun quietStopAfterStaleStart() {
-        RuntimeProfileState.clear()
         Settings.startedByUser = false
         val pfd = fileDescriptor
         if (pfd != null) {
@@ -432,13 +441,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 receiverRegistered = false
             }
             notification.close()
+            RuntimeProfileState.clear()
             status.value = Status.Stopped
             service.stopSelf()
         }
     }
 
     private suspend fun stopAndAlert(type: Alert, message: String? = null) {
-        RuntimeProfileState.clear()
         Settings.startedByUser = false
         val pfd = fileDescriptor
         if (pfd != null) {
@@ -456,6 +465,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 receiverRegistered = false
             }
             notification.close()
+            RuntimeProfileState.clear()
             binder.broadcast { callback ->
                 callback.onServiceAlert(type.ordinal, message)
             }

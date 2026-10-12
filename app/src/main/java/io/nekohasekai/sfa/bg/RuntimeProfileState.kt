@@ -14,6 +14,11 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object RuntimeProfileState {
     private val switchIds = AtomicLong(0L)
+    private val deletingProfileIds = mutableSetOf<Long>()
+
+    @Volatile
+    var startingProfileId: Long = -1L
+        private set
 
     @Volatile
     var loadedProfileId: Long = -1L
@@ -25,30 +30,66 @@ object RuntimeProfileState {
         private set
 
     /** Monotonic id for switch/start attempts. */
+    @Synchronized
     fun nextSwitchRequestId(): Long = switchIds.incrementAndGet()
 
     fun currentSwitchRequestId(): Long = switchIds.get()
+
+    @Synchronized
+    fun isStartCurrent(requestId: Long, profileId: Long): Boolean =
+        requestId == currentSwitchRequestId() && profileId !in deletingProfileIds
+
+    /** Register the target before reading its configuration or starting the native service. */
+    @Synchronized
+    fun beginStart(requestId: Long, profileId: Long): Boolean {
+        if (!isStartCurrent(requestId, profileId)) return false
+        startingProfileId = profileId
+        return true
+    }
+
+    /** Block new/late starts; report ownership independently of Settings.selectedProfile. */
+    @Synchronized
+    fun blockProfileForDeletion(profileId: Long): Boolean {
+        deletingProfileIds.add(profileId)
+        val usesProfile = usesProfile(profileId)
+        if (usesProfile) nextSwitchRequestId()
+        return usesProfile
+    }
+
+    @Synchronized
+    fun usesProfile(profileId: Long): Boolean =
+        startingProfileId == profileId || loadedProfileId == profileId
+
+    @Synchronized
+    fun unblockProfileAfterFailedDelete(profileId: Long) {
+        deletingProfileIds.remove(profileId)
+    }
 
     /**
      * Accept a successful start only if [requestId] is still the current switch generation.
      * @return true if loaded state was updated; false if the completion is stale/superseded.
      */
+    @Synchronized
     fun tryMarkLoaded(requestId: Long, profileId: Long, runtimeConfig: String): Boolean {
-        if (requestId != currentSwitchRequestId()) {
+        if (!isStartCurrent(requestId, profileId)) {
             return false
         }
         markLoaded(profileId, runtimeConfig)
         return true
     }
 
+    @Synchronized
     fun markLoaded(profileId: Long, runtimeConfig: String) {
         loadedProfileId = profileId
         loadedConfigFingerprint = fingerprint(runtimeConfig)
+        startingProfileId = -1L
     }
 
+    @Synchronized
     fun clear() {
         loadedProfileId = -1L
         loadedConfigFingerprint = ""
+        startingProfileId = -1L
     }
 
     fun fingerprint(content: String): String {

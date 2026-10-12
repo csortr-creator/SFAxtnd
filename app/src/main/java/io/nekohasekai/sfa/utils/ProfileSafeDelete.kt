@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.utils
 
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
@@ -43,7 +44,7 @@ object ProfileSafeDelete {
         }
 
     /**
-     * @param stopVpnAndAwait called when VPN is Starting/Started and selection equals [profile].id.
+     * @param stopVpnAndAwait called for the loaded/starting target or an active selected profile.
      *   Must return true only when service is confirmed stopped.
      */
     suspend fun delete(
@@ -83,16 +84,26 @@ object ProfileSafeDelete {
                 // after we leave this section and recreate the config file.
                 // Cleared on any failure path so a surviving profile can still update.
                 ProfileConfigCommit.markDeleted(profile.id)
+                val runtimeUsesThis = RuntimeProfileState.blockProfileForDeletion(profile.id)
 
                 fun rollbackTombstone() {
                     ProfileConfigCommit.clearDeleted(profile.id)
+                    RuntimeProfileState.unblockProfileAfterFailedDelete(profile.id)
                 }
 
                 val selected = selection.getSelected()
                 val vpnUsesThis =
-                    serviceStatus == Status.Started || serviceStatus == Status.Starting
-                if (vpnUsesThis && selected == profile.id) {
-                    if (!stopVpnAndAwait()) {
+                    serviceStatus in setOf(Status.Started, Status.Starting, Status.Stopping)
+                if (runtimeUsesThis || (vpnUsesThis && selected == profile.id)) {
+                    val stopped = try {
+                        stopVpnAndAwait()
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        rollbackTombstone()
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (!stopped) {
                         rollbackTombstone()
                         return@withProfileLock Outcome.Failed(
                             "VPN_STOP_FAILED",

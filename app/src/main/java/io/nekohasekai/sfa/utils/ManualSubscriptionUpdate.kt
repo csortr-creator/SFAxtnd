@@ -4,7 +4,6 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
-import java.io.File
 import java.util.Date
 import java.util.concurrent.atomic.AtomicReference
 
@@ -48,7 +47,11 @@ object ManualSubscriptionUpdate {
         }
         val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
         return try {
+            val expected = ProfileConfigCommit.beginUpdate(profile.id, profile.typed.path)
             val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
+            if (!ProfileConfigCommit.isCurrent(profile.id, requireNotNull(expected.operationToken))) {
+                return ManualPrepareResult.Rejected(ImportOperationOutcome.KEPT_LKG)
+            }
             val report = result.report
             val decision =
                 PartialUpdatePolicy.decide(
@@ -62,10 +65,8 @@ object ManualSubscriptionUpdate {
                     ),
                 )
             when (decision) {
-                PolicyDecision.APPLY -> applyNow(profile, result)
+                PolicyDecision.APPLY -> applyNow(profile, result, expected)
                 PolicyDecision.AWAIT_CONFIRMATION -> {
-                    val expected =
-                        ProfileConfigCommit.snapshotExpectedState(profile.id, profile.typed.path)
                     ManualPrepareResult.AwaitConfirmation(
                         PendingImportHolder(
                             profileId = profile.id,
@@ -91,14 +92,12 @@ object ManualSubscriptionUpdate {
     private suspend fun applyNow(
         profile: Profile,
         result: SubscriptionImportResult,
+        expected: ConfigExpectedState,
     ): ManualPrepareResult {
-        val operationToken = ProfileConfigCommit.beginOperation(profile.id)
         return when (
             val outcome =
-                ProfileConfigCommit.commit(
-                    profileId = profile.id,
-                    operationToken = operationToken,
-                    target = File(profile.typed.path),
+                ProfileConfigCommit.commitIfUnchanged(
+                    expected = expected,
                     content = result.config,
                     validate = { Libbox.checkConfig(it) },
                     afterFileCommit = {

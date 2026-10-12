@@ -26,7 +26,6 @@ import io.nekohasekai.sfa.utils.PartialUpdateInput
 import io.nekohasekai.sfa.utils.UpdateTrigger
 import io.nekohasekai.sfa.utils.PolicyDecision
 import io.nekohasekai.sfa.utils.ImportResultFormatter
-import java.io.File
 import java.util.Date
 import java.util.concurrent.TimeUnit
 
@@ -88,11 +87,11 @@ class UpdateProfileWork {
                     continue
                 }
                 try {
+                    val expected = ProfileConfigCommit.beginUpdate(profile.id, profile.typed.path)
+                    val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
                     val result = HTTPClient().use { it.getSubscription(profile.typed.remoteURL) }
                     val content = result.config
-                    val file = File(profile.typed.path)
                     val report = result.report
-                    val hadPrevious = ImportResultFormatter.configFileExists(profile.typed.path)
                     val decision =
                         PartialUpdatePolicy.decide(
                             PartialUpdateInput(
@@ -114,13 +113,10 @@ class UpdateProfileWork {
                         )
                         continue
                     }
-                    val operationToken = ProfileConfigCommit.beginOperation(profile.id)
                     when (
                         val outcome =
-                            ProfileConfigCommit.commit(
-                                profileId = profile.id,
-                                operationToken = operationToken,
-                                target = file,
+                            ProfileConfigCommit.commitIfUnchanged(
+                                expected = expected,
                                 content = content,
                                 validate = { Libbox.checkConfig(it) },
                                 afterFileCommit = {

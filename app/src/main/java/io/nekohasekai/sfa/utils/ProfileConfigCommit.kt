@@ -122,8 +122,15 @@ object ProfileConfigCommit {
             )
         }
 
+    /** Bind a pre-fetch file snapshot to the operation that started the fetch. */
+    suspend fun beginUpdate(profileId: Long, configPath: String): ConfigExpectedState {
+        val operationToken = beginOperation(profileId)
+        return snapshotExpectedState(profileId, configPath).copy(operationToken = operationToken)
+    }
+
     /**
      * Conditional commit: apply [content] only if profile/file state still matches [expected].
+     * A snapshot from [beginUpdate] also rejects responses superseded by a newer fetch.
      * Acquires the per-profile Mutex itself — do not call from under [withProfileLock].
      *
      * writeGeneration is bumped only when [replaceAtomically] returns true (bytes changed).
@@ -138,6 +145,9 @@ object ProfileConfigCommit {
         mutexFor(profileId).withLock {
             if (isMarkedDeleted(profileId)) return CommitOutcome.Stale
             if (!profileStillExists(profileId)) return CommitOutcome.Stale
+            if (expected.operationToken?.let { !isCurrent(profileId, it) } == true) {
+                return CommitOutcome.Stale
+            }
             val target = File(expected.configPath)
             // Path identity: target must still be the expected path string (caller binds path).
             if (target.path != File(expected.configPath).path) return CommitOutcome.Stale
@@ -320,6 +330,7 @@ data class ConfigExpectedState(
     val configPath: String,
     val contentSha256: String?,
     val writeGeneration: Long,
+    val operationToken: Long? = null,
 )
 
 sealed class CommitOutcome<out T> {

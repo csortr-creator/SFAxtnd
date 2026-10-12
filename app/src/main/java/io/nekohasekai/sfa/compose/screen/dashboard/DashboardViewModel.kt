@@ -7,6 +7,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.bg.BoxService
+import io.nekohasekai.sfa.bg.ProfileSelectionQueue
 import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.compose.base.BaseViewModel
 import io.nekohasekai.sfa.compose.base.UiEvent
@@ -136,6 +137,7 @@ data class DashboardUiState(
 class DashboardViewModel :
     BaseViewModel<DashboardUiState, UiEvent>(),
     CommandClient.Handler {
+    private val selectionQueue = ProfileSelectionQueue()
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
     val serviceStatus: StateFlow<Status> = _serviceStatus.asStateFlow()
 
@@ -236,6 +238,7 @@ class DashboardViewModel :
     }
 
     private fun stopService() {
+        selectionQueue.cancelPending()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 BoxService.stop()
@@ -248,14 +251,27 @@ class DashboardViewModel :
 
 
     fun selectProfile(profileId: Long) {
-        if (currentState.isLoading || profileId == Settings.selectedProfile ||
-            _serviceStatus.value !in setOf(Status.Started, Status.Stopped)
+        if (profileId in currentState.deletingProfileIds) return
+        selectionQueue.offer(
+            profileId,
+            _serviceStatus.value == Status.Started || _serviceStatus.value == Status.Starting,
+        )
+        drainProfileSelections()
+    }
+
+    private fun drainProfileSelections() {
+        val status = _serviceStatus.value
+        val request = selectionQueue.take(status == Status.Started || status == Status.Stopped) ?: return
+        val profileId = request.profileId
+        if (profileId in currentState.deletingProfileIds ||
+            (profileId == Settings.selectedProfile && (!request.connect || status == Status.Started))
         ) {
+            selectionQueue.complete(request)
             return
         }
         updateState { copy(isLoading = true, requestedProfileId = profileId) }
         val previousProfileId = Settings.selectedProfile
-        val wasRunning = _serviceStatus.value == Status.Started
+        val wasRunning = request.connect || _serviceStatus.value == Status.Started
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -269,7 +285,7 @@ class DashboardViewModel :
 
                 if (wasRunning) {
                     // R2b: do not write Settings.selectedProfile until BoxService tryMarkLoaded succeeds.
-                    BoxService.stop()
+                    if (_serviceStatus.value != Status.Stopped) BoxService.stop()
                     Log.i(TAG, "STOP_OLD requested")
                     val stopped =
                         withTimeoutOrNull(STOP_TIMEOUT_MS) {
@@ -350,7 +366,11 @@ class DashboardViewModel :
                 Log.e(TAG, "SELECT_FAILED target=$profileId", e)
                 sendError(e)
             } finally {
-                updateState { copy(isLoading = false, requestedProfileId = null) }
+                withContext(Dispatchers.Main) {
+                    selectionQueue.complete(request)
+                    updateState { copy(isLoading = false, requestedProfileId = null) }
+                    drainProfileSelections()
+                }
             }
         }
     }
@@ -618,6 +638,7 @@ class DashboardViewModel :
                 )
             }
             handleServiceStatusChange(status)
+            drainProfileSelections()
         }
     }
 

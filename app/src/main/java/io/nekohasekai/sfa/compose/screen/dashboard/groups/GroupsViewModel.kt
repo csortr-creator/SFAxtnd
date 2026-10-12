@@ -26,6 +26,8 @@ import io.nekohasekai.sfa.utils.ProfileLatencyCache
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import java.io.File
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -377,6 +379,9 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
 
     private fun startUrlTest(testingTag: String, tags: List<String>) {
         val online = canUseCommandServer()
+        val local = RemoteControlManager.remoteServer.value == null
+        val sourceProfileId = uiState.value.profileId
+        val sourceContent = loadedContent
         if (
             (!online && (_serviceStatus.value != Status.Stopped || tags.isEmpty())) ||
                 !testInFlight.compareAndSet(false, true)
@@ -408,14 +413,36 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                     )
                 } catch (e: Exception) {
                     coroutineContext.ensureActive()
+                    val outcome = ProbeOutcome.fromThrowable(e)
                     logProbe(
                         "probe_finished",
                         testingTag,
                         "online",
-                        ProbeOutcome.fromThrowable(e),
+                        outcome,
                         correlation = "online-err",
                     )
-                    sendError(e)
+                    if (local && outcome.status == ProbeStatus.CANCELLED) {
+                        val stopped = withTimeoutOrNull(15_000L) {
+                            while (_serviceStatus.value != Status.Stopped) delay(50L)
+                            true
+                        } == true
+                        if (!stopped) {
+                            if (sourceProfileId == uiState.value.profileId &&
+                                sourceProfileId == Settings.selectedProfile
+                            ) sendError(e)
+                        } else if (sourceContent != null && tags.isNotEmpty() &&
+                            sourceProfileId == uiState.value.profileId &&
+                            sourceProfileId == Settings.selectedProfile &&
+                            RemoteControlManager.remoteServer.value == null
+                        ) {
+                            logProbe("probe_resume_offline", testingTag, "offline", correlation = "resume-$sourceProfileId")
+                            // The online job retains the single-flight slot until this retry ends.
+                            // The offline worker rereads the file and rejects changed content.
+                            testOffline(tags, sourceProfileId, sourceContent, finishOnCompletion = false).join()
+                        }
+                    } else {
+                        sendError(e)
+                    }
                 }
             }
             .invokeOnCompletion { finishUrlTest() }
@@ -433,19 +460,27 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
         testInFlight.set(false)
     }
 
-    private fun testOffline(tags: List<String>) {
-        val profileId = uiState.value.profileId
+    private fun testOffline(
+        tags: List<String>,
+        profileId: Long = uiState.value.profileId,
+        expectedContent: String? = null,
+        finishOnCompletion: Boolean = true,
+    ): Job {
         val fingerprints =
             loadedFingerprints.let { if (it.first == profileId) it.second else emptyMap() }
-        probeJob =
-            viewModelScope
+        return viewModelScope
                 .launch(Dispatchers.IO) {
                     probeMutex.withLock {
                         try {
                             val profile = ProfileManager.get(profileId) ?: return@withLock
+                            val content = File(profile.typed.path).readText()
+                            if (expectedContent != null &&
+                                (content != expectedContent || profileId != Settings.selectedProfile ||
+                                    _serviceStatus.value != Status.Stopped)
+                            ) return@withLock
                             val config =
                                 OutboundProfileState.probeConfig(
-                                    File(profile.typed.path).readText(),
+                                    content,
                                     tags,
                                 )
                             coroutineContext.ensureActive()
@@ -555,7 +590,10 @@ class GroupsViewModel(private val sharedCommandClient: CommandClient? = null) :
                         }
                     }
                 }
-                .also { it.invokeOnCompletion { finishUrlTest() } }
+                .also {
+                    probeJob = it
+                    if (finishOnCompletion) it.invokeOnCompletion { finishUrlTest() }
+                }
     }
 
     // CommandClient.Handler implementation

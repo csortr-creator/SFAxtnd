@@ -59,6 +59,9 @@ data class ProbeOutcome(
 
             val status =
                 when {
+                    chain.any { it is java.util.concurrent.CancellationException } ||
+                        has("context canceled", "context cancelled", "code = canceled", "code = cancelled") ->
+                        ProbeStatus.CANCELLED
                     // Timeouts first: core often reports "dns: exchange failed … deadline exceeded"
                     // which is a timeout on the DNS exchange, not NXDOMAIN.
                     has(

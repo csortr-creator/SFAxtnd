@@ -58,6 +58,23 @@ class ProbeOutcomeTest {
     }
 
     @Test
+    fun grpcContextCancellationIsNotServerFailure() {
+        val outcome = ProbeOutcome.fromThrowable(
+            RuntimeException("url test: rpc error: code = Canceled desc = context canceled"),
+        )
+        assertEquals(ProbeStatus.CANCELLED, outcome.status)
+        assertFalse(outcome.isSuccess)
+    }
+
+    @Test
+    fun wrappedCoroutineCancellationIsStillCancellation() {
+        val outcome = ProbeOutcome.fromThrowable(
+            RuntimeException("probe stopped", java.util.concurrent.CancellationException("cancelled")),
+        )
+        assertEquals(ProbeStatus.CANCELLED, outcome.status)
+    }
+
+    @Test
     fun latencyCacheStoresStatus() {
         val cache = ProfileLatencyCache()
         cache.put(1L, "node", "fp", 0, 1000L, ProbeStatus.DNS_ERROR, "no such host")

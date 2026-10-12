@@ -10,7 +10,6 @@ import io.nekohasekai.sfa.bg.DefaultNetworkListener
 import io.nekohasekai.sfa.bg.PlatformInterfaceWrapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import java.net.NetworkInterface
 
 class OfflineProbePlatform : PlatformInterfaceWrapper {
@@ -24,12 +23,23 @@ class OfflineProbePlatform : PlatformInterfaceWrapper {
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
         runBlocking(Dispatchers.IO) {
             DefaultNetworkListener.start(this@OfflineProbePlatform) { current ->
-                network = current
-                val name = current?.let { Application.connectivity.getLinkProperties(it)?.interfaceName }
-                val index = name?.let { runCatching { NetworkInterface.getByName(it)?.index }.getOrNull() }
-                listener.updateDefaultInterface(name ?: "", index ?: -1, false, false)
+                publishNetwork(current, listener)
             }
+            // Do not return to native Box.Start with an uninitialised default interface.
+            // Get is processed after Start and awaits the first network callback.
+            publishNetwork(awaitProbeNetwork({ network }, { DefaultNetworkListener.get() }), listener)
         }
+    }
+
+    private fun publishNetwork(current: Network?, listener: InterfaceUpdateListener) {
+        network = current
+        val name = current?.let { Application.connectivity.getLinkProperties(it)?.interfaceName }
+        val index = name?.let { runCatching { NetworkInterface.getByName(it)?.index }.getOrNull() }
+        listener.updateDefaultInterface(name ?: "", index ?: -1, false, false)
+    }
+
+    private fun currentNetwork(): Network = runBlocking(Dispatchers.IO) {
+        awaitProbeNetwork({ network }, { DefaultNetworkListener.get() })
     }
 
     override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
@@ -37,9 +47,7 @@ class OfflineProbePlatform : PlatformInterfaceWrapper {
     }
 
     override fun autoDetectInterfaceControl(fd: Int) {
-        val current = network ?: runBlocking(Dispatchers.IO) {
-            withTimeout(5000) { DefaultNetworkListener.get() }
-        }
+        val current = currentNetwork()
         ParcelFileDescriptor.fromFd(fd).use { current.bindSocket(it.fileDescriptor) }
     }
 
@@ -47,7 +55,7 @@ class OfflineProbePlatform : PlatformInterfaceWrapper {
         override fun raw() = false
         override fun exchange(ctx: ExchangeContext, message: ByteArray) = error("not supported")
         override fun lookup(ctx: ExchangeContext, network: String, domain: String) {
-            val current = this@OfflineProbePlatform.network ?: error("Нет подключения к интернету")
+            val current = currentNetwork()
             val addresses = current.getAllByName(domain).filter {
                 when (network) {
                     "ip4" -> it is java.net.Inet4Address

@@ -174,6 +174,28 @@ jobs:
           XHTTP_XRAY_BINARY=/tmp/xray/xray go test -race -timeout 5m \
             -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./transport/v2rayxhttp ./transport/v2ray ./option ./experimental/libbox ./common/tls ./daemon ./common/urltest ./transport/vlessenc
 
+      - name: Test Reality with legacy and current Xray
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl --fail --location --connect-timeout 30 --max-time 120 --retry 3 \
+            https://github.com/XTLS/Xray-core/releases/download/v26.9.9/Xray-linux-64.zip \
+            -o /tmp/xray-modern.zip
+          echo '1eb9175d0f0a8f8149c9230a7fc5ae66ce332ed20a53155ce61fe62e3f58b7df  /tmp/xray-modern.zip' | sha256sum --check
+          mkdir -p /tmp/xray-modern
+          unzip -q /tmp/xray-modern.zip -d /tmp/xray-modern
+          cp protocol-tests/reality/*_test.go sing-box-core/common/tls/
+          cd sing-box-core
+          export XHTTP_XRAY_BINARY=/tmp/xray/xray
+          export SFA_REALITY_XRAY_BINARY=/tmp/xray-modern/xray
+          go test -race -timeout 2m -ldflags=-checklinkname=0 -tags=with_quic,with_utls \
+            ./common/tls -run '^TestSFARealityXrayInterop$' -count=3 -v
+          # sing-vmess Vision uses unsafe reflection incompatible with race checkptr.
+          # Keep auth/plain under -race; run the actual Vision HTTPS exchange separately.
+          go test -timeout 2m -ldflags=-checklinkname=0 -tags=with_quic,with_utls \
+            ./common/tls -run '^TestSFARealityXrayVision$' -count=3 -v
+
       - name: Test proxy share-link import
         shell: bash
         run: |

@@ -79,6 +79,15 @@ else
     git -C sing-box-core apply "$PWD/$REALITY_SPIDER_PATCH"
 fi
 
+# Preserve the fingerprint's hybrid share for current Xray Reality servers.
+REALITY_MLKEM_PATCH=patches/sing-box-1.14.2-reality-mlkem.patch
+if git -C sing-box-core apply --reverse --check "$PWD/$REALITY_MLKEM_PATCH" 2>/dev/null; then
+    echo "Reality ML-KEM compatibility patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$REALITY_MLKEM_PATCH"
+    git -C sing-box-core apply "$PWD/$REALITY_MLKEM_PATCH"
+fi
+
 
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)

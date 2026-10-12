@@ -57,6 +57,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         const val EXTRA_TARGET_PROFILE_ID = "io.nekohasekai.sfa.extra.TARGET_PROFILE_ID"
         /** Optional switch generation; absent/≤0 → RuntimeProfileState.currentSwitchRequestId(). */
         const val EXTRA_SWITCH_REQUEST_ID = "io.nekohasekai.sfa.extra.SWITCH_REQUEST_ID"
+        const val EXTRA_STOP_PROFILE_ID = "io.nekohasekai.sfa.extra.STOP_PROFILE_ID"
 
         /**
          * Start VPN/proxy service.
@@ -80,11 +81,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             ContextCompat.startForegroundService(Application.application, intent)
         }
 
-        fun stop() {
+        fun stop(expectedProfileId: Long = -1L) {
             Application.application.sendBroadcast(
                 Intent(Action.SERVICE_CLOSE).setPackage(
                     Application.application.packageName,
-                ),
+                ).apply {
+                    if (expectedProfileId > 0L) putExtra(EXTRA_STOP_PROFILE_ID, expectedProfileId)
+                },
             )
         }
     }
@@ -102,6 +105,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
                     Action.SERVICE_CLOSE -> {
+                        val expectedProfileId = intent.getLongExtra(EXTRA_STOP_PROFILE_ID, -1L)
+                        if (expectedProfileId > 0L &&
+                            !RuntimeProfileState.shouldStopForDeletion(
+                                expectedProfileId, Settings.selectedProfile, status.value != Status.Stopped,
+                            )
+                        ) return
                         stopService()
                     }
 

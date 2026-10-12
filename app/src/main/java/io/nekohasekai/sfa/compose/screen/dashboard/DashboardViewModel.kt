@@ -30,6 +30,11 @@ import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.HTTPClient
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import android.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -138,6 +143,7 @@ class DashboardViewModel :
     BaseViewModel<DashboardUiState, UiEvent>(),
     CommandClient.Handler {
     private val selectionQueue = ProfileSelectionQueue()
+    private var selectionJob: Job? = null
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
     val serviceStatus: StateFlow<Status> = _serviceStatus.asStateFlow()
 
@@ -230,6 +236,10 @@ class DashboardViewModel :
 
 
     fun toggleService() {
+        if (currentState.isLoading) {
+            stopService()
+            return
+        }
         when (currentState.serviceStatus) {
             Status.Starting, Status.Started -> stopService()
             Status.Stopped -> sendGlobalEvent(UiEvent.RequestStartService)
@@ -238,11 +248,27 @@ class DashboardViewModel :
     }
 
     private fun stopService() {
-        selectionQueue.cancelPending()
+        selectionQueue.cancelAll()
+        val stopId = RuntimeProfileState.nextSwitchRequestId()
+        selectionJob?.cancel()
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                BoxService.stop()
-                // Status will be updated via updateServiceStatus callback
+                // A close broadcast during Starting may be ignored; retry until teardown
+                // or until a newer explicit selection/start supersedes this stop.
+                val stopped = withTimeoutOrNull(STOP_TIMEOUT_MS) {
+                    do {
+                        if (RuntimeProfileState.currentSwitchRequestId() != stopId) return@withTimeoutOrNull true
+                        BoxService.stop(stopRequestId = stopId)
+                        if (_serviceStatus.value == Status.Stopped &&
+                            RuntimeProfileState.startingProfileId == -1L &&
+                            RuntimeProfileState.loadedProfileId == -1L
+                        ) return@withTimeoutOrNull true
+                        delay(100L)
+                    } while (true)
+                }
+                if (stopped == null) sendError(IllegalStateException("VPN stop timeout"))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 sendError(e)
             }
@@ -260,23 +286,33 @@ class DashboardViewModel :
     }
 
     private fun drainProfileSelections() {
-        val status = _serviceStatus.value
-        val request = selectionQueue.take(status == Status.Started || status == Status.Stopped) ?: return
-        val profileId = request.profileId
-        if (profileId in currentState.deletingProfileIds ||
-            (profileId == Settings.selectedProfile && (!request.connect || status == Status.Started))
-        ) {
-            selectionQueue.complete(request)
+        while (true) {
+            val status = _serviceStatus.value
+            val request = selectionQueue.take(status == Status.Started || status == Status.Stopped) ?: return
+            val profileId = request.profileId
+            if (profileId in currentState.deletingProfileIds ||
+                (profileId == Settings.selectedProfile && (!request.connect || status == Status.Started))
+            ) {
+                selectionQueue.complete(request)
+                continue
+            }
+            startProfileSelection(request)
             return
         }
+    }
+
+    private fun startProfileSelection(request: ProfileSelectionQueue.Request) {
+        val profileId = request.profileId
         updateState { copy(isLoading = true, requestedProfileId = profileId) }
         val previousProfileId = Settings.selectedProfile
         val wasRunning = request.connect || _serviceStatus.value == Status.Started
 
-        viewModelScope.launch(Dispatchers.IO) {
+        val switchId = RuntimeProfileState.nextSwitchRequestId()
+        selectionJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 ProfileManager.get(profileId) ?: return@launch
-                val switchId = RuntimeProfileState.nextSwitchRequestId()
+                coroutineContext.ensureActive()
+                if (!RuntimeProfileState.isStartCurrent(switchId, profileId)) return@launch
                 Log.i(
                     TAG,
                     "SELECT_REQUEST id=$switchId target=$profileId previous=$previousProfileId " +
@@ -285,7 +321,7 @@ class DashboardViewModel :
 
                 if (wasRunning) {
                     // R2b: do not write Settings.selectedProfile until BoxService tryMarkLoaded succeeds.
-                    if (_serviceStatus.value != Status.Stopped) BoxService.stop()
+                    if (_serviceStatus.value != Status.Stopped) BoxService.stop(stopRequestId = switchId)
                     Log.i(TAG, "STOP_OLD requested")
                     val stopped =
                         withTimeoutOrNull(STOP_TIMEOUT_MS) {
@@ -302,9 +338,14 @@ class DashboardViewModel :
                     }
                     Log.i(TAG, "OLD_STOPPED")
 
+                    coroutineContext.ensureActive()
+                    if (!RuntimeProfileState.isStartCurrent(switchId, profileId)) return@launch
                     Settings.rebuildServiceMode()
                     sendGlobalEvent(UiEvent.RequestReconnectService)
-                    BoxService.start(targetProfileId = profileId, switchRequestId = switchId)
+                    coroutineContext.ensureActive()
+                    if (!selectionQueue.runIfCurrent(request) {
+                        BoxService.start(targetProfileId = profileId, switchRequestId = switchId)
+                    }) return@launch
                     Log.i(TAG, "START_NEW requested target=$profileId id=$switchId")
 
                     val leftStopped =
@@ -357,19 +398,25 @@ class DashboardViewModel :
                     }
                 } else {
                     // Not running: selection only (next start uses Settings).
-                    Settings.selectedProfile = profileId
+                    coroutineContext.ensureActive()
+                    if (!selectionQueue.runIfCurrent(request) { Settings.selectedProfile = profileId }) return@launch
                 }
 
                 withContext(Dispatchers.Main) { loadProfiles() }
+            } catch (e: CancellationException) {
+                Log.i(TAG, "SELECT_CANCELLED target=$profileId")
+                throw e
             } catch (e: Exception) {
+                coroutineContext.ensureActive()
                 RuntimeProfileState.nextSwitchRequestId()
                 Log.e(TAG, "SELECT_FAILED target=$profileId", e)
                 sendError(e)
             } finally {
-                withContext(Dispatchers.Main) {
+                withContext(NonCancellable + Dispatchers.Main) {
+                    selectionJob = null
                     selectionQueue.complete(request)
                     updateState { copy(isLoading = false, requestedProfileId = null) }
-                    drainProfileSelections()
+                    if (viewModelScope.coroutineContext[Job]?.isActive == true) drainProfileSelections()
                 }
             }
         }

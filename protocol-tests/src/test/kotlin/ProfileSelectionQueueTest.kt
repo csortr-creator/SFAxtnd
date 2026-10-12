@@ -59,12 +59,56 @@ class ProfileSelectionQueueTest {
         assertEquals(4L, queue.take(true)!!.profileId)
     }
 
+    @Test fun stopBeforeDispatchRejectsActiveStart() {
+        val queue = ProfileSelectionQueue()
+        queue.offer(2, true)
+        val active = queue.take(true)!!
+        queue.cancelAll()
+        var starts = 0
+        assertFalse(queue.runIfCurrent(active) { starts++ })
+        assertEquals(0, starts)
+    }
+
+    @Test fun stoppedActiveRequestCannotCarryConnectionIntentIntoNewSelection() {
+        val queue = ProfileSelectionQueue()
+        queue.offer(2, true)
+        val active = queue.take(true)!!
+        queue.cancelAll()
+        queue.offer(3, false)
+        assertNull(queue.take(true))
+        queue.complete(active)
+        assertEquals(ProfileSelectionQueue.Request(3, false), queue.take(true))
+    }
+
+    @Test fun dispatchedStartIsInvalidatedByStopGeneration() {
+        val queue = ProfileSelectionQueue()
+        val runtime = io.nekohasekai.sfa.bg.RuntimeProfileState
+        val switchId = runtime.nextSwitchRequestId()
+        queue.offer(2, true)
+        val active = queue.take(true)!!
+        var dispatched = -1L
+        assertTrue(queue.runIfCurrent(active) { dispatched = switchId })
+        queue.cancelAll()
+        runtime.nextSwitchRequestId()
+        assertFalse(runtime.beginStart(dispatched, 2))
+        assertFalse(runtime.tryMarkLoaded(dispatched, 2, "test"))
+    }
+
+    @Test fun skippedRequestCanImmediatelyDrainNewPendingSelection() {
+        val queue = ProfileSelectionQueue()
+        queue.offer(2, false)
+        val skipped = queue.take(true)!!
+        queue.offer(3, false)
+        queue.complete(skipped)
+        assertEquals(3L, queue.take(true)!!.profileId)
+    }
+
     @Test fun explicitStopCancelsPendingChoice() {
         val queue = ProfileSelectionQueue()
         queue.offer(2, true)
         val active = queue.take(true)!!
         queue.offer(3, true)
-        queue.cancelPending()
+        queue.cancelAll()
         queue.complete(active)
         assertNull(queue.take(true))
     }

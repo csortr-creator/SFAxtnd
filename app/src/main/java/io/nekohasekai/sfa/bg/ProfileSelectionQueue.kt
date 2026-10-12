@@ -6,10 +6,12 @@ class ProfileSelectionQueue {
 
     private var active: Request? = null
     private var pending: Request? = null
+    private var activeCancelled = false
 
     @Synchronized
     fun offer(profileId: Long, serviceWantsConnection: Boolean) {
-        pending = Request(profileId, serviceWantsConnection || active?.connect == true || pending?.connect == true)
+        pending = Request(profileId, serviceWantsConnection ||
+            (!activeCancelled && active?.connect == true) || pending?.connect == true)
     }
 
     @Synchronized
@@ -18,6 +20,7 @@ class ProfileSelectionQueue {
         val request = pending ?: return null
         pending = null
         active = request
+        activeCancelled = false
         return request
     }
 
@@ -27,7 +30,17 @@ class ProfileSelectionQueue {
     }
 
     @Synchronized
-    fun cancelPending() {
+    fun cancelAll() {
         pending = null
+        // Retain the active slot until its coroutine has finished cleaning up.
+        activeCancelled = true
+    }
+
+    /** Serialize dispatch with cancellation; a cancelled request cannot dispatch a start. */
+    @Synchronized
+    fun runIfCurrent(request: Request, action: () -> Unit): Boolean {
+        if (active !== request || activeCancelled) return false
+        action()
+        return true
     }
 }

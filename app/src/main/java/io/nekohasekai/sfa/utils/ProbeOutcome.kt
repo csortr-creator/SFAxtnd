@@ -33,8 +33,7 @@ data class ProbeOutcome(
         /** Default URL when libbox/sing-box receives an empty test URL. */
         const val DEFAULT_PROBE_URL = "https://www.gstatic.com/generate_204"
 
-        fun success(delayMs: Int) =
-            ProbeOutcome(ProbeStatus.SUCCESS, delayMs.coerceAtLeast(0), "")
+        fun success(delayMs: Int) = ProbeOutcome(ProbeStatus.SUCCESS, delayMs.coerceAtLeast(0), "")
 
         fun untested() = ProbeOutcome(ProbeStatus.UNTESTED)
 
@@ -54,8 +53,7 @@ data class ProbeOutcome(
             val messages =
                 chain.mapNotNull { it.message?.lowercase() }.joinToString(" ")
 
-            fun has(vararg tokens: String) =
-                tokens.any { t -> typeNames.contains(t, ignoreCase = true) || messages.contains(t) }
+            fun has(vararg tokens: String) = tokens.any { t -> typeNames.contains(t, ignoreCase = true) || messages.contains(t) }
 
             val status =
                 when {

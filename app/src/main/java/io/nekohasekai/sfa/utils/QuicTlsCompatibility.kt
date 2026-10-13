@@ -7,6 +7,7 @@ internal object QuicTlsCompatibility {
     const val XRAY_HYSTERIA_NOTE =
         "Hysteria2: параметр fp/fingerprint из ссылки или Xray JSON не задаёт отпечаток QUIC в Xray. " +
             "Сохранены отдельные настройки QUIC, SNI и проверки сертификата."
+
     /**
      * Xray's Hysteria dialer calls GetTLSConfig (crypto/tls), not UClient.
      * Its tlsSettings.fingerprint/share-link fp has no effect on the QUIC hello.

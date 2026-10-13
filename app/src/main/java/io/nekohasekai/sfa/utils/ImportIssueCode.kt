@@ -10,12 +10,16 @@ package io.nekohasekai.sfa.utils
 enum class ImportIssueCode {
     /** Malformed single element (e.g. expected object in array). */
     FORMAT_ERROR,
+
     /** Share-link / field parse failure for one server. */
     PARSE_ERROR,
+
     /** Critical parameter known to be unsupported. */
     UNSUPPORTED_FEATURE,
+
     /** NodeCore rejected the node after a green family control. */
     NODE_CORE_INVALID,
+
     /** Ambiguous or non-classified node failure (safe default). */
     UNKNOWN,
     ;

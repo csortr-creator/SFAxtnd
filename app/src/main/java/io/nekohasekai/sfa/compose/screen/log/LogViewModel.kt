@@ -8,7 +8,6 @@ import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
-import java.util.LinkedList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -16,8 +15,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.LinkedList
 
-class LogViewModel : BaseLogViewModel(), CommandClient.Handler {
+class LogViewModel :
+    BaseLogViewModel(),
+    CommandClient.Handler {
     companion object {
         private val maxLines = 3000
     }
@@ -40,21 +42,24 @@ class LogViewModel : BaseLogViewModel(), CommandClient.Handler {
     init {
         viewModelScope.launch {
             combine(
-                    AppLifecycleObserver.isUiActive,
-                    RemoteControlManager.remoteServer,
-                    RemoteControlManager.isConnected,
-                    serviceStatusFlow,
-                    visibleScreens,
-                ) { foreground, remoteServer, remoteConnected, status, visible ->
-                    SessionTarget(
-                        connect =
-                            foreground &&
-                                visible > 0 &&
-                                if (remoteServer != null) remoteConnected
-                                else status == Status.Started,
-                        remoteServerId = remoteServer?.id,
-                    )
-                }
+                AppLifecycleObserver.isUiActive,
+                RemoteControlManager.remoteServer,
+                RemoteControlManager.isConnected,
+                serviceStatusFlow,
+                visibleScreens,
+            ) { foreground, remoteServer, remoteConnected, status, visible ->
+                SessionTarget(
+                    connect =
+                    foreground &&
+                        visible > 0 &&
+                        if (remoteServer != null) {
+                            remoteConnected
+                        } else {
+                            status == Status.Started
+                        },
+                    remoteServerId = remoteServer?.id,
+                )
+            }
                 .distinctUntilChanged()
                 .collect { target ->
                     if (target.connect) {
@@ -87,7 +92,8 @@ class LogViewModel : BaseLogViewModel(), CommandClient.Handler {
         }
         when (status) {
             Status.Stopped,
-            Status.Stopping -> {
+            Status.Stopping,
+            -> {
                 _uiState.update { it.copy(isConnected = false) }
             }
 
@@ -154,8 +160,8 @@ class LogViewModel : BaseLogViewModel(), CommandClient.Handler {
 
                 if (
                     _autoScrollEnabled.value &&
-                        !_uiState.value.isPaused &&
-                        !_uiState.value.isSearchActive
+                    !_uiState.value.isPaused &&
+                    !_uiState.value.isSearchActive
                 ) {
                     scrollToBottom()
                 }

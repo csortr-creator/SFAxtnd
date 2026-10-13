@@ -10,8 +10,11 @@ class ProfileSelectionQueue {
 
     @Synchronized
     fun offer(profileId: Long, serviceWantsConnection: Boolean) {
-        pending = Request(profileId, serviceWantsConnection ||
-            (!activeCancelled && active?.connect == true) || pending?.connect == true)
+        pending = Request(
+            profileId,
+            serviceWantsConnection ||
+                (!activeCancelled && active?.connect == true) || pending?.connect == true,
+        )
     }
 
     @Synchronized

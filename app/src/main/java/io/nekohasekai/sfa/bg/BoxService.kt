@@ -42,9 +42,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
@@ -55,6 +55,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
         /** Optional explicit profile for R2b switch; absent/≤0 → Settings.selectedProfile. */
         const val EXTRA_TARGET_PROFILE_ID = "io.nekohasekai.sfa.extra.TARGET_PROFILE_ID"
+
         /** Optional switch generation; absent/≤0 → RuntimeProfileState.currentSwitchRequestId(). */
         const val EXTRA_SWITCH_REQUEST_ID = "io.nekohasekai.sfa.extra.SWITCH_REQUEST_ID"
         const val EXTRA_STOP_PROFILE_ID = "io.nekohasekai.sfa.extra.STOP_PROFILE_ID"
@@ -109,13 +110,19 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                         val stopRequestId = intent.getLongExtra(EXTRA_STOP_REQUEST_ID, -1L)
                         if (stopRequestId > 0L &&
                             stopRequestId != RuntimeProfileState.currentSwitchRequestId()
-                        ) return
+                        ) {
+                            return
+                        }
                         val expectedProfileId = intent.getLongExtra(EXTRA_STOP_PROFILE_ID, -1L)
                         if (expectedProfileId > 0L &&
                             !RuntimeProfileState.shouldStopForDeletion(
-                                expectedProfileId, Settings.selectedProfile, status.value != Status.Stopped,
+                                expectedProfileId,
+                                Settings.selectedProfile,
+                                status.value != Status.Stopped,
                             )
-                        ) return
+                        ) {
+                            return
+                        }
                         stopService()
                     }
 
@@ -137,13 +144,16 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private var lastProfileName = ""
     private val reloadMutex = Mutex()
+
     /** Serializes stop vs start body so start cannot overlap an in-flight stop. */
     private val lifecycleMutex = Mutex()
 
-    private fun sanitizeRuntimeConfig(content: String): String =
-        io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
-            content, Settings.routingBlockIpv6, Settings.tunStack, Settings.coreOptionsJson,
-        )
+    private fun sanitizeRuntimeConfig(content: String): String = io.nekohasekai.sfa.utils.OutboundProfileState.runtimeConfig(
+        content,
+        Settings.routingBlockIpv6,
+        Settings.tunStack,
+        Settings.coreOptionsJson,
+    )
 
     private suspend fun startService(requestId: Long, profileId: Long) {
         try {
@@ -170,9 +180,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             val selected = org.json.JSONObject(Settings.outboundSelections)
                 .optJSONObject(selectedProfileId.toString())?.toString().orEmpty()
-            val content = sanitizeRuntimeConfig(io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
-                File(profile.typed.path).readText(), selected,
-            ))
+            val content = sanitizeRuntimeConfig(
+                io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
+                    File(profile.typed.path).readText(),
+                    selected,
+                ),
+            )
             if (content.isBlank()) {
                 stopAndAlert(Alert.EmptyConfiguration)
                 return
@@ -298,10 +311,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
 
         val selected = org.json.JSONObject(Settings.outboundSelections)
-                .optJSONObject(selectedProfileId.toString())?.toString().orEmpty()
-            val content = sanitizeRuntimeConfig(io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
-                File(profile.typed.path).readText(), selected,
-            ))
+            .optJSONObject(selectedProfileId.toString())?.toString().orEmpty()
+        val content = sanitizeRuntimeConfig(
+            io.nekohasekai.sfa.utils.OutboundProfileState.withSelections(
+                File(profile.typed.path).readText(),
+                selected,
+            ),
+        )
         if (content.isBlank()) {
             stopAndAlert(Alert.EmptyConfiguration)
             return

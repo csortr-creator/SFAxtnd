@@ -15,14 +15,14 @@ import androidx.navigation.NavController
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.compose.component.PreferenceSection
 import io.nekohasekai.sfa.database.Settings
-import java.io.File
-import java.net.URI
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.net.URI
+import java.util.UUID
 
 @Composable
 fun RuleSetsScreen(navController: NavController) {
@@ -86,7 +86,7 @@ fun RuleSetsScreen(navController: NavController) {
                                                 JSONObject()
                                                     .put("rule_set", JSONArray().put(ruleSet)),
                                             )
-                                            .toString()
+                                            .toString(),
                                     )
                                     ruleSet
                                 } catch (e: Exception) {
@@ -103,7 +103,7 @@ fun RuleSetsScreen(navController: NavController) {
                             persist(
                                 (0 until current.length()).mapNotNull {
                                     current.optJSONObject(it)
-                                } + item
+                                } + item,
                             )
                             open = false
                         }
@@ -124,9 +124,11 @@ fun RuleSetsScreen(navController: NavController) {
                     headlineContent = { Text(item.optString("tag")) },
                     supportingContent = {
                         Text(
-                            if (item.optString("type") == "local")
+                            if (item.optString("type") == "local") {
                                 "Локальный файл · ${item.optString("format")}"
-                            else item.optString("url")
+                            } else {
+                                item.optString("url")
+                            },
                         )
                     },
                     trailingContent = {
@@ -144,19 +146,21 @@ fun RuleSetsScreen(navController: NavController) {
                                             ?.map(String::trim)
                                             ?.contains(item.optString("tag")) == true
                                     }
-                                if (used)
+                                if (used) {
                                     error =
                                         "Список используется в правиле. Сначала удалите его из условий правила."
-                                else persist(entries.filterIndexed { n, _ -> n != index })
-                            }
+                                } else {
+                                    persist(entries.filterIndexed { n, _ -> n != index })
+                                }
+                            },
                         ) {
                             Icon(Icons.Default.Delete, "Удалить список")
                         }
                     },
                     colors =
-                        ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                        ),
+                    ListItemDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
                 )
             }
             TextButton(
@@ -182,12 +186,12 @@ fun RuleSetsScreen(navController: NavController) {
                 tag !in io.nekohasekai.sfa.utils.RoutingPresets.remoteRuleSets
         val urlValid =
             runCatching {
-                    URI(url).let {
-                        it.scheme in setOf("http", "https") &&
-                            !it.host.isNullOrBlank() &&
-                            it.userInfo == null
-                    }
+                URI(url).let {
+                    it.scheme in setOf("http", "https") &&
+                        !it.host.isNullOrBlank() &&
+                        it.userInfo == null
                 }
+            }
                 .getOrDefault(false)
         AlertDialog(
             onDismissRequest = { if (!busy) open = false },
@@ -230,7 +234,7 @@ fun RuleSetsScreen(navController: NavController) {
                                     .put("type", "remote")
                                     .put("format", format)
                                     .put("url", url)
-                                    .put("download_detour", "direct")
+                                    .put("download_detour", "direct"),
                         )
                         open = false
                     },
@@ -248,11 +252,12 @@ fun RuleSetsScreen(navController: NavController) {
             },
         )
     }
-    if (error != null)
+    if (error != null) {
         AlertDialog(
             onDismissRequest = { error = null },
             title = { Text("Не удалось изменить список") },
             text = { Text(error!!) },
             confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } },
         )
+    }
 }

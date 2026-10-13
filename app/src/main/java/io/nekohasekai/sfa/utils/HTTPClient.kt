@@ -5,13 +5,13 @@ import android.os.Build
 import android.util.Log
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.ktx.unwrap
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.Closeable
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import org.json.JSONArray
-import org.json.JSONObject
 
 private val hwidMemoryCache = ConcurrentHashMap<String, String>()
 
@@ -47,53 +47,55 @@ class HTTPClient : Closeable {
      * Libbox HTTP client timeout API is not configured here (no public timeout setters
      * used in this codebase); resilience is provided by [SubscriptionFetchRetry].
      */
-    private fun executeFetch(url: String) =
-        SubscriptionFetchRetry.run(
-            onAttempt = { attempt, code, willRetry ->
-                Log.i(
-                    FETCH_TAG,
-                    "event=subscription_fetch_attempt attempt=$attempt code=$code willRetry=$willRetry",
-                )
-            },
-        ) {
-            val request = client.newRequest()
-            request.setURL(url)
+    private fun executeFetch(url: String) = SubscriptionFetchRetry.run(
+        onAttempt = { attempt, code, willRetry ->
+            Log.i(
+                FETCH_TAG,
+                "event=subscription_fetch_attempt attempt=$attempt code=$code willRetry=$willRetry",
+            )
+        },
+    ) {
+        val request = client.newRequest()
+        request.setURL(url)
 
-            val hwid = getOrCreateHwid(url)
+        val hwid = getOrCreateHwid(url)
 
-            val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
-            val rawModel = Build.MODEL
-            val model =
-                if (rawModel.startsWith(manufacturer, ignoreCase = true)) rawModel
-                else "$manufacturer $rawModel"
-            val androidVer = Build.VERSION.RELEASE
-            val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
+        val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+        val rawModel = Build.MODEL
+        val model =
+            if (rawModel.startsWith(manufacturer, ignoreCase = true)) {
+                rawModel
+            } else {
+                "$manufacturer $rawModel"
+            }
+        val androidVer = Build.VERSION.RELEASE
+        val buildId = Build.ID.ifEmpty { "UKQ1.231003.002" }
 
-            val userAgentStr =
-                "sing-box/1.14.0 notemp/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
+        val userAgentStr =
+            "sing-box/1.14.0 notemp/${io.nekohasekai.sfa.BuildConfig.VERSION_NAME} (Linux; Android $androidVer; $model Build/$buildId) HWID/$hwid"
 
-            request.setUserAgent(userAgentStr)
-            request.setHeader("HWID", hwid)
-            request.setHeader("hwid", hwid)
-            request.setHeader("X-HWID", hwid)
-            request.setHeader("Device-ID", hwid)
-            request.setHeader("Happ-HWID", hwid)
+        request.setUserAgent(userAgentStr)
+        request.setHeader("HWID", hwid)
+        request.setHeader("hwid", hwid)
+        request.setHeader("X-HWID", hwid)
+        request.setHeader("Device-ID", hwid)
+        request.setHeader("Happ-HWID", hwid)
 
-            val fullDeviceTitle = "$model (Android $androidVer)"
-            request.setHeader("Device-Name", fullDeviceTitle)
-            request.setHeader("X-Device-Name", fullDeviceTitle)
-            request.setHeader("Happ-Device-Name", fullDeviceTitle)
-            request.setHeader("Device-Model", model)
-            request.setHeader("X-Device-Model", model)
-            request.setHeader("Device-OS", "Android $androidVer")
-            request.setHeader("X-Device-OS", "Android $androidVer")
+        val fullDeviceTitle = "$model (Android $androidVer)"
+        request.setHeader("Device-Name", fullDeviceTitle)
+        request.setHeader("X-Device-Name", fullDeviceTitle)
+        request.setHeader("Happ-Device-Name", fullDeviceTitle)
+        request.setHeader("Device-Model", model)
+        request.setHeader("X-Device-Model", model)
+        request.setHeader("Device-OS", "Android $androidVer")
+        request.setHeader("X-Device-OS", "Android $androidVer")
 
-            request.setHeader("App-Name", "notemp")
-            request.setHeader("Platform", "Android")
-            request.setHeader("Accept", "*/*")
+        request.setHeader("App-Name", "notemp")
+        request.setHeader("Platform", "Android")
+        request.setHeader("Accept", "*/*")
 
-            request.execute()
-        }
+        request.execute()
+    }
 
     private fun getOrCreateHwid(url: String): String {
         val normalizedUrl = url.trim()
@@ -132,21 +134,20 @@ class HTTPClient : Closeable {
         return fallbackHwid
     }
 
-    private fun getApplicationContext(): Context? =
+    private fun getApplicationContext(): Context? = try {
+        val appClass = Class.forName("io.nekohasekai.sfa.Application")
+        val field = appClass.getDeclaredField("application")
+        field.isAccessible = true
+        field.get(null) as? Context
+    } catch (e: Exception) {
         try {
-            val appClass = Class.forName("io.nekohasekai.sfa.Application")
-            val field = appClass.getDeclaredField("application")
-            field.isAccessible = true
-            field.get(null) as? Context
-        } catch (e: Exception) {
-            try {
-                val activityThreadClass = Class.forName("android.app.ActivityThread")
-                val currentAppMethod = activityThreadClass.getMethod("currentApplication")
-                currentAppMethod.invoke(null) as? Context
-            } catch (e2: Exception) {
-                null
-            }
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentAppMethod = activityThreadClass.getMethod("currentApplication")
+            currentAppMethod.invoke(null) as? Context
+        } catch (e2: Exception) {
+            null
         }
+    }
 
     internal fun processSubscriptionContent(raw: String): String {
         val result = parseSubscription(raw)
@@ -163,10 +164,10 @@ class HTTPClient : Closeable {
         NodeCoreValidator.beginBatch()
         try {
             return SubscriptionContentParser(
-                    io.nekohasekai.sfa.database.Settings.tunStack,
-                    io.nekohasekai.sfa.database.Settings.routingBlockIpv6,
-                    validateNode = { node -> NodeCoreValidator.validateOrThrow(node) },
-                )
+                io.nekohasekai.sfa.database.Settings.tunStack,
+                io.nekohasekai.sfa.database.Settings.routingBlockIpv6,
+                validateNode = { node -> NodeCoreValidator.validateOrThrow(node) },
+            )
                 .parse(raw)
         } finally {
             NodeCoreValidator.endBatch()

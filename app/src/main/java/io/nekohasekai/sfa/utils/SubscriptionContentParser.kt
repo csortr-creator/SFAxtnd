@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.utils
 
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 internal class SubscriptionContentParser(
     private val tunStack: String = "system",
@@ -76,7 +76,7 @@ internal class SubscriptionContentParser(
                     if (e is java.util.concurrent.CancellationException) throw e
                     val classified = classifyParserError(e)
                     issues.add(
-                        SubscriptionImportIssue(line, name, classified.second, classified.first)
+                        SubscriptionImportIssue(line, name, classified.second, classified.first),
                     )
                     return
                 }
@@ -92,7 +92,7 @@ internal class SubscriptionContentParser(
                             name,
                             "Ядро отклонило параметры сервера",
                             ImportIssueCode.NODE_CORE_INVALID,
-                        )
+                        ),
                     )
                     return
                 }
@@ -103,7 +103,7 @@ internal class SubscriptionContentParser(
                         name,
                         "Некорректные параметры или кодировка ссылки",
                         ImportIssueCode.UNKNOWN,
-                    )
+                    ),
                 )
                 return
             }
@@ -147,8 +147,10 @@ internal class SubscriptionContentParser(
         val label = when {
             '#' in line -> line.substringAfter('#')
             line.startsWith("vmess://") -> runCatching {
-                JSONObject(decodeBase64(line.removePrefix("vmess://").substringBefore('?'))
-                    .toString(StandardCharsets.UTF_8)).opt("ps") as? String
+                JSONObject(
+                    decodeBase64(line.removePrefix("vmess://").substringBefore('?'))
+                        .toString(StandardCharsets.UTF_8),
+                ).opt("ps") as? String
             }.getOrNull()
             else -> null
         }
@@ -195,17 +197,17 @@ internal class SubscriptionContentParser(
             )
         if (
             parsePrefixes.any { message.startsWith(it) } &&
-                !message.contains("://") &&
-                message.length <= 160 &&
-                message.all { !it.isISOControl() }
+            !message.contains("://") &&
+            message.length <= 160 &&
+            message.all { !it.isISOControl() }
         ) {
             return ImportIssueCode.PARSE_ERROR to message
         }
         if (
             message.startsWith("Unsupported ") &&
-                !message.contains("://") &&
-                message.length <= 160 &&
-                message.all { !it.isISOControl() }
+            !message.contains("://") &&
+            message.length <= 160 &&
+            message.all { !it.isISOControl() }
         ) {
             return ImportIssueCode.UNSUPPORTED_FEATURE to message
         }
@@ -219,154 +221,154 @@ internal class SubscriptionContentParser(
         jsonStr: String,
         mode: SubscriptionRouting.Mode,
         migrationWarnings: MutableList<String> = mutableListOf(),
-    ): String =
-        try {
-            val fixedRaw =
-                jsonStr
-                    .replace(
-                        "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs",
-                        "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs",
-                    )
-                    .replace("\"geosite-ru\"", "\"geosite-category-ru\"")
+    ): String = try {
+        val fixedRaw =
+            jsonStr
+                .replace(
+                    "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs",
+                    "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs",
+                )
+                .replace("\"geosite-ru\"", "\"geosite-category-ru\"")
 
-            val root = JSONObject(fixedRaw)
-            val dns = root.optJSONObject("dns")
-            if (dns != null) {
-                dns.remove("independent_cache")
+        val root = JSONObject(fixedRaw)
+        val dns = root.optJSONObject("dns")
+        if (dns != null) {
+            dns.remove("independent_cache")
 
-                if (dns.has("address_strategy")) {
-                    val strat = dns.remove("address_strategy")
-                    if (!dns.has("strategy")) {
-                        dns.put("strategy", strat)
-                    }
+            if (dns.has("address_strategy")) {
+                val strat = dns.remove("address_strategy")
+                if (!dns.has("strategy")) {
+                    dns.put("strategy", strat)
                 }
+            }
 
-                val servers = dns.optJSONArray("servers")
-                if (servers != null) {
-                    val cleanedServers = JSONArray()
-                    for (i in 0 until servers.length()) {
-                        val server = servers.optJSONObject(i) ?: continue
+            val servers = dns.optJSONArray("servers")
+            if (servers != null) {
+                val cleanedServers = JSONArray()
+                for (i in 0 until servers.length()) {
+                    val server = servers.optJSONObject(i) ?: continue
 
-                        server.remove("strategy")
-                        server.remove("address_strategy")
+                    server.remove("strategy")
+                    server.remove("address_strategy")
 
-                        if (server.optString("type") == "rcode") {
-                            continue
-                        }
+                    if (server.optString("type") == "rcode") {
+                        continue
+                    }
 
-                        if (server.optString("detour") == "direct") {
-                            server.remove("detour")
-                        }
+                    if (server.optString("detour") == "direct") {
+                        server.remove("detour")
+                    }
 
-                        if (server.has("address") && !server.has("type")) {
-                            val addr = server.remove("address").toString().trim()
-                            try {
-                                when {
-                                    addr == "fakeip" || addr.startsWith("fakeip://") -> Unit
-                                    addr == "local" || addr.startsWith("rcode://") ->
-                                        server.put("type", "local")
-                                    addr.startsWith("https://") -> {
-                                        server.put("type", "https")
-                                        val cleanAddr = addr.removePrefix("https://")
-                                        val host =
-                                            cleanAddr.substringBefore("/").substringBefore(":")
-                                        val path =
-                                            if (cleanAddr.contains("/"))
-                                                "/" + cleanAddr.substringAfter("/")
-                                            else "/dns-query"
-                                        server.put("server", host)
-                                        server.put("path", path)
-                                    }
-                                    addr.startsWith("tls://") -> {
-                                        server.put("type", "tls")
-                                        val cleanAddr = addr.removePrefix("tls://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    addr.startsWith("tcp://") -> {
-                                        server.put("type", "tcp")
-                                        val cleanAddr = addr.removePrefix("tcp://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    addr.startsWith("udp://") -> {
-                                        server.put("type", "udp")
-                                        val cleanAddr = addr.removePrefix("udp://")
-                                        server.put("server", cleanAddr.substringBefore(":"))
-                                    }
-                                    else -> {
-                                        server.put("type", "udp")
-                                        server.put("server", addr)
-                                    }
+                    if (server.has("address") && !server.has("type")) {
+                        val addr = server.remove("address").toString().trim()
+                        try {
+                            when {
+                                addr == "fakeip" || addr.startsWith("fakeip://") -> Unit
+                                addr == "local" || addr.startsWith("rcode://") ->
+                                    server.put("type", "local")
+                                addr.startsWith("https://") -> {
+                                    server.put("type", "https")
+                                    val cleanAddr = addr.removePrefix("https://")
+                                    val host =
+                                        cleanAddr.substringBefore("/").substringBefore(":")
+                                    val path =
+                                        if (cleanAddr.contains("/")) {
+                                            "/" + cleanAddr.substringAfter("/")
+                                        } else {
+                                            "/dns-query"
+                                        }
+                                    server.put("server", host)
+                                    server.put("path", path)
                                 }
-                            } catch (e: Exception) {
-                                server.put("type", "udp")
-                                server.put(
-                                    "server",
-                                    addr.substringAfter("://").substringBefore("/"),
-                                )
+                                addr.startsWith("tls://") -> {
+                                    server.put("type", "tls")
+                                    val cleanAddr = addr.removePrefix("tls://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                addr.startsWith("tcp://") -> {
+                                    server.put("type", "tcp")
+                                    val cleanAddr = addr.removePrefix("tcp://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                addr.startsWith("udp://") -> {
+                                    server.put("type", "udp")
+                                    val cleanAddr = addr.removePrefix("udp://")
+                                    server.put("server", cleanAddr.substringBefore(":"))
+                                }
+                                else -> {
+                                    server.put("type", "udp")
+                                    server.put("server", addr)
+                                }
                             }
+                        } catch (e: Exception) {
+                            server.put("type", "udp")
+                            server.put(
+                                "server",
+                                addr.substringAfter("://").substringBefore("/"),
+                            )
                         }
-                        if (server.has("address_resolver")) {
-                            val res = server.remove("address_resolver")
-                            server.put("domain_resolver", res)
-                        }
-                        cleanedServers.put(server)
                     }
-                    dns.put("servers", cleanedServers)
-                }
-            }
-
-            val inbounds = root.optJSONArray("inbounds")
-            if (inbounds != null) {
-                for (i in 0 until inbounds.length()) {
-                    val inbound = inbounds.optJSONObject(i) ?: continue
-                    if (inbound.optString("type") == "tun") {
-                        inbound.put("stack", tunStack)
-                        val addresses = JSONArray()
-                        if (inbound.has("inet4_address")) {
-                            val v = inbound.remove("inet4_address")
-                            if (v is JSONArray) {
-                                for (j in 0 until v.length()) addresses.put(v.get(j))
-                            } else {
-                                addresses.put(v)
-                            }
-                        }
-                        if (inbound.has("inet6_address")) {
-                            val v = inbound.remove("inet6_address")
-                            if (v is JSONArray) {
-                                for (j in 0 until v.length()) addresses.put(v.get(j))
-                            } else {
-                                addresses.put(v)
-                            }
-                        }
-                        if (addresses.length() > 0 && !inbound.has("address")) {
-                            inbound.put("address", addresses)
-                        }
-                        inbound.remove("sniff")
+                    if (server.has("address_resolver")) {
+                        val res = server.remove("address_resolver")
+                        server.put("domain_resolver", res)
                     }
+                    cleanedServers.put(server)
                 }
+                dns.put("servers", cleanedServers)
             }
-
-            val outbounds = root.optJSONArray("outbounds")
-            if (outbounds != null) {
-                val cleanedOutbounds = JSONArray()
-                for (i in 0 until outbounds.length()) {
-                    val ob = outbounds.optJSONObject(i) ?: continue
-                    if (ob.optString("type") != "dns") {
-                        cleanedOutbounds.put(QuicTlsCompatibility.normalize(ob))
-                    }
-                }
-                root.put("outbounds", cleanedOutbounds)
-            }
-
-            root.optJSONObject("dns")?.let { DnsFakeIpMigration.migrate(it, migrationWarnings) }
-
-            SubscriptionRouting.apply(root, mode, blockIpv6)
-
-            root.toString(2)
-        } catch (e: LegacyDnsFakeIpIncompatibleException) {
-            throw e
         }
 
+        val inbounds = root.optJSONArray("inbounds")
+        if (inbounds != null) {
+            for (i in 0 until inbounds.length()) {
+                val inbound = inbounds.optJSONObject(i) ?: continue
+                if (inbound.optString("type") == "tun") {
+                    inbound.put("stack", tunStack)
+                    val addresses = JSONArray()
+                    if (inbound.has("inet4_address")) {
+                        val v = inbound.remove("inet4_address")
+                        if (v is JSONArray) {
+                            for (j in 0 until v.length()) addresses.put(v.get(j))
+                        } else {
+                            addresses.put(v)
+                        }
+                    }
+                    if (inbound.has("inet6_address")) {
+                        val v = inbound.remove("inet6_address")
+                        if (v is JSONArray) {
+                            for (j in 0 until v.length()) addresses.put(v.get(j))
+                        } else {
+                            addresses.put(v)
+                        }
+                    }
+                    if (addresses.length() > 0 && !inbound.has("address")) {
+                        inbound.put("address", addresses)
+                    }
+                    inbound.remove("sniff")
+                }
+            }
+        }
+
+        val outbounds = root.optJSONArray("outbounds")
+        if (outbounds != null) {
+            val cleanedOutbounds = JSONArray()
+            for (i in 0 until outbounds.length()) {
+                val ob = outbounds.optJSONObject(i) ?: continue
+                if (ob.optString("type") != "dns") {
+                    cleanedOutbounds.put(QuicTlsCompatibility.normalize(ob))
+                }
+            }
+            root.put("outbounds", cleanedOutbounds)
+        }
+
+        root.optJSONObject("dns")?.let { DnsFakeIpMigration.migrate(it, migrationWarnings) }
+
+        SubscriptionRouting.apply(root, mode, blockIpv6)
+
+        root.toString(2)
+    } catch (e: LegacyDnsFakeIpIncompatibleException) {
+        throw e
+    }
 
     private fun tryDecodeBase64(text: String): String {
         val trimmed = text.trim()
@@ -388,8 +390,8 @@ internal class SubscriptionContentParser(
             val decodedStr = String(decoded, StandardCharsets.UTF_8).trim()
             if (
                 decodedStr.contains("://") ||
-                    decodedStr.startsWith("{") ||
-                    decodedStr.startsWith("[") || ForeignSubscriptionParser.looksLike(decodedStr)
+                decodedStr.startsWith("{") ||
+                decodedStr.startsWith("[") || ForeignSubscriptionParser.looksLike(decodedStr)
             ) {
                 return decodedStr
             }
@@ -429,19 +431,19 @@ internal class SubscriptionContentParser(
                 val kl = k.lowercase()
                 if (
                     kl in
-                        setOf(
-                            "mux",
-                            "muxprotocol",
-                            "muxconcurrency",
-                            "max_streams",
-                            "maxstreams",
-                            "max_connections",
-                            "maxconnections",
-                            "min_streams",
-                            "minstreams",
-                            "muxpadding",
-                            "padding",
-                        )
+                    setOf(
+                        "mux",
+                        "muxprotocol",
+                        "muxconcurrency",
+                        "max_streams",
+                        "maxstreams",
+                        "max_connections",
+                        "maxconnections",
+                        "min_streams",
+                        "minstreams",
+                        "muxpadding",
+                        "padding",
+                    )
                 ) {
                     val v = source.opt(k)?.toString() ?: continue
                     if (v.isNotBlank()) p.putIfAbsent(kl, v)
@@ -455,11 +457,13 @@ internal class SubscriptionContentParser(
                 "1",
                 "true",
                 "yes",
-                "on" -> true
+                "on",
+                -> true
                 "0",
                 "false",
                 "no",
-                "off" -> false
+                "off",
+                -> false
                 else -> muxRaw.toIntOrNull()?.let { it > 0 } ?: false
             }
         if (!enabled) return
@@ -469,7 +473,8 @@ internal class SubscriptionContentParser(
                 when (it) {
                     "smux",
                     "yamux",
-                    "h2mux" -> it
+                    "h2mux",
+                    -> it
                     else -> "smux"
                 }
             }
@@ -581,11 +586,11 @@ internal class SubscriptionContentParser(
                     trimmed.startsWith("trojan://") -> parseTrojan(trimmed)
                     trimmed.startsWith("ss://") -> parseShadowsocks(trimmed)
                     trimmed.startsWith("tuic://") || trimmed.startsWith("anytls://") || trimmed.startsWith("socks://") || trimmed.startsWith("socks5://") || trimmed.startsWith("http://") || trimmed.startsWith("https://") -> ProxyLinkParser.additional(trimmed)
-                trimmed.startsWith("hysteria://") ||
+                    trimmed.startsWith("hysteria://") ||
                         trimmed.startsWith("hysteria2://") ||
                         trimmed.startsWith("hy2://") -> ProxyLinkParser.hysteria(trimmed) { note ->
-                            if (note !in shareLinkWarnings) shareLinkWarnings.add(note)
-                        }
+                        if (note !in shareLinkWarnings) shareLinkWarnings.add(note)
+                    }
                     else -> null
                 }
             if (node != null) nodes.add(node)
@@ -641,7 +646,7 @@ internal class SubscriptionContentParser(
             require(
                 key.isNotBlank() &&
                     runCatching { Base64.getUrlDecoder().decode(key).size == 32 }
-                        .getOrDefault(false)
+                        .getOrDefault(false),
             ) {
                 "Reality requires a valid public key (pbk)"
             }
@@ -649,7 +654,7 @@ internal class SubscriptionContentParser(
             require(
                 sid.length <= 16 &&
                     sid.length % 2 == 0 &&
-                    sid.all { it in "0123456789abcdefABCDEF" }
+                    sid.all { it in "0123456789abcdefABCDEF" },
             ) {
                 "Invalid Reality short ID"
             }
@@ -741,9 +746,11 @@ internal class SubscriptionContentParser(
         val tag = cleanNodeName(vmessJson.optString("ps"))
         val host = vmessJson.optString("add")
         val port =
-            if (vmessJson.has("port"))
+            if (vmessJson.has("port")) {
                 vmessJson.optString("port").toIntOrNull() ?: error("Invalid VMess server port")
-            else 443
+            } else {
+                443
+            }
         val uuid = vmessJson.optString("id")
         if (host.isEmpty() || uuid.isEmpty()) return null
 
@@ -775,8 +782,9 @@ internal class SubscriptionContentParser(
                         .optString("alpn")
                         .takeIf { it.isNotBlank() }
                         ?.let { put("alpn", JSONArray(it.split(','))) }
-                    if (vmessJson.has("allowInsecure"))
+                    if (vmessJson.has("allowInsecure")) {
                         put("insecure", ProxyLinkParser.boolean(vmessJson.optString("allowInsecure")))
+                    }
                     vmessJson
                         .optString("fp")
                         .takeIf { it.isNotBlank() }
@@ -887,8 +895,7 @@ internal class SubscriptionContentParser(
         return outbound
     }
 
-    private fun parseShadowsocks(line: String): JSONObject =
-        ProxyLinkParser.shadowsocks(line).also { applyMultiplex(it) }
+    private fun parseShadowsocks(line: String): JSONObject = ProxyLinkParser.shadowsocks(line).also { applyMultiplex(it) }
 
     private fun buildSingBoxConfig(
         nodes: List<JSONObject>,
@@ -961,7 +968,7 @@ internal class SubscriptionContentParser(
                         put("path", "/dns-query")
                         put("domain_resolver", "dns-direct")
                         put("detour", SubscriptionRouting.NORMAL_SELECTOR_TAG)
-                    }
+                    },
                 )
                 put(
                     JSONObject().apply {
@@ -969,7 +976,7 @@ internal class SubscriptionContentParser(
                         put("type", "udp")
                         put("server", "77.88.8.8")
                         put("server_port", 53)
-                    }
+                    },
                 )
             }
         dnsObj.put("servers", dnsServers)
@@ -991,7 +998,7 @@ internal class SubscriptionContentParser(
                         put("auto_route", true)
                         put("strict_route", false)
                         put("stack", tunStack)
-                    }
+                    },
                 )
             },
         )
@@ -1011,7 +1018,7 @@ internal class SubscriptionContentParser(
                     outs.put("direct")
                     put("outbounds", outs)
                     if (tagsForNormal.isNotEmpty()) put("default", tagsForNormal[0])
-                }
+                },
             )
         }
 
@@ -1031,7 +1038,7 @@ internal class SubscriptionContentParser(
                     outs.put("direct")
                     put("outbounds", outs)
                     if (tagsForWl.isNotEmpty()) put("default", tagsForWl[0])
-                }
+                },
             )
         }
 
@@ -1044,7 +1051,7 @@ internal class SubscriptionContentParser(
                 JSONObject().apply {
                     put("type", "direct")
                     put("tag", "direct")
-                }
+                },
             )
         }
         if (validNodes.none { it.optString("tag") == "block" }) {
@@ -1052,7 +1059,7 @@ internal class SubscriptionContentParser(
                 JSONObject().apply {
                     put("type", "block")
                     put("tag", "block")
-                }
+                },
             )
         }
 

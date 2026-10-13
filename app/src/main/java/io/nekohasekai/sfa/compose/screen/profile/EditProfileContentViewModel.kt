@@ -210,8 +210,8 @@ class EditProfileContentViewModel(private val profileId: Long, initialIsReadOnly
                             isLoading = false,
                             originalContent = currentContent,
                             hasUnsavedChanges =
-                                latestContent?.let { text -> text != currentContent }
-                                    ?: it.hasUnsavedChanges,
+                            latestContent?.let { text -> text != currentContent }
+                                ?: it.hasUnsavedChanges,
                             showSaveSuccessMessage = true,
                         )
                     }

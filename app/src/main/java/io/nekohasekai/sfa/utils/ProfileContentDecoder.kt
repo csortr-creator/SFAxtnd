@@ -14,8 +14,9 @@ object ProfileContentDecoder {
 
     internal fun decodeWithReport(data: ByteArray): DecodedProfileContent {
         val text = data.toString(Charsets.UTF_8).trim()
-        if (!SubscriptionContentParser.supports(text))
+        if (!SubscriptionContentParser.supports(text)) {
             return DecodedProfileContent(Libbox.decodeProfileContent(data), null)
+        }
         val result = HTTPClient().use { it.parseSubscription(text) }
         Libbox.checkConfig(result.config)
         val name =

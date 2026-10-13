@@ -121,8 +121,11 @@ fun ConnectionInfoPill(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (startTime != null) UptimeText(startTime)
-                else Text("—", style = MaterialTheme.typography.labelLarge)
+                if (startTime != null) {
+                    UptimeText(startTime)
+                } else {
+                    Text("—", style = MaterialTheme.typography.labelLarge)
+                }
             }
             VerticalDivider(
                 Modifier.height(28.dp),

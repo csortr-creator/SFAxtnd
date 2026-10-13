@@ -46,7 +46,7 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                 supportingContent = {
                     Text(
                         targets.firstOrNull { it.first == rule.optString("target") }?.second
-                            ?: "DNS через прокси"
+                            ?: "DNS через прокси",
                     )
                 },
                 trailingContent = {
@@ -57,11 +57,14 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                                     JSONObject(rule.toString())
                                         .put("enabled", !rule.optBoolean("enabled", true))
                                 save(list.toMutableList().also { it[index] = next })
-                            }
+                            },
                         ) {
                             Icon(
-                                if (rule.optBoolean("enabled", true)) Icons.Default.CheckCircle
-                                else Icons.Default.RadioButtonUnchecked,
+                                if (rule.optBoolean("enabled", true)) {
+                                    Icons.Default.CheckCircle
+                                } else {
+                                    Icons.Default.RadioButtonUnchecked
+                                },
                                 "Включить правило",
                             )
                         }
@@ -69,7 +72,7 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                             onClick = {
                                 editing = index
                                 draft = rule.toString()
-                            }
+                            },
                         ) {
                             Icon(Icons.Default.Edit, "Изменить")
                         }
@@ -79,9 +82,9 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                     }
                 },
                 colors =
-                    ListItemDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
+                ListItemDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
             )
             Row(Modifier.padding(horizontal = 16.dp)) {
                 TextButton(
@@ -91,7 +94,7 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                             list.toMutableList().also {
                                 val item = it.removeAt(index)
                                 it.add(index - 1, item)
-                            }
+                            },
                         )
                     },
                 ) {
@@ -104,7 +107,7 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                             list.toMutableList().also {
                                 val item = it.removeAt(index)
                                 it.add(index + 1, item)
-                            }
+                            },
                         )
                     },
                 ) {
@@ -168,7 +171,7 @@ internal fun DnsRoutingContent(dns: JSONObject, onChange: (JSONArray) -> Unit) {
                         save(
                             list.toMutableList().also {
                                 if (editing == -1) it.add(next) else it[editing!!] = next
-                            }
+                            },
                         )
                         editing = null
                     },

@@ -36,8 +36,7 @@ object RuntimeProfileState {
     fun currentSwitchRequestId(): Long = switchIds.get()
 
     @Synchronized
-    fun isStartCurrent(requestId: Long, profileId: Long): Boolean =
-        requestId == currentSwitchRequestId() && profileId !in deletingProfileIds
+    fun isStartCurrent(requestId: Long, profileId: Long): Boolean = requestId == currentSwitchRequestId() && profileId !in deletingProfileIds
 
     /** Register the target before reading its configuration or starting the native service. */
     @Synchronized
@@ -57,14 +56,15 @@ object RuntimeProfileState {
     }
 
     @Synchronized
-    fun usesProfile(profileId: Long): Boolean =
-        startingProfileId == profileId || loadedProfileId == profileId
+    fun usesProfile(profileId: Long): Boolean = startingProfileId == profileId || loadedProfileId == profileId
 
     /** Prefer actual ownership; selectedProfile is only a fallback before runtime is known. */
     @Synchronized
-    fun shouldStopForDeletion(profileId: Long, selectedProfileId: Long, serviceActive: Boolean): Boolean =
-        if (startingProfileId != -1L || loadedProfileId != -1L) usesProfile(profileId)
-        else serviceActive && selectedProfileId == profileId
+    fun shouldStopForDeletion(profileId: Long, selectedProfileId: Long, serviceActive: Boolean): Boolean = if (startingProfileId != -1L || loadedProfileId != -1L) {
+        usesProfile(profileId)
+    } else {
+        serviceActive && selectedProfileId == profileId
+    }
 
     @Synchronized
     fun unblockProfileAfterFailedDelete(profileId: Long) {
@@ -104,6 +104,5 @@ object RuntimeProfileState {
         return dig.take(8).joinToString("") { b -> "%02x".format(b) }
     }
 
-    fun selectedMatchesLoaded(selectedProfileId: Long): Boolean =
-        loadedProfileId != -1L && loadedProfileId == selectedProfileId
+    fun selectedMatchesLoaded(selectedProfileId: Long): Boolean = loadedProfileId != -1L && loadedProfileId == selectedProfileId
 }

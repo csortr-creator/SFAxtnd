@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.utils
 
-import java.net.URLDecoder
-import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLDecoder
+import java.util.Base64
 
 internal object ProxyLinkParser {
     private val schemes =
@@ -28,7 +28,7 @@ internal object ProxyLinkParser {
             parts.size == 4 &&
                 parts[0] == "mlkem768x25519plus" &&
                 parts[1] == "native" &&
-                parts[2] in setOf("0rtt", "1rtt")
+                parts[2] in setOf("0rtt", "1rtt"),
         ) {
             "Unsupported VLESS encryption profile"
         }
@@ -44,15 +44,14 @@ internal object ProxyLinkParser {
             }
         require(
             key.size in setOf(32, 1184) &&
-                Base64.getUrlEncoder().withoutPadding().encodeToString(key) == parts[3]
+                Base64.getUrlEncoder().withoutPadding().encodeToString(key) == parts[3],
         ) {
             "Invalid VLESS encryption key"
         }
         node.put("encryption", value)
     }
 
-    fun isShareLink(text: String): Boolean =
-        text.trim().substringBefore("://").lowercase() in schemes
+    fun isShareLink(text: String): Boolean = text.trim().substringBefore("://").lowercase() in schemes
 
     // URI components are not form data: a literal '+' in a password must survive decoding.
     fun decode(value: String): String = URLDecoder.decode(value.replace("+", "%2B"), "UTF-8")
@@ -70,18 +69,20 @@ internal object ProxyLinkParser {
 
     fun connectionQuery(value: String?): Map<String, String> {
         val source = query(value).toMutableMap()
-        for ((alias, canonical) in
-            mapOf(
-                "peer" to "sni",
-                "serverName" to "sni",
-                "insecure" to "allowInsecure",
-                "skip-cert-verify" to "allowInsecure",
-                "fingerprint" to "fp",
-                "publicKey" to "pbk",
-                "shortId" to "sid",
-                "network" to "type",
-                "service_name" to "serviceName",
-            )) {
+        for (
+        (alias, canonical) in
+        mapOf(
+            "peer" to "sni",
+            "serverName" to "sni",
+            "insecure" to "allowInsecure",
+            "skip-cert-verify" to "allowInsecure",
+            "fingerprint" to "fp",
+            "publicKey" to "pbk",
+            "shortId" to "sid",
+            "network" to "type",
+            "service_name" to "serviceName",
+        )
+        ) {
             source.remove(alias)?.let { converted ->
                 require(!source.containsKey(canonical) || source[canonical] == converted) {
                     "Invalid conflicting share-link aliases"
@@ -161,14 +162,15 @@ internal object ProxyLinkParser {
     fun certificatePin(value: String): String {
         val hex = value.replace(":", "").trim()
         val bytes =
-            if (hex.length == 64 && hex.all { it in "0123456789abcdefABCDEF" })
+            if (hex.length == 64 && hex.all { it in "0123456789abcdefABCDEF" }) {
                 hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            else
+            } else {
                 try {
                     Base64.getDecoder().decode(value)
                 } catch (_: IllegalArgumentException) {
                     error("Invalid certificate SHA-256 fingerprint")
                 }
+            }
         require(bytes.size == 32) { "Invalid certificate SHA-256 fingerprint" }
         return Base64.getEncoder().encodeToString(bytes)
     }
@@ -186,7 +188,7 @@ internal object ProxyLinkParser {
                 require(
                     list.all { name ->
                         name.isNotBlank() && name.none { ch -> ch.isWhitespace() || ch in "/?#@" }
-                    }
+                    },
                 ) {
                     "Invalid certificate verification name"
                 }
@@ -194,8 +196,7 @@ internal object ProxyLinkParser {
             }
     }
 
-    fun applyFinalMask(node: JSONObject, mask: JSONObject) =
-        FinalMaskCompatibility.apply(node, mask)
+    fun applyFinalMask(node: JSONObject, mask: JSONObject) = FinalMaskCompatibility.apply(node, mask)
 
     fun applyReality(
         tls: JSONObject,
@@ -207,14 +208,14 @@ internal object ProxyLinkParser {
         require(
             publicKey.isNotBlank() &&
                 runCatching { Base64.getUrlDecoder().decode(publicKey).size == 32 }
-                    .getOrDefault(false)
+                    .getOrDefault(false),
         ) {
             "Reality requires a valid public key"
         }
         require(
             shortId.length <= 16 &&
                 shortId.length % 2 == 0 &&
-                shortId.all { it in "0123456789abcdefABCDEF" }
+                shortId.all { it in "0123456789abcdefABCDEF" },
         ) {
             "Invalid Reality short ID"
         }
@@ -265,18 +266,20 @@ internal object ProxyLinkParser {
             }
         val unsupported = params.keys.firstOrNull { it !in allowed }
         require(unsupported == null) { "Unsupported share-link parameter: $unsupported" }
-        for ((alias, canonical) in
-            mapOf(
-                "peer" to "sni",
-                "insecure" to "allowInsecure",
-                "congestion-control" to "congestion_control",
-                "udp-relay-mode" to "udp_relay_mode",
-                "reduce-rtt" to "zero_rtt_handshake",
-            )) {
+        for (
+        (alias, canonical) in
+        mapOf(
+            "peer" to "sni",
+            "insecure" to "allowInsecure",
+            "congestion-control" to "congestion_control",
+            "udp-relay-mode" to "udp_relay_mode",
+            "reduce-rtt" to "zero_rtt_handshake",
+        )
+        ) {
             require(
                 params[alias] == null ||
                     params[canonical] == null ||
-                    params[alias] == params[canonical]
+                    params[alias] == params[canonical],
             ) {
                 "Invalid conflicting share-link aliases"
             }
@@ -288,7 +291,8 @@ internal object ProxyLinkParser {
                 when (scheme) {
                     "http" -> 80
                     "socks",
-                    "socks5" -> 1080
+                    "socks5",
+                    -> 1080
                     else -> 443
                 },
             )
@@ -296,7 +300,8 @@ internal object ProxyLinkParser {
         val type =
             when (scheme) {
                 "socks",
-                "socks5" -> "socks"
+                "socks5",
+                -> "socks"
                 "https" -> "http"
                 else -> scheme
             }
@@ -312,14 +317,18 @@ internal object ProxyLinkParser {
                 node
                     .put("uuid", decode(userInfo.substringBefore(':')))
                     .put("password", decode(userInfo.substringAfter(':')))
-                for ((from, to) in
-                    mapOf(
-                        "congestion_control" to "congestion_control",
-                        "congestion-control" to "congestion_control",
-                        "udp_relay_mode" to "udp_relay_mode",
-                        "udp-relay-mode" to "udp_relay_mode",
-                        "heartbeat" to "heartbeat",
-                    )) params[from]?.let { node.put(to, it) }
+                for (
+                (from, to) in
+                mapOf(
+                    "congestion_control" to "congestion_control",
+                    "congestion-control" to "congestion_control",
+                    "udp_relay_mode" to "udp_relay_mode",
+                    "udp-relay-mode" to "udp_relay_mode",
+                    "heartbeat" to "heartbeat",
+                )
+                ) {
+                    params[from]?.let { node.put(to, it) }
+                }
                 (params["zero_rtt_handshake"] ?: params["reduce-rtt"])?.let {
                     node.put("zero_rtt_handshake", boolean(it))
                 }
@@ -327,9 +336,12 @@ internal object ProxyLinkParser {
             "anytls" -> {
                 require(userInfo.isNotEmpty()) { "Missing AnyTLS password" }
                 node.put("password", decode(userInfo))
-                for (key in listOf("idle_session_check_interval", "idle_session_timeout")) params[
-                        key]
-                    ?.let { node.put(key, it) }
+                for (key in listOf("idle_session_check_interval", "idle_session_timeout")) {
+                    params[
+                        key,
+                    ]
+                        ?.let { node.put(key, it) }
+                }
                 params["min_idle_session"]?.let {
                     node.put(
                         "min_idle_session",
@@ -338,7 +350,8 @@ internal object ProxyLinkParser {
                 }
             }
             "http",
-            "socks" -> {
+            "socks",
+            -> {
                 if (userInfo.isNotEmpty()) {
                     require(':' in userInfo) { "Missing proxy username and password" }
                     node
@@ -366,7 +379,9 @@ internal object ProxyLinkParser {
             }
             params["disable_sni"]?.let { tls.put("disable_sni", boolean(it)) }
             node.put("tls", tls)
-        } else require(params.isEmpty()) { "Unsupported TLS options for plain HTTP proxy" }
+        } else {
+            require(params.isEmpty()) { "Unsupported TLS options for plain HTTP proxy" }
+        }
         return node
     }
 
@@ -414,8 +429,11 @@ internal object ProxyLinkParser {
         require(password.isNotEmpty() || method == "none") { "Missing Shadowsocks password" }
         val authority = decoded.substringAfterLast('@')
         require(
-            if (authority.startsWith('[')) authority.substringAfter(']').startsWith(':')
-            else ':' in authority
+            if (authority.startsWith('[')) {
+                authority.substringAfter(']').startsWith(':')
+            } else {
+                ':' in authority
+            },
         ) {
             "Missing Shadowsocks server port"
         }
@@ -449,18 +467,20 @@ internal object ProxyLinkParser {
         val body = line.substringAfter("://").substringBefore('#')
         val authority = body.substringBefore('?').trimEnd('/')
         val params = query(body.substringAfter('?', "")).toMutableMap()
-        for ((alias, canonical) in
-            mapOf(
-                "allowInsecure" to "insecure",
-                "skip-cert-verify" to "insecure",
-                "serverName" to "sni",
-                "peer" to "sni",
-                "fingerprint" to "fp",
-                "obfsPassword" to "obfs-password",
-                "hop-interval" to "hopInterval",
-                "up" to "upmbps",
-                "down" to "downmbps",
-            )) {
+        for (
+        (alias, canonical) in
+        mapOf(
+            "allowInsecure" to "insecure",
+            "skip-cert-verify" to "insecure",
+            "serverName" to "sni",
+            "peer" to "sni",
+            "fingerprint" to "fp",
+            "obfsPassword" to "obfs-password",
+            "hop-interval" to "hopInterval",
+            "up" to "upmbps",
+            "down" to "downmbps",
+        )
+        ) {
             params.remove(alias)?.let { value ->
                 require(params[canonical] == null || params[canonical] == value) {
                     "Invalid conflicting Hysteria aliases"
@@ -504,8 +524,11 @@ internal object ProxyLinkParser {
             "Unsupported Hysteria transport"
         }
         val auth =
-            if ('@' in authority) decode(authority.substringBeforeLast('@'))
-            else params["auth"].orEmpty()
+            if ('@' in authority) {
+                decode(authority.substringBeforeLast('@'))
+            } else {
+                params["auth"].orEmpty()
+            }
         val server = endpoint(authority.substringAfterLast('@'))
         val tls =
             JSONObject()
@@ -605,8 +628,11 @@ internal object ProxyLinkParser {
         applyXrayVerification(tls, params["pcs"], params["vcn"])
         params["fm"]?.let { applyFinalMask(result, JSONObject(it)) }
         if (v2 && !params["fp"].isNullOrBlank()) warn(QuicTlsCompatibility.XRAY_HYSTERIA_NOTE)
-        return if (v2) QuicTlsCompatibility.fromXrayHysteria(result)
-        else QuicTlsCompatibility.normalize(result)
+        return if (v2) {
+            QuicTlsCompatibility.fromXrayHysteria(result)
+        } else {
+            QuicTlsCompatibility.normalize(result)
+        }
     }
 
     private fun bandwidth(
@@ -631,48 +657,51 @@ internal object ProxyLinkParser {
         }
     }
 
-    fun boolean(value: String): Boolean =
-        when (value.lowercase()) {
-            "1",
-            "true" -> true
-            "0",
-            "false" -> false
-            else -> error("Invalid boolean share-link parameter")
-        }
+    fun boolean(value: String): Boolean = when (value.lowercase()) {
+        "1",
+        "true",
+        -> true
+        "0",
+        "false",
+        -> false
+        else -> error("Invalid boolean share-link parameter")
+    }
 
-    fun transport(network: String, params: Map<String, String>, defaultHost: String): JSONObject? =
-        when (network.lowercase()) {
-            "",
-            "tcp",
-            "raw" -> null
-            "ws" ->
-                JSONObject()
-                    .put("type", "ws")
-                    .put("path", params["path"] ?: "/")
-                    .put(
-                        "headers",
-                        JSONObject()
-                            .put("Host", params["host"]?.takeIf { it.isNotBlank() } ?: defaultHost),
-                    )
-            "http",
-            "h2" ->
-                JSONObject()
-                    .put("type", "http")
-                    .put("host", JSONArray(params["host"]?.split(',') ?: listOf(defaultHost)))
-                    .put("path", params["path"] ?: "/")
-            "grpc" ->
-                JSONObject()
-                    .put("type", "grpc")
-                    .put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
-            "httpupgrade" ->
-                JSONObject()
-                    .put("type", "httpupgrade")
-                    .put("path", params["path"] ?: "/")
-                    .put("host", params["host"] ?: defaultHost)
-            "xhttp",
-            "splithttp" -> xhttp(params)
-            else -> error("Unsupported transport: $network")
-        }
+    fun transport(network: String, params: Map<String, String>, defaultHost: String): JSONObject? = when (network.lowercase()) {
+        "",
+        "tcp",
+        "raw",
+        -> null
+        "ws" ->
+            JSONObject()
+                .put("type", "ws")
+                .put("path", params["path"] ?: "/")
+                .put(
+                    "headers",
+                    JSONObject()
+                        .put("Host", params["host"]?.takeIf { it.isNotBlank() } ?: defaultHost),
+                )
+        "http",
+        "h2",
+        ->
+            JSONObject()
+                .put("type", "http")
+                .put("host", JSONArray(params["host"]?.split(',') ?: listOf(defaultHost)))
+                .put("path", params["path"] ?: "/")
+        "grpc" ->
+            JSONObject()
+                .put("type", "grpc")
+                .put("service_name", params["serviceName"] ?: params["service_name"] ?: "")
+        "httpupgrade" ->
+            JSONObject()
+                .put("type", "httpupgrade")
+                .put("path", params["path"] ?: "/")
+                .put("host", params["host"] ?: defaultHost)
+        "xhttp",
+        "splithttp",
+        -> xhttp(params)
+        else -> error("Unsupported transport: $network")
+    }
 
     private val ranges =
         mapOf(
@@ -735,10 +764,11 @@ internal object ProxyLinkParser {
             val value = extra.get(key)
             if (
                 value === JSONObject.NULL &&
-                    key in
-                        setOf("downloadSettings", "download_settings", "headers", "xmux", "extra")
-            )
+                key in
+                setOf("downloadSettings", "download_settings", "headers", "xmux", "extra")
+            ) {
                 continue
+            }
             when {
                 key in ranges -> result.put(ranges.getValue(key), range(value))
                 key in fields -> result.put(fields.getValue(key), value)
@@ -793,8 +823,11 @@ internal object ProxyLinkParser {
                 ?: source.optJSONObject("splithttpSettings")
                 ?: JSONObject()
         val result = convertExtra(settings.optJSONObject("extra") ?: JSONObject())
-        for (key in listOf("host", "path", "mode")) if (settings.has(key))
-            result.put(key, settings.get(key))
+        for (key in listOf("host", "path", "mode")) {
+            if (settings.has(key)) {
+                result.put(key, settings.get(key))
+            }
+        }
         normalizeMode(result)
         require(source.optString("network", "xhttp") in setOf("xhttp", "splithttp")) {
             "Unsupported XHTTP download transport"
@@ -802,9 +835,11 @@ internal object ProxyLinkParser {
         result.put("server", source.getString("address")).put("server_port", source.getInt("port"))
         when (source.optString("security", "none")) {
             "none",
-            "" -> Unit
+            "",
+            -> Unit
             "tls",
-            "reality" -> {
+            "reality",
+            -> {
                 val reality = source.optString("security") == "reality"
                 val options =
                     source.optJSONObject(if (reality) "realitySettings" else "tlsSettings")
@@ -816,22 +851,25 @@ internal object ProxyLinkParser {
                             "server_name",
                             options.optString("serverName", source.getString("address")),
                         )
-                if (options.has("allowInsecure"))
+                if (options.has("allowInsecure")) {
                     tls.put("insecure", options.getBoolean("allowInsecure"))
+                }
                 if (options.has("alpn")) tls.put("alpn", options.getJSONArray("alpn"))
-                if (options.has("fingerprint"))
+                if (options.has("fingerprint")) {
                     tls.put(
                         "utls",
                         JSONObject()
                             .put("enabled", true)
                             .put("fingerprint", options.getString("fingerprint")),
                     )
+                }
                 if (reality) {
-                    if (!tls.has("utls"))
+                    if (!tls.has("utls")) {
                         tls.put(
                             "utls",
                             JSONObject().put("enabled", true).put("fingerprint", "chrome"),
                         )
+                    }
                     tls.put(
                         "reality",
                         JSONObject()
@@ -850,7 +888,7 @@ internal object ProxyLinkParser {
     private fun normalizeMode(settings: JSONObject) {
         if (
             settings.has("mode") &&
-                (settings.isNull("mode") || settings.optString("mode").isBlank())
+            (settings.isNull("mode") || settings.optString("mode").isBlank())
         ) {
             settings.put("mode", "auto")
         }
@@ -859,25 +897,31 @@ internal object ProxyLinkParser {
     private fun xhttp(params: Map<String, String>): JSONObject {
         val result =
             convertExtra(
-                params["extra"]?.takeIf { it.isNotBlank() }?.let { JSONObject(it) } ?: JSONObject()
+                params["extra"]?.takeIf { it.isNotBlank() }?.let { JSONObject(it) } ?: JSONObject(),
             )
         params["x_padding_bytes"]?.let { value ->
             val padding = range(value)
             val existing = result.optJSONObject("x_padding_bytes")
-            require(existing == null ||
-                (existing.getInt("from") == padding.getInt("from") &&
-                 existing.getInt("to") == padding.getInt("to"))) {
+            require(
+                existing == null ||
+                    (
+                        existing.getInt("from") == padding.getInt("from") &&
+                            existing.getInt("to") == padding.getInt("to")
+                        ),
+            ) {
                 "Conflicting XHTTP padding parameters"
             }
             result.put("x_padding_bytes", padding)
         }
-        for (key in listOf("host", "path", "mode")) params[key]
-            ?.takeIf { it.isNotBlank() }
-            ?.let { result.put(key, it) }
+        for (key in listOf("host", "path", "mode")) {
+            params[key]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { result.put(key, it) }
+        }
         normalizeMode(result)
         require(
             result.optString("mode", "auto") in
-                setOf("auto", "packet-up", "stream-up", "stream-one")
+                setOf("auto", "packet-up", "stream-up", "stream-one"),
         ) {
             "Unsupported XHTTP mode"
         }

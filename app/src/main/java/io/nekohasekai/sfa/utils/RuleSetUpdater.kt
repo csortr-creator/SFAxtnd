@@ -3,14 +3,14 @@ package io.nekohasekai.sfa.utils
 import android.content.Context
 import android.util.Log
 import io.nekohasekai.libbox.Libbox
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 object RuleSetUpdater {
     private const val TAG = "RuleSetUpdater"
@@ -131,11 +131,11 @@ object RuleSetUpdater {
                                                 .put("type", "local")
                                                 .put("tag", "validate-update")
                                                 .put("format", format)
-                                                .put("path", tempFile.absolutePath)
+                                                .put("path", tempFile.absolutePath),
                                         ),
                                 ),
                         )
-                        .toString()
+                        .toString(),
                 )
                 if (tempFile.renameTo(destFile)) {
                     Log.i(TAG, "Successfully downloaded to ${destFile.absolutePath}")

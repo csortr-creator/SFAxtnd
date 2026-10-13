@@ -13,11 +13,11 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
-import io.nekohasekai.sfa.utils.ProfileContentDecoder
-import io.nekohasekai.sfa.utils.ProxyLinkParser
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.qrs.QRSDecoder
 import io.nekohasekai.sfa.qrs.readIntLE
+import io.nekohasekai.sfa.utils.ProfileContentDecoder
+import io.nekohasekai.sfa.utils.ProxyLinkParser
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

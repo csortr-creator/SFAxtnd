@@ -88,7 +88,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                         "sources" -> "Списки сайтов и IP"
                         "advanced" -> "Дополнительные настройки"
                         else -> "Маршрутизация"
-                    }
+                    },
                 )
             },
             navigationIcon = {
@@ -179,7 +179,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
             )
     }
 
-    if (showResetRules)
+    if (showResetRules) {
         AlertDialog(
             onDismissRequest = { showResetRules = false },
             title = { Text("Удалить мои правила?") },
@@ -189,13 +189,14 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     onClick = {
                         showResetRules = false
                         persist(nextRules = emptyList())
-                    }
+                    },
                 ) {
                     Text("Удалить")
                 }
             },
             dismissButton = { TextButton(onClick = { showResetRules = false }) { Text("Отмена") } },
         )
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, section) {
@@ -259,13 +260,13 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
     val itemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
     Column(
         modifier =
-            Modifier.fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                    bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
-                )
+        Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                bottom = scaffoldPadding.calculateBottomPadding() + 24.dp,
+            ),
     ) {
         if (section == "overview") {
             PreferenceSection(
@@ -339,9 +340,9 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                             },
                             colors = itemColors,
                             modifier =
-                                Modifier.clickable {
-                                    navController.navigate("settings/routing/rule/${indexed.index}")
-                                },
+                            Modifier.clickable {
+                                navController.navigate("settings/routing/rule/${indexed.index}")
+                            },
                         )
                     }
                 FilledTonalButton(
@@ -358,8 +359,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 "Можно включать и выключать по отдельности",
             ) {
                 val whitelistEnabled =
-                    listOf(RoutingPresets.WHITELIST_DOMAINS, RoutingPresets.WHITELIST_IPS).all { tag
-                        ->
+                    listOf(RoutingPresets.WHITELIST_DOMAINS, RoutingPresets.WHITELIST_IPS).all { tag ->
                         rules.any { it.enabled && tag in RoutingPresets.tags(it.ruleSet) }
                     }
                 RoutingPresetRow(
@@ -370,8 +370,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 ) { enabled ->
                     persist(
                         nextRules =
-                            if (enabled) RoutingPresets.whitelist(rules)
-                            else rules.filterNot(RoutingPresets::isWhitelist)
+                        if (enabled) {
+                            RoutingPresets.whitelist(rules)
+                        } else {
+                            rules.filterNot(RoutingPresets::isWhitelist)
+                        },
                     )
                 }
                 RoutingPresetRow(
@@ -382,8 +385,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                 ) { enabled ->
                     persist(
                         nextRules =
-                            if (enabled) RoutingPresets.rfDirect(rules)
-                            else rules.filterNot(RoutingPresets::isRf)
+                        if (enabled) {
+                            RoutingPresets.rfDirect(rules)
+                        } else {
+                            rules.filterNot(RoutingPresets::isRf)
+                        },
                     )
                 }
                 RoutingPresetRow(
@@ -395,14 +401,16 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     val keep = rules.filter { it.name != "ads" }
                     persist(
                         nextRules =
-                            if (!enabled) keep
-                            else
-                                keep +
-                                    RoutingRule(
-                                        name = "ads",
-                                        ruleSet = "geosite-category-ads-all",
-                                        outbound = RoutingRule.OUTBOUND_BLOCK,
-                                    )
+                        if (!enabled) {
+                            keep
+                        } else {
+                            keep +
+                                RoutingRule(
+                                    name = "ads",
+                                    ruleSet = "geosite-category-ads-all",
+                                    outbound = RoutingRule.OUTBOUND_BLOCK,
+                                )
+                        },
                     )
                 }
             }
@@ -425,8 +433,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
 
                 RoutingSectionLink(
                     "DNS · адреса сайтов",
-                    if (servers.isEmpty()) "Используются настройки подписки"
-                    else "Своих DNS-серверов: ${servers.size}",
+                    if (servers.isEmpty()) {
+                        "Используются настройки подписки"
+                    } else {
+                        "Своих DNS-серверов: ${servers.size}"
+                    },
                     Icons.Outlined.Dns,
                 ) {
                     navController.navigate("settings/dns")
@@ -478,13 +489,14 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     }
                 },
             ) {
-                if (rules.isEmpty())
+                if (rules.isEmpty()) {
                     EmptyStateBox(
                         "Для остальных сайтов используются маршруты подписки",
                         "Добавить правило",
                     ) {
                         navController.navigate("settings/routing/rule/-1")
                     }
+                }
                 rules.forEachIndexed { index, rule ->
                     var menuOpen by remember(rule.displayTitle(), index) { mutableStateOf(false) }
                     ListItem(
@@ -511,8 +523,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                 },
                                 null,
                                 tint =
-                                    if (rule.enabled) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                if (rule.enabled) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                         },
                         trailingContent = {
@@ -522,9 +537,9 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                     onCheckedChange = { on ->
                                         persist(
                                             nextRules =
-                                                rules.toMutableList().also {
-                                                    it[index] = rule.copy(enabled = on)
-                                                }
+                                            rules.toMutableList().also {
+                                                it[index] = rule.copy(enabled = on)
+                                            },
                                         )
                                     },
                                 )
@@ -542,11 +557,11 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                             onClick = {
                                                 menuOpen = false
                                                 navController.navigate(
-                                                    "settings/routing/rule/$index"
+                                                    "settings/routing/rule/$index",
                                                 )
                                             },
                                         )
-                                        if (index > 0)
+                                        if (index > 0) {
                                             DropdownMenuItem(
                                                 text = { Text("Поднять правило") },
                                                 onClick = {
@@ -558,7 +573,8 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                                     persist(nextRules = next)
                                                 },
                                             )
-                                        if (index < rules.lastIndex)
+                                        }
+                                        if (index < rules.lastIndex) {
                                             DropdownMenuItem(
                                                 text = { Text("Опустить правило") },
                                                 onClick = {
@@ -570,6 +586,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                                     persist(nextRules = next)
                                                 },
                                             )
+                                        }
                                         DropdownMenuItem(
                                             text = { Text("Удалить") },
                                             leadingIcon = { Icon(Icons.Outlined.Delete, null) },
@@ -577,9 +594,9 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                                 menuOpen = false
                                                 persist(
                                                     nextRules =
-                                                        rules.toMutableList().also {
-                                                            it.removeAt(index)
-                                                        }
+                                                    rules.toMutableList().also {
+                                                        it.removeAt(index)
+                                                    },
                                                 )
                                             },
                                         )
@@ -589,23 +606,25 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                         },
                         colors = itemColors,
                         modifier =
-                            Modifier.clickable {
-                                navController.navigate("settings/routing/rule/$index")
-                            },
+                        Modifier.clickable {
+                            navController.navigate("settings/routing/rule/$index")
+                        },
                     )
-                    if (index < rules.lastIndex)
+                    if (index < rules.lastIndex) {
                         HorizontalDivider(
                             Modifier.padding(start = 56.dp, end = 16.dp),
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
+                    }
                 }
-                if (rules.isNotEmpty())
+                if (rules.isNotEmpty()) {
                     TextButton(
                         onClick = { showResetRules = true },
                         modifier = Modifier.padding(horizontal = 16.dp),
                     ) {
                         Text("Удалить все мои правила")
                     }
+                }
             }
         }
         if (section == "dns") {
@@ -637,10 +656,10 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                 nextReverse = true,
                                 nextFinal = "cld",
                                 nextServers =
-                                    listOf(
-                                        DnsServer("cld", "https://1.1.1.1/dns-query", "proxy"),
-                                        DnsServer("ynd", "77.88.8.8", "direct"),
-                                    ),
+                                listOf(
+                                    DnsServer("cld", "https://1.1.1.1/dns-query", "proxy"),
+                                    DnsServer("ynd", "77.88.8.8", "direct"),
+                                ),
                             )
                         },
                         label = { Text("Cloudflare + Яндекс") },
@@ -654,7 +673,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                 nextReverse = false,
                                 nextFinal = "cld",
                                 nextServers =
-                                    listOf(DnsServer("cld", "https://1.1.1.1/dns-query", "proxy")),
+                                listOf(DnsServer("cld", "https://1.1.1.1/dns-query", "proxy")),
                             )
                         },
                         label = { Text("Cloudflare") },
@@ -668,7 +687,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                 nextFinal = "",
                                 nextServers = emptyList(),
                             )
-                        }
+                        },
                     ) {
                         Text("Сброс DNS")
                     }
@@ -752,13 +771,14 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                     }
                 }
                 SectionHeaderWithAction("DNS-серверы") { openServer() }
-                if (servers.isEmpty())
+                if (servers.isEmpty()) {
                     Text(
                         "Используются серверы подписки",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
                 servers.forEachIndexed { index, server ->
                     ListItem(
                         headlineContent = { Text(server.tag) },
@@ -779,9 +799,9 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                                     persist(
                                         nextServers = next,
                                         nextFinal =
-                                            if (finalServer == server.tag) "" else finalServer,
+                                        if (finalServer == server.tag) "" else finalServer,
                                     )
-                                }
+                                },
                             ) {
                                 Icon(
                                     Icons.Outlined.Delete,
@@ -904,7 +924,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                             label = { Text("Базовый URL доменов") },
                             singleLine = true,
                             modifier =
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                         OutlinedTextField(
                             value = geoGeoipUrl,
@@ -912,7 +932,7 @@ fun RoutingSettingsScreen(navController: NavController, section: String = "overv
                             label = { Text("Базовый URL IP-адресов") },
                             singleLine = true,
                             modifier =
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
                 }
@@ -990,7 +1010,7 @@ private fun SectionHeader(title: String) {
 private fun SectionHeaderWithAction(title: String, onActionClick: () -> Unit) {
     Row(
         modifier =
-            Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1033,24 +1053,22 @@ private fun EmptyStateBox(text: String, buttonText: String, onClick: () -> Unit)
     }
 }
 
-private fun intervalLabel(intervalMs: Long): String =
-    when (intervalMs) {
-        0L -> "Каждый запуск"
-        60 * 60 * 1000L -> "Раз в час"
-        24 * 60 * 60 * 1000L -> "Раз в день"
-        7 * 24 * 60 * 60 * 1000L -> "Раз в неделю"
-        -1L -> "Никогда (только при отсутствии)"
-        else -> "Пользовательский (${intervalMs / 1000} сек)"
-    }
+private fun intervalLabel(intervalMs: Long): String = when (intervalMs) {
+    0L -> "Каждый запуск"
+    60 * 60 * 1000L -> "Раз в час"
+    24 * 60 * 60 * 1000L -> "Раз в день"
+    7 * 24 * 60 * 60 * 1000L -> "Раз в неделю"
+    -1L -> "Никогда (только при отсутствии)"
+    else -> "Пользовательский (${intervalMs / 1000} сек)"
+}
 
-private fun strategyLabel(strategy: DnsConfig.Strategy): String =
-    when (strategy) {
-        DnsConfig.Strategy.AUTO -> "Auto"
-        DnsConfig.Strategy.PREFER_IPV4 -> "Prefer IPv4"
-        DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
-        DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
-        DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
-    }
+private fun strategyLabel(strategy: DnsConfig.Strategy): String = when (strategy) {
+    DnsConfig.Strategy.AUTO -> "Auto"
+    DnsConfig.Strategy.PREFER_IPV4 -> "Prefer IPv4"
+    DnsConfig.Strategy.PREFER_IPV6 -> "Prefer IPv6"
+    DnsConfig.Strategy.IPV4_ONLY -> "IPv4 only"
+    DnsConfig.Strategy.IPV6_ONLY -> "IPv6 only"
+}
 
 private data class RoutingConfigState(
     val strategy: DnsConfig.Strategy = DnsConfig.Strategy.AUTO,
@@ -1084,7 +1102,7 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
             strategy =
                 try {
                     DnsConfig.Strategy.valueOf(
-                        dns.optString("strategy", DnsConfig.Strategy.AUTO.name)
+                        dns.optString("strategy", DnsConfig.Strategy.AUTO.name),
                     )
                 } catch (_: Exception) {
                     DnsConfig.Strategy.AUTO
@@ -1113,7 +1131,7 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
                     val type =
                         try {
                             RoutingRule.Type.valueOf(
-                                obj.optString("type", RoutingRule.Type.DOMAIN.name)
+                                obj.optString("type", RoutingRule.Type.DOMAIN.name),
                             )
                         } catch (_: Exception) {
                             RoutingRule.Type.DOMAIN
@@ -1148,21 +1166,21 @@ private fun decodeRoutingConfig(raw: String): RoutingConfigState {
                         )
                     val hasMatch =
                         listOf(
-                                rule.domain,
-                                rule.domainSuffix,
-                                rule.domainKeyword,
-                                rule.ipCidr,
-                                rule.port,
-                                rule.sourceIpCidr,
-                                rule.sourcePort,
-                                rule.packageName,
-                                rule.ruleSet,
-                                rule.protocol,
-                                rule.wifiSsid,
-                                rule.wifiBssid,
-                                rule.clashMode,
-                                rule.value,
-                            )
+                            rule.domain,
+                            rule.domainSuffix,
+                            rule.domainKeyword,
+                            rule.ipCidr,
+                            rule.port,
+                            rule.sourceIpCidr,
+                            rule.sourcePort,
+                            rule.packageName,
+                            rule.ruleSet,
+                            rule.protocol,
+                            rule.wifiSsid,
+                            rule.wifiBssid,
+                            rule.clashMode,
+                            rule.value,
+                        )
                             .any { it.isNotBlank() }
                     if (hasMatch) add(rule)
                 }

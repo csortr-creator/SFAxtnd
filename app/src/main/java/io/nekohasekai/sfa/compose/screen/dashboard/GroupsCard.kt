@@ -39,7 +39,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -65,6 +64,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -118,14 +118,14 @@ fun GroupsCard(
         viewModel
             ?: viewModel(
                 factory =
-                    object : ViewModelProvider.Factory {
-                        override fun <T : androidx.lifecycle.ViewModel> create(
-                            modelClass: Class<T>
-                        ): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return GroupsViewModel(commandClient) as T
-                        }
+                object : ViewModelProvider.Factory {
+                    override fun <T : androidx.lifecycle.ViewModel> create(
+                        modelClass: Class<T>,
+                    ): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return GroupsViewModel(commandClient) as T
                     }
+                },
             )
     val snackbarHostState = remember { SnackbarHostState() }
     val uiState by actualViewModel.uiState.collectAsState()
@@ -150,28 +150,34 @@ fun GroupsCard(
                         Icon(
                             imageVector = androidx.compose.material.icons.Icons.Default.Sort,
                             contentDescription =
-                                if (uiState.sortByPing) "Порядок подписки"
-                                else "Сортировать по задержке",
+                            if (uiState.sortByPing) {
+                                "Порядок подписки"
+                            } else {
+                                "Сортировать по задержке"
+                            },
                             tint =
-                                if (uiState.sortByPing) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface,
+                            if (uiState.sortByPing) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
                         )
                     }
                     if (uiState.groups.isNotEmpty()) {
                         IconButton(onClick = { actualViewModel.toggleAllGroups() }) {
                             Icon(
                                 imageVector =
-                                    if (allCollapsed) {
-                                        Icons.Default.UnfoldMore
-                                    } else {
-                                        Icons.Default.UnfoldLess
-                                    },
+                                if (allCollapsed) {
+                                    Icons.Default.UnfoldMore
+                                } else {
+                                    Icons.Default.UnfoldLess
+                                },
                                 contentDescription =
-                                    if (allCollapsed) {
-                                        stringResource(R.string.expand_all)
-                                    } else {
-                                        stringResource(R.string.collapse_all)
-                                    },
+                                if (allCollapsed) {
+                                    stringResource(R.string.expand_all)
+                                } else {
+                                    stringResource(R.string.collapse_all)
+                                },
                             )
                         }
                     }
@@ -234,8 +240,9 @@ fun GroupsCard(
             protocol = protocol,
             grid = grid,
             searchHeader =
-                if (showTopBar)
-                    ({
+            if (showTopBar) {
+                (
+                    {
                         ServerOverview(
                             uiState,
                             serviceStatus,
@@ -251,8 +258,11 @@ fun GroupsCard(
                             uplink,
                             trafficAvailable,
                         )
-                    })
-                else null,
+                    }
+                    )
+            } else {
+                null
+            },
             listHeaderContent = listHeaderContent,
             asSheet = asSheet,
         )
@@ -319,18 +329,18 @@ private fun GroupsCardContent(
 
     LazyColumnCompat(
         modifier =
-            modifier
-                .then(
-                    if (asSheet) {
-                        Modifier.fillMaxSize()
-                    } else {
-                        // Full-tab mode (Servers): use all available height, no artificial 600.dp
-                        // cap
-                        Modifier.fillMaxSize()
-                    }
-                )
-                .then(scrollModifier)
-                .padding(scaffoldPadding),
+        modifier
+            .then(
+                if (asSheet) {
+                    Modifier.fillMaxSize()
+                } else {
+                    // Full-tab mode (Servers): use all available height, no artificial 600.dp
+                    // cap
+                    Modifier.fillMaxSize()
+                },
+            )
+            .then(scrollModifier)
+            .padding(scaffoldPadding),
         state = lazyListState,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         overscrollEffect = overscrollEffect,
@@ -357,20 +367,20 @@ private fun GroupsCardContent(
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         colors =
-                            CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainer
-                            ),
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        ),
                     ) {
                         Text(
                             text =
-                                if (
-                                    serviceStatus == Status.Started ||
-                                        serviceStatus == Status.Starting
-                                ) {
-                                    "В профиле нет selector/urltest-групп"
-                                } else {
-                                    "Нет групп в выбранном профиле. Добавьте selector/urltest или обновите подписку."
-                                },
+                            if (
+                                serviceStatus == Status.Started ||
+                                serviceStatus == Status.Starting
+                            ) {
+                                "В профиле нет selector/urltest-групп"
+                            } else {
+                                "Нет групп в выбранном профиле. Добавьте selector/urltest или обновите подписку."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(20.dp),
@@ -387,13 +397,17 @@ private fun GroupsCardContent(
                         GroupHeader(
                             group = group,
                             title =
-                                if (
-                                    uiState.subscriptionName.isNotBlank() &&
-                                        (group.tag == SubscriptionRouting.NORMAL_SELECTOR_TAG ||
-                                            group == uiState.groups.firstOrNull())
-                                ) {
-                                    uiState.subscriptionName
-                                } else group.tag,
+                            if (
+                                uiState.subscriptionName.isNotBlank() &&
+                                (
+                                    group.tag == SubscriptionRouting.NORMAL_SELECTOR_TAG ||
+                                        group == uiState.groups.firstOrNull()
+                                    )
+                            ) {
+                                uiState.subscriptionName
+                            } else {
+                                group.tag
+                            },
                             isExpanded = isExpanded,
                             isTesting = uiState.testingGroups.contains(group.tag),
                             onToggleExpanded = { onToggleExpanded(group.tag) },
@@ -416,20 +430,22 @@ private fun GroupsCardContent(
                         val itemsToSort =
                             group.items
                                 .filter {
-                                    (query.isBlank() ||
-                                        it.tag.contains(query, ignoreCase = true)) &&
+                                    (
+                                        query.isBlank() ||
+                                            it.tag.contains(query, ignoreCase = true)
+                                        ) &&
                                         (protocol.isBlank() || it.displayType == protocol)
                                 }
                                 .toMutableList()
                         if (uiState.sortByPing) {
                             itemsToSort.sortWith(
                                 compareBy<io.nekohasekai.sfa.compose.model.GroupItem> {
-                                        it.urlTestDelay == 0
-                                    }
-                                    .thenBy { it.urlTestDelay }
+                                    it.urlTestDelay == 0
+                                }
+                                    .thenBy { it.urlTestDelay },
                             )
                         }
-                        if (itemsToSort.isEmpty())
+                        if (itemsToSort.isEmpty()) {
                             item(key = "empty:${group.tag}") {
                                 Text(
                                     "Серверы не найдены",
@@ -437,6 +453,7 @@ private fun GroupsCardContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                        }
                         val rowItems = itemsToSort.chunked(columns)
 
                         rowItems.forEachIndexed { rowIndex, row ->
@@ -486,13 +503,12 @@ private data class UrlTestPalette(
     val bad: Color,
     val neutral: Color,
 ) {
-    fun forDelay(delay: Int): Color =
-        when {
-            delay <= 0 -> neutral
-            delay < 800 -> good
-            delay < 1500 -> medium
-            else -> bad
-        }
+    fun forDelay(delay: Int): Color = when {
+        delay <= 0 -> neutral
+        delay < 800 -> good
+        delay < 1500 -> medium
+        else -> bad
+    }
 }
 
 @Composable
@@ -600,11 +616,11 @@ private fun GroupHeader(
             Icon(
                 imageVector = Icons.Default.ExpandMore,
                 contentDescription =
-                    if (isExpanded) {
-                        stringResource(R.string.collapse)
-                    } else {
-                        stringResource(R.string.expand)
-                    },
+                if (isExpanded) {
+                    stringResource(R.string.collapse)
+                } else {
+                    stringResource(R.string.expand)
+                },
                 modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = rotationAngle },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -626,9 +642,9 @@ private fun GroupDotsGrid(
     ) {
         BoxWithConstraints(
             modifier =
-                Modifier.clickable(onClick = onClick)
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 16.dp)
+            Modifier.clickable(onClick = onClick)
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 16.dp),
         ) {
             val dotSize = 11.dp
             val dotSpacing = 4.dp
@@ -685,11 +701,11 @@ private fun GroupItemRow(
     Surface(
         modifier = modifier.padding(bottom = if (isLast) 12.dp else 0.dp).fillMaxWidth(),
         shape =
-            if (isLast) {
-                GroupCardBottomShape
-            } else {
-                RectangleShape
-            },
+        if (isLast) {
+            GroupCardBottomShape
+        } else {
+            RectangleShape
+        },
         color = Color.Transparent,
     ) {
         Row(
@@ -697,7 +713,7 @@ private fun GroupItemRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             row.forEach { item ->
-                if (columns == 1)
+                if (columns == 1) {
                     ServerListRow(
                         item = item,
                         isSelected = item.tag == selectedTag,
@@ -707,7 +723,7 @@ private fun GroupItemRow(
                         onUrlTest = { onItemUrlTest(item.tag) },
                         modifier = Modifier.weight(1f),
                     )
-                else
+                } else {
                     ProxyChip(
                         item = item,
                         isSelected = item.tag == selectedTag,
@@ -717,6 +733,7 @@ private fun GroupItemRow(
                         onUrlTest = { onItemUrlTest(item.tag) },
                         modifier = Modifier.weight(1f),
                     )
+                }
             }
 
             repeat(columns - row.size) { Spacer(modifier = Modifier.weight(1f)) }
@@ -740,8 +757,11 @@ private fun ProxyChip(
     val chipShape = MaterialTheme.shapes.medium
     val container by
         animateColorAsState(
-            if (isSelected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerLowest,
+            if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLowest
+            },
             animationSpec = tween(200),
             label = "serverSelection",
         )
@@ -749,25 +769,28 @@ private fun ProxyChip(
     Box(modifier = modifier) {
         Surface(
             modifier =
-                Modifier.fillMaxWidth()
-                    .clip(chipShape)
-                    .semantics { selected = isSelected }
-                    .combinedClickable(
-                        onClick = {
-                            if (isSelectable) {
-                                onClick()
-                            }
-                        },
-                        onLongClick = { showContextMenu = true },
-                    ),
+            Modifier.fillMaxWidth()
+                .clip(chipShape)
+                .semantics { selected = isSelected }
+                .combinedClickable(
+                    onClick = {
+                        if (isSelectable) {
+                            onClick()
+                        }
+                    },
+                    onLongClick = { showContextMenu = true },
+                ),
             shape = chipShape,
             color = container,
             border =
-                BorderStroke(
-                    1.dp,
-                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                ),
+            BorderStroke(
+                1.dp,
+                if (isSelected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                },
+            ),
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -783,21 +806,22 @@ private fun ProxyChip(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color =
-                            if (isSelected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (isSelected)
+                    if (isSelected) {
                         Icon(
                             Icons.Outlined.CheckCircle,
                             "Выбран",
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.primary,
                         )
+                    }
                 }
 
                 Row(
@@ -812,11 +836,11 @@ private fun ProxyChip(
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
                         color =
-                            if (isSelected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
 
                     if (item.urlTestDelay > 0) {
@@ -852,39 +876,38 @@ private fun ProxyChip(
 
 @Composable
 private fun rememberBounceBlockingNestedScrollConnection(
-    lazyListState: LazyListState
-): NestedScrollConnection =
-    remember(lazyListState) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                // Only block upward scroll (y < 0) at bottom
-                // to prevent sheet expansion.
-                // Allow downward scroll (y > 0) at top
-                // to let sheet collapse.
-                return if (available.y < 0) {
-                    available
-                } else {
-                    Offset.Zero
-                }
+    lazyListState: LazyListState,
+): NestedScrollConnection = remember(lazyListState) {
+    object : NestedScrollConnection {
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            // Only block upward scroll (y < 0) at bottom
+            // to prevent sheet expansion.
+            // Allow downward scroll (y > 0) at top
+            // to let sheet collapse.
+            return if (available.y < 0) {
+                available
+            } else {
+                Offset.Zero
             }
+        }
 
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // Only block upward fling (y < 0)
-                // to prevent sheet expansion.
-                // Allow downward fling (y > 0)
-                // to let sheet collapse.
-                return if (available.y < 0) {
-                    available
-                } else {
-                    Velocity.Zero
-                }
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            // Only block upward fling (y < 0)
+            // to prevent sheet expansion.
+            // Allow downward fling (y > 0)
+            // to let sheet collapse.
+            return if (available.y < 0) {
+                available
+            } else {
+                Velocity.Zero
             }
         }
     }
+}
 
 @Composable
 private fun ServerOverview(
@@ -908,7 +931,7 @@ private fun ServerOverview(
     val selected = state.groups.firstOrNull { it.selectable }?.selected.orEmpty()
     Card(
         colors =
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -965,8 +988,9 @@ private fun ServerOverview(
                         DropdownMenuItem(
                             text = { Text(profile.name) },
                             leadingIcon = {
-                                if (profile.id == state.profileId)
+                                if (profile.id == state.profileId) {
                                     Icon(Icons.Outlined.CheckCircle, null)
+                                }
                             },
                             onClick = {
                                 picker = false
@@ -984,19 +1008,25 @@ private fun ServerOverview(
                     trafficAvailable,
                 )
             }
-            if (status != Status.Started || remote != null)
+            if (status != Status.Started || remote != null) {
                 Button(
                     onClick = onToggle,
                     enabled =
-                        (remote != null || state.profileId != -1L) &&
-                            status !in listOf(Status.Starting, Status.Stopping),
+                    (remote != null || state.profileId != -1L) &&
+                        status !in listOf(Status.Starting, Status.Stopping),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text(
-                        if (remote != null) "Выйти из удалённой сессии"
-                        else if (status == Status.Started) "Отключить" else "Подключить"
+                        if (remote != null) {
+                            "Выйти из удалённой сессии"
+                        } else if (status == Status.Started) {
+                            "Отключить"
+                        } else {
+                            "Подключить"
+                        },
                     )
                 }
+            }
         }
     }
     Row(
@@ -1013,10 +1043,11 @@ private fun ServerOverview(
             shape = MaterialTheme.shapes.large,
             leadingIcon = { Icon(Icons.Outlined.Search, null) },
             trailingIcon = {
-                if (query.isNotEmpty())
+                if (query.isNotEmpty()) {
                     IconButton(onClick = { onQuery("") }) {
                         Icon(Icons.Outlined.Close, "Очистить поиск")
                     }
+                }
             },
         )
         Box {
@@ -1025,17 +1056,22 @@ private fun ServerOverview(
                     Icons.Outlined.FilterList,
                     "Фильтр протокола",
                     tint =
-                        if (protocol.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.primary,
+                    if (protocol.isBlank()) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
             }
             DropdownMenu(protocolMenu, { protocolMenu = false }) {
-                (listOf("") +
+                (
+                    listOf("") +
                         state.groups
                             .flatMap { it.items }
                             .map { it.displayType }
                             .distinct()
-                            .sorted())
+                            .sorted()
+                    )
                     .forEach { type ->
                         DropdownMenuItem(
                             text = { Text(type.ifBlank { "Все протоколы" }) },
@@ -1048,13 +1084,14 @@ private fun ServerOverview(
             }
         }
     }
-    if (protocol.isNotBlank())
+    if (protocol.isNotBlank()) {
         InputChip(
             selected = true,
             onClick = { onProtocol("") },
             label = { Text(protocol) },
             trailingIcon = { Icon(Icons.Outlined.Close, "Сбросить фильтр", Modifier.size(16.dp)) },
         )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1071,8 +1108,11 @@ private fun ServerListRow(
     var menu by remember { mutableStateOf(false) }
     val color by
         animateColorAsState(
-            if (isSelected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerLow,
+            if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
             label = "serverRowSelection",
         )
     Box(modifier) {
@@ -1080,12 +1120,12 @@ private fun ServerListRow(
             color = color,
             shape = MaterialTheme.shapes.medium,
             modifier =
-                Modifier.fillMaxWidth()
-                    .semantics { selected = isSelected }
-                    .combinedClickable(
-                        onClick = { if (isSelectable) onClick() },
-                        onLongClick = { menu = true },
-                    ),
+            Modifier.fillMaxWidth()
+                .semantics { selected = isSelected }
+                .combinedClickable(
+                    onClick = { if (isSelectable) onClick() },
+                    onLongClick = { menu = true },
+                ),
         ) {
             Row(
                 Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
@@ -1099,8 +1139,11 @@ private fun ServerListRow(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         color =
-                            if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurface,
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                     )
                     Text(
                         item.displayType,
@@ -1108,25 +1151,27 @@ private fun ServerListRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (item.urlTestDelay > 0)
+                if (item.urlTestDelay > 0) {
                     Text(
                         "${item.urlTestDelay} мс",
                         style = MaterialTheme.typography.labelMedium,
                         color = palette.forDelay(item.urlTestDelay),
                     )
-                else if (item.urlTestTime > 0)
+                } else if (item.urlTestTime > 0) {
                     Text(
                         probeStatusLabel(item.probeStatus),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
-                if (isSelected)
+                }
+                if (isSelected) {
                     Icon(
                         Icons.Outlined.CheckCircle,
                         "Выбран",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp),
                     )
+                }
                 IconButton(onClick = { menu = true }) {
                     Icon(Icons.Outlined.MoreVert, "Действия с сервером")
                 }
@@ -1145,16 +1190,14 @@ private fun ServerListRow(
     }
 }
 
-
-private fun probeStatusLabel(status: String): String =
-    when (status) {
-        "TIMEOUT" -> "Таймаут"
-        "DNS_ERROR" -> "DNS"
-        "HANDSHAKE_ERROR" -> "Handshake"
-        "HTTP_ERROR" -> "HTTP"
-        "CANCELLED" -> "Отменено"
-        "TESTING" -> "…"
-        "SUCCESS" -> ""
-        "UNTESTED", "" -> ""
-        else -> "Ошибка проверки"
-    }
+private fun probeStatusLabel(status: String): String = when (status) {
+    "TIMEOUT" -> "Таймаут"
+    "DNS_ERROR" -> "DNS"
+    "HANDSHAKE_ERROR" -> "Handshake"
+    "HTTP_ERROR" -> "HTTP"
+    "CANCELLED" -> "Отменено"
+    "TESTING" -> "…"
+    "SUCCESS" -> ""
+    "UNTESTED", "" -> ""
+    else -> "Ошибка проверки"
+}

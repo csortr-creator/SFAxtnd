@@ -1,16 +1,20 @@
 package io.nekohasekai.sfa.utils
 
+import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Base64
-import org.json.JSONObject
 
 internal object SubscriptionMetadata {
     fun title(header: String? = null, content: String = ""): String? {
         val fromHeader = header?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-            if (value.startsWith("base64:", true)) runCatching {
-                Base64.getDecoder().decode(value.substringAfter(':')).toString(Charsets.UTF_8)
-            }.getOrNull() else value
+            if (value.startsWith("base64:", true)) {
+                runCatching {
+                    Base64.getDecoder().decode(value.substringAfter(':')).toString(Charsets.UTF_8)
+                }.getOrNull()
+            } else {
+                value
+            }
         }
         val embedded = runCatching {
             val json = JSONObject(content)

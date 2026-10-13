@@ -1,5 +1,8 @@
 package io.nekohasekai.sfa.compose.screen.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +47,8 @@ import io.nekohasekai.sfa.compose.navigation.Screen
 import io.nekohasekai.sfa.compose.topbar.LocalScaffoldPadding
 import io.nekohasekai.sfa.compose.topbar.OverrideTopBar
 import io.nekohasekai.sfa.update.UpdateState
+import io.nekohasekai.sfa.utils.BackupManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +65,45 @@ fun SettingsScreen(navController: NavController) {
                     Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Menu")
                 }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    val context = LocalContext.current
+                    val scope = rememberCoroutineScope()
+                    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                        if (uri != null) {
+                            scope.launch {
+                                BackupManager.exportSettings(context, uri).onSuccess {
+                                    Toast.makeText(context, "Настройки экспортированы", Toast.LENGTH_SHORT).show()
+                                }.onFailure {
+                                    Toast.makeText(context, "Ошибка экспорта", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        if (uri != null) {
+                            scope.launch {
+                                BackupManager.importSettings(context, uri).onSuccess {
+                                    Toast.makeText(context, "Настройки импортированы", Toast.LENGTH_SHORT).show()
+                                }.onFailure {
+                                    Toast.makeText(context, "Ошибка импорта", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+
+                    DropdownMenuItem(
+                        text = { Text("Экспорт настроек") },
+                        onClick = {
+                            showMenu = false
+                            exportLauncher.launch("sfa_settings_backup.json")
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Импорт настроек") },
+                        onClick = {
+                            showMenu = false
+                            importLauncher.launch(arrayOf("application/json"))
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Информация о приложении") },
                         onClick = {
@@ -80,7 +124,7 @@ fun SettingsScreen(navController: NavController) {
             confirmButton = { TextButton(onClick = { showAboutDialog = false }) { Text("OK") } },
             dismissButton = {
                 TextButton(
-                    onClick = { uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd") }
+                    onClick = { uriHandler.openUri("https://github.com/csortr-creator/SFAxtnd") },
                 ) {
                     Text("GitHub")
                 }
@@ -96,13 +140,13 @@ fun SettingsScreen(navController: NavController) {
 
     Column(
         modifier =
-            Modifier.fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    top = scaffoldPadding.calculateTopPadding() + 8.dp,
-                    bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
-                )
+        Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                bottom = scaffoldPadding.calculateBottomPadding() + 8.dp,
+            ),
     ) {
         PreferenceSection("Сеть", Icons.Outlined.Shield) {
             RoutingSectionLink(

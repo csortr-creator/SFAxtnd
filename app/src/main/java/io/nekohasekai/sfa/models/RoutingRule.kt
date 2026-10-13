@@ -41,13 +41,14 @@ data class RoutingRule(
     }
 
     fun displayTitle(): String {
-        if (name.isNotBlank())
+        if (name.isNotBlank()) {
             return when (name) {
                 "ru-sites" -> "Домены .ru"
                 "ru-ip" -> "Российские IP-адреса"
                 "ads" -> "Рекламные сайты"
                 else -> name
             }
+        }
         listOf(domain, domainSuffix, domainKeyword, ipCidr, packageName, ruleSet, value)
             .firstOrNull { it.isNotBlank() }
             ?.let {
@@ -70,7 +71,7 @@ data class RoutingRule(
             if (protocol.isNotBlank()) add(protocol)
             if (wifiSsid.isNotBlank()) add("Сеть Wi-Fi")
             if (dnsRule) add("DNS")
-            if (value.isNotBlank() && domain.isBlank())
+            if (value.isNotBlank() && domain.isBlank()) {
                 add(
                     when (type) {
                         Type.DOMAIN -> "Домен"
@@ -78,11 +79,13 @@ data class RoutingRule(
                         Type.DOMAIN_KEYWORD -> "Часть домена"
                         Type.IP_CIDR -> "IP-адреса"
                         Type.GEOSITE,
-                        Type.GEOIP -> "Готовый список"
+                        Type.GEOIP,
+                        -> "Готовый список"
                         Type.PACKAGE_NAME -> "Приложения"
                         Type.PROTOCOL -> "Протокол"
-                    }
+                    },
                 )
+            }
         }
         val match = parts.joinToString(" · ").ifBlank { "—" }
         val destination =

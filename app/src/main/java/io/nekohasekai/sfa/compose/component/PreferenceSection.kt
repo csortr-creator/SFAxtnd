@@ -33,22 +33,37 @@ fun PreferenceSection(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         val header: @Composable () -> Unit = {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)
-                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 action?.invoke()
-                if (collapsible) Icon(Icons.Default.ExpandMore,
-                    if (expanded) "Свернуть $title" else "Развернуть $title",
-                    modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = rotation })
+                if (collapsible) {
+                    Icon(
+                        Icons.Default.ExpandMore,
+                        if (expanded) "Свернуть $title" else "Развернуть $title",
+                        modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = rotation },
+                    )
+                }
             }
         }
-        if (collapsible) Surface(onClick = { expanded = !expanded }, color = Color.Transparent) { header() }
-        else header()
+        if (collapsible) {
+            Surface(onClick = { expanded = !expanded }, color = Color.Transparent) { header() }
+        } else {
+            header()
+        }
         AnimatedVisibility(visible = !collapsible || expanded) {
             Column(Modifier.fillMaxWidth()) {
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)

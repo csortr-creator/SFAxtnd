@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import io.nekohasekai.sfa.compose.component.PreferenceSection
 import io.nekohasekai.sfa.database.Settings
-import java.net.URI
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 
 @Composable
 fun DnsSettingsScreen(navController: NavController) {
@@ -56,7 +56,7 @@ fun DnsSettingsScreen(navController: NavController) {
             ) {
                 update { target ->
                     target.put("managed", it)
-                    if (it && list.none { s -> s.optString("detour") == "direct" })
+                    if (it && list.none { s -> s.optString("detour") == "direct" }) {
                         target.put(
                             "servers",
                             JSONArray(
@@ -64,22 +64,24 @@ fun DnsSettingsScreen(navController: NavController) {
                                     JSONObject()
                                         .put("tag", "sfa-direct")
                                         .put("address", "udp://1.1.1.1")
-                                        .put("detour", "direct")
+                                        .put("detour", "direct"),
                             ),
                         )
+                    }
                     val current = target.optJSONArray("servers") ?: JSONArray()
                     if (
                         it &&
-                            (0 until current.length()).none { n ->
-                                current.optJSONObject(n)?.optString("detour") == "proxy"
-                            }
-                    )
+                        (0 until current.length()).none { n ->
+                            current.optJSONObject(n)?.optString("detour") == "proxy"
+                        }
+                    ) {
                         current.put(
                             JSONObject()
                                 .put("tag", "sfa-proxy")
                                 .put("address", "https://1.1.1.1/dns-query")
-                                .put("detour", "proxy")
+                                .put("detour", "proxy"),
                         )
+                    }
                     target.put("servers", current)
                 }
             }
@@ -129,7 +131,7 @@ fun DnsSettingsScreen(navController: NavController) {
                         modifier = Modifier.clickable { edit(index) },
                         trailingContent = {
                             Row {
-                                if (position > 0)
+                                if (position > 0) {
                                     IconButton(
                                         onClick = {
                                             val previous = entries[position - 1].index
@@ -138,10 +140,11 @@ fun DnsSettingsScreen(navController: NavController) {
                                             changed[previous] = changed[index]
                                             changed[index] = temp
                                             replaceServers(changed)
-                                        }
+                                        },
                                     ) {
                                         Icon(Icons.Default.ArrowUpward, "Поднять")
                                     }
+                                }
                                 IconButton(onClick = { edit(index) }) {
                                     Icon(Icons.Default.Edit, "Изменить")
                                 }
@@ -155,14 +158,16 @@ fun DnsSettingsScreen(navController: NavController) {
                                             )
                                             if (
                                                 target.optString("resolverServer") ==
-                                                    item.optString("tag")
-                                            )
+                                                item.optString("tag")
+                                            ) {
                                                 target.remove("resolverServer")
+                                            }
                                             if (
                                                 target.optString("finalServer") ==
-                                                    item.optString("tag")
-                                            )
+                                                item.optString("tag")
+                                            ) {
                                                 target.remove("finalServer")
+                                            }
                                         }
                                     },
                                 ) {
@@ -171,16 +176,16 @@ fun DnsSettingsScreen(navController: NavController) {
                             }
                         },
                         colors =
-                            ListItemDefaults.colors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                            ),
+                        ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
                     )
                 }
                 TextButton(
                     onClick = {
                         edit(-1)
                         draftGroup = group
-                    }
+                    },
                 ) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(8.dp))
@@ -190,7 +195,7 @@ fun DnsSettingsScreen(navController: NavController) {
         }
         val other =
             list.withIndex().filter { it.value.optString("detour") !in setOf("direct", "proxy") }
-        if (other.isNotEmpty())
+        if (other.isNotEmpty()) {
             PreferenceSection("DNS из прежних настроек", Icons.Outlined.Dns) {
                 other.forEach { (index, item) ->
                     ListItem(
@@ -200,6 +205,7 @@ fun DnsSettingsScreen(navController: NavController) {
                     )
                 }
             }
+        }
         PreferenceSection("Кэш и ответы", Icons.Outlined.Settings) {
             SettingToggle(
                 "Кэш DNS",
@@ -260,13 +266,15 @@ fun DnsSettingsScreen(navController: NavController) {
             }
         }
         PreferenceSection("Пресеты DNS", Icons.Outlined.Dns) {
-            for ((name, addresses) in
-                listOf(
-                    "Cloudflare" to listOf("udp://1.1.1.1", "https://1.1.1.1/dns-query"),
-                    "Google" to listOf("udp://8.8.8.8", "https://8.8.8.8/dns-query"),
-                    "Quad9" to listOf("udp://9.9.9.9", "https://9.9.9.9/dns-query"),
-                    "Yandex + Cloudflare" to listOf("udp://77.88.8.8", "https://1.1.1.1/dns-query"),
-                )) {
+            for (
+            (name, addresses) in
+            listOf(
+                "Cloudflare" to listOf("udp://1.1.1.1", "https://1.1.1.1/dns-query"),
+                "Google" to listOf("udp://8.8.8.8", "https://8.8.8.8/dns-query"),
+                "Quad9" to listOf("udp://9.9.9.9", "https://9.9.9.9/dns-query"),
+                "Yandex + Cloudflare" to listOf("udp://77.88.8.8", "https://1.1.1.1/dns-query"),
+            )
+            ) {
                 TextButton(
                     onClick = {
                         update { d ->
@@ -280,17 +288,17 @@ fun DnsSettingsScreen(navController: NavController) {
                                             JSONObject()
                                                 .put("tag", "sfa-direct")
                                                 .put("address", addresses[0])
-                                                .put("detour", "direct")
+                                                .put("detour", "direct"),
                                         )
                                         .put(
                                             JSONObject()
                                                 .put("tag", "sfa-proxy")
                                                 .put("address", addresses[1])
-                                                .put("detour", "proxy")
+                                                .put("detour", "proxy"),
                                         ),
                                 )
                         }
-                    }
+                    },
                 ) {
                     Text(name)
                 }
@@ -305,20 +313,24 @@ fun DnsSettingsScreen(navController: NavController) {
                 list.withIndex().none { it.index != index && it.value.optString("tag") == draftTag }
         val addressValid =
             runCatching {
-                    if (draftAddress == "local") true
-                    else {
-                        val uri =
-                            URI(
-                                if (draftAddress.contains("://")) draftAddress
-                                else "udp://$draftAddress"
-                            )
-                        uri.scheme in setOf("udp", "tcp", "tls", "https", "quic", "h3") &&
-                            !uri.host.isNullOrBlank() &&
-                            (uri.port == -1 || uri.port in 1..65535) &&
-                            uri.rawUserInfo == null &&
-                            uri.rawFragment == null
-                    }
+                if (draftAddress == "local") {
+                    true
+                } else {
+                    val uri =
+                        URI(
+                            if (draftAddress.contains("://")) {
+                                draftAddress
+                            } else {
+                                "udp://$draftAddress"
+                            },
+                        )
+                    uri.scheme in setOf("udp", "tcp", "tls", "https", "quic", "h3") &&
+                        !uri.host.isNullOrBlank() &&
+                        (uri.port == -1 || uri.port in 1..65535) &&
+                        uri.rawUserInfo == null &&
+                        uri.rawFragment == null
                 }
+            }
                 .getOrDefault(false)
         AlertDialog(
             onDismissRequest = { editing = null },
@@ -364,10 +376,12 @@ fun DnsSettingsScreen(navController: NavController) {
                         if (index in changed.indices) changed[index] = item else changed.add(item)
                         update { d ->
                             d.put("servers", JSONArray(changed))
-                            if (oldTag != null && d.optString("resolverServer") == oldTag)
+                            if (oldTag != null && d.optString("resolverServer") == oldTag) {
                                 d.put("resolverServer", draftTag)
-                            if (oldTag != null && d.optString("finalServer") == oldTag)
+                            }
+                            if (oldTag != null && d.optString("finalServer") == oldTag) {
                                 d.put("finalServer", draftTag)
+                            }
                         }
                         editing = null
                     },

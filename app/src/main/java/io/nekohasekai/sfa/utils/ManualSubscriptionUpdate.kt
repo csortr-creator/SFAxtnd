@@ -93,41 +93,43 @@ object ManualSubscriptionUpdate {
         profile: Profile,
         result: SubscriptionImportResult,
         expected: ConfigExpectedState,
-    ): ManualPrepareResult {
-        return when (
-            val outcome =
-                ProfileConfigCommit.commitIfUnchanged(
-                    expected = expected,
-                    content = result.config,
-                    validate = ::validateConfig,
-                    afterFileCommit = {
-                        result.report.save(profile.typed.path)
-                        profile.typed.lastUpdated = Date()
-                        ProfileManager.update(profile)
-                    },
-                )
-        ) {
-            is CommitOutcome.Success ->
-                ManualPrepareResult.Applied(
-                    ImportResultFormatter.fromCommit(outcome.replaced, result.report),
-                    outcome.replaced,
-                    result.report,
-                )
-            is CommitOutcome.FileCommittedMetadataFailed ->
-                ManualPrepareResult.Applied(
-                    ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
-                    outcome.replaced,
-                    result.report,
-                )
-            is CommitOutcome.Stale -> ManualPrepareResult.Rejected(
-                ImportOperationOutcome.KEPT_LKG, "STALE: профиль или конфигурация изменились", result.report,
+    ): ManualPrepareResult = when (
+        val outcome =
+            ProfileConfigCommit.commitIfUnchanged(
+                expected = expected,
+                content = result.config,
+                validate = ::validateConfig,
+                afterFileCommit = {
+                    result.report.save(profile.typed.path)
+                    profile.typed.lastUpdated = Date()
+                    ProfileManager.update(profile)
+                },
             )
-            is CommitOutcome.Failed -> {
-                if (outcome.error is kotlinx.coroutines.CancellationException) throw outcome.error
-                ManualPrepareResult.Rejected(
-                    ImportOperationOutcome.KEPT_LKG, ImportResultFormatter.commitFailureReason(outcome.error), result.report,
-                )
-            }
+    ) {
+        is CommitOutcome.Success ->
+            ManualPrepareResult.Applied(
+                ImportResultFormatter.fromCommit(outcome.replaced, result.report),
+                outcome.replaced,
+                result.report,
+            )
+        is CommitOutcome.FileCommittedMetadataFailed ->
+            ManualPrepareResult.Applied(
+                ImportOperationOutcome.FILE_COMMITTED_METADATA_FAILED,
+                outcome.replaced,
+                result.report,
+            )
+        is CommitOutcome.Stale -> ManualPrepareResult.Rejected(
+            ImportOperationOutcome.KEPT_LKG,
+            "STALE: профиль или конфигурация изменились",
+            result.report,
+        )
+        is CommitOutcome.Failed -> {
+            if (outcome.error is kotlinx.coroutines.CancellationException) throw outcome.error
+            ManualPrepareResult.Rejected(
+                ImportOperationOutcome.KEPT_LKG,
+                ImportResultFormatter.commitFailureReason(outcome.error),
+                result.report,
+            )
         }
     }
 

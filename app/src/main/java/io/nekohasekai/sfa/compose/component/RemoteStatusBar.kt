@@ -63,11 +63,11 @@ fun RemoteStatusBar(
             ) {
                 Text(
                     text =
-                        if (isConnected) {
-                            serverName
-                        } else {
-                            stringResource(R.string.remote_connecting)
-                        },
+                    if (isConnected) {
+                        serverName
+                    } else {
+                        stringResource(R.string.remote_connecting)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -78,10 +78,10 @@ fun RemoteStatusBar(
                 if (isConnected) {
                     Row(
                         modifier =
-                            Modifier.clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .clickable(onClick = onConnectionsClick)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .clickable(onClick = onConnectionsClick)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
@@ -103,10 +103,10 @@ fun RemoteStatusBar(
 
                 Row(
                     modifier =
-                        Modifier.clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .clickable(onClick = onDisconnectClick)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable(onClick = onDisconnectClick)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {

@@ -108,8 +108,11 @@ fun Theme(
         when {
             effectiveDynamic && Build.VERSION.SDK_INT >= 31 -> {
                 val context = LocalContext.current
-                if (effectiveDark) dynamicDarkColorScheme(context)
-                else dynamicLightColorScheme(context)
+                if (effectiveDark) {
+                    dynamicDarkColorScheme(context)
+                } else {
+                    dynamicLightColorScheme(context)
+                }
             }
 
             effectiveDark -> DarkColorScheme
@@ -121,17 +124,26 @@ fun Theme(
         val colors =
             when (accent) {
                 "green" ->
-                    if (effectiveDark) listOf(0xFFA2D4AC, 0xFF07391B, 0xFF285032, 0xFFBEEFC7)
-                    else listOf(0xFF346B42, 0xFFFFFFFF, 0xFFBEEFC7, 0xFF00210A)
+                    if (effectiveDark) {
+                        listOf(0xFFA2D4AC, 0xFF07391B, 0xFF285032, 0xFFBEEFC7)
+                    } else {
+                        listOf(0xFF346B42, 0xFFFFFFFF, 0xFFBEEFC7, 0xFF00210A)
+                    }
                 "purple" ->
-                    if (effectiveDark) listOf(0xFFD2BCFF, 0xFF381E72, 0xFF50358B, 0xFFEADDFF)
-                    else listOf(0xFF694FA5, 0xFFFFFFFF, 0xFFEADDFF, 0xFF23005C)
+                    if (effectiveDark) {
+                        listOf(0xFFD2BCFF, 0xFF381E72, 0xFF50358B, 0xFFEADDFF)
+                    } else {
+                        listOf(0xFF694FA5, 0xFFFFFFFF, 0xFFEADDFF, 0xFF23005C)
+                    }
                 "amber" ->
-                    if (effectiveDark) listOf(0xFFE7C269, 0xFF3D2E00, 0xFF574500, 0xFFFFE08C)
-                    else listOf(0xFF745B00, 0xFFFFFFFF, 0xFFFFE08C, 0xFF241A00)
+                    if (effectiveDark) {
+                        listOf(0xFFE7C269, 0xFF3D2E00, 0xFF574500, 0xFFFFE08C)
+                    } else {
+                        listOf(0xFF745B00, 0xFFFFFFFF, 0xFFFFE08C, 0xFF241A00)
+                    }
                 else -> emptyList()
             }
-        if (colors.isNotEmpty())
+        if (colors.isNotEmpty()) {
             colorScheme =
                 colorScheme.copy(
                     primary = Color(colors[0]),
@@ -139,14 +151,16 @@ fun Theme(
                     primaryContainer = Color(colors[2]),
                     onPrimaryContainer = Color(colors[3]),
                 )
+        }
     }
-    if (effectiveDark && appearance.optBoolean("black"))
+    if (effectiveDark && appearance.optBoolean("black")) {
         colorScheme =
             colorScheme.copy(
                 background = Color.Black,
                 surface = Color.Black,
                 surfaceContainerLowest = Color.Black,
             )
+    }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -164,7 +178,7 @@ fun Theme(
             Density(
                 density.density,
                 density.fontScale * appearance.optInt("fontPercent", 100).coerceIn(85, 130) / 100f,
-            )
+            ),
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

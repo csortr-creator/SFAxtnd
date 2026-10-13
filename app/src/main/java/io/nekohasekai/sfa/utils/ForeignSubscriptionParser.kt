@@ -19,10 +19,11 @@ internal data class ForeignSubscription(
 )
 
 internal object ForeignSubscriptionParser {
-    fun looksLike(content: String): Boolean =
-        Regex("(?m)^\\s*(proxies|proxy-providers):").containsMatchIn(content) ||
-            (content.trimStart().firstOrNull() in setOf('{', '[') &&
-                (content.contains("\"proxies\"") || content.contains("\"protocol\"")))
+    fun looksLike(content: String): Boolean = Regex("(?m)^\\s*(proxies|proxy-providers):").containsMatchIn(content) ||
+        (
+            content.trimStart().firstOrNull() in setOf('{', '[') &&
+                (content.contains("\"proxies\"") || content.contains("\"protocol\""))
+            )
 
     private fun checkYamlTree(value: Any?) {
         val ancestors =
@@ -96,15 +97,17 @@ internal object ForeignSubscriptionParser {
                                 val outbound = list.optJSONObject(j)
                                 if (
                                     outbound != null &&
-                                        config.optString("remarks").isNotBlank() &&
-                                        outbound.optString("protocol") !in
-                                            setOf("freedom", "blackhole", "dns")
+                                    config.optString("remarks").isNotBlank() &&
+                                    outbound.optString("protocol") !in
+                                    setOf("freedom", "blackhole", "dns")
                                 ) {
                                     outbounds.put(
                                         JSONObject(outbound.toString())
-                                            .put("tag", config.getString("remarks"))
+                                            .put("tag", config.getString("remarks")),
                                     )
-                                } else outbounds.put(list.get(j))
+                                } else {
+                                    outbounds.put(list.get(j))
+                                }
                             }
                         }
                         return xray(JSONObject().put("outbounds", outbounds))
@@ -119,8 +122,9 @@ internal object ForeignSubscriptionParser {
             (0 until outbounds.length()).any {
                 outbounds.optJSONObject(it)?.has("protocol") == true
             }
-        )
+        ) {
             return xray(root)
+        }
         return null
     }
 
@@ -128,17 +132,19 @@ internal object ForeignSubscriptionParser {
         val array =
             root.optJSONArray("proxies")
                 ?: error(
-                    "Unsupported provider-only Clash configuration; use a direct server subscription URL"
+                    "Unsupported provider-only Clash configuration; use a direct server subscription URL",
                 )
         val warnings = mutableListOf<String>()
-        if (root.has("proxy-providers"))
+        if (root.has("proxy-providers")) {
             warnings.add(
-                "Внешние proxy-providers не загружаются. Для них добавьте прямые URL подписок отдельно."
+                "Внешние proxy-providers не загружаются. Для них добавьте прямые URL подписок отдельно.",
             )
-        if (listOf("rules", "rule-providers", "dns", "proxy-groups").any { root.has(it) })
+        }
+        if (listOf("rules", "rule-providers", "dns", "proxy-groups").any { root.has(it) }) {
             warnings.add(
-                "Из Clash импортируются серверы. Группы, DNS и правила Clash не переносятся; используются настройки SFAxtnd."
+                "Из Clash импортируются серверы. Группы, DNS и правила Clash не переносятся; используются настройки SFAxtnd.",
             )
+        }
         val servers =
             (0 until array.length()).map { i ->
                 val source = array.optJSONObject(i)
@@ -153,35 +159,34 @@ internal object ForeignSubscriptionParser {
         return ForeignSubscription("Clash / Mihomo", servers, warnings)
     }
 
-    private fun required(source: JSONObject, field: String): String =
-        source.optString(field).also {
-            require(source.opt(field) is String || field in setOf("port", "up", "down")) {
-                "Invalid non-string server field: $field"
-            }
-            require(it.isNotBlank()) { "Missing server field: $field" }
+    private fun required(source: JSONObject, field: String): String = source.optString(field).also {
+        require(source.opt(field) is String || field in setOf("port", "up", "down")) {
+            "Invalid non-string server field: $field"
         }
+        require(it.isNotBlank()) { "Missing server field: $field" }
+    }
 
     private fun fields(source: JSONObject, supported: Set<String>) {
         // A+: optional unknown keys ignored (PARTIAL). Required keys still via required().
     }
 
-    private fun unknownFields(source: JSONObject, supported: Set<String>): List<String> =
-        source.keys().asSequence().filter { it !in supported }.toList()
+    private fun unknownFields(source: JSONObject, supported: Set<String>): List<String> = source.keys().asSequence().filter { it !in supported }.toList()
 
     private fun bool(source: JSONObject, key: String, fallback: Boolean = false): Boolean {
         if (!source.has(key)) return fallback
         return when (source.optString(key).lowercase()) {
             "true",
-            "1" -> true
+            "1",
+            -> true
             "false",
-            "0" -> false
+            "0",
+            -> false
             else -> error("Invalid boolean field: $key")
         }
     }
 
-    private fun port(source: JSONObject, key: String = "port"): Int =
-        required(source, key).toIntOrNull()?.takeIf { it in 1..65535 }
-            ?: error("Invalid server port")
+    private fun port(source: JSONObject, key: String = "port"): Int = required(source, key).toIntOrNull()?.takeIf { it in 1..65535 }
+        ?: error("Invalid server port")
 
     private fun clashNode(source: JSONObject): JSONObject {
         val type = required(source, "type").lowercase()
@@ -197,7 +202,8 @@ internal object ForeignSubscriptionParser {
                 "hysteria2",
                 "tuic",
                 "anytls",
-                "http" -> type
+                "http",
+                -> type
                 else -> error("Unsupported Clash proxy type: $type")
             }
         fields(
@@ -281,7 +287,8 @@ internal object ForeignSubscriptionParser {
                         "disable-sni",
                     )
                 "hysteria",
-                "hysteria2" ->
+                "hysteria2",
+                ->
                     setOf(
                         "password",
                         "auth-str",
@@ -296,7 +303,7 @@ internal object ForeignSubscriptionParser {
                 else -> setOf("username", "password")
             }
         val transportFields =
-            if (mapped in setOf("vless", "vmess", "trojan"))
+            if (mapped in setOf("vless", "vmess", "trojan")) {
                 setOf(
                     "network",
                     "ws-opts",
@@ -307,7 +314,9 @@ internal object ForeignSubscriptionParser {
                     "xhttp-opts",
                     "smux",
                 )
-            else emptySet()
+            } else {
+                emptySet()
+            }
         fields(
             source,
             specific +
@@ -339,7 +348,8 @@ internal object ForeignSubscriptionParser {
                 .put("server_port", port(source))
         when (mapped) {
             "vless",
-            "vmess" -> {
+            "vmess",
+            -> {
                 node.put("uuid", required(source, "uuid"))
                 if (mapped == "vmess") {
                     node.put("security", source.optString("cipher", "auto"))
@@ -375,8 +385,11 @@ internal object ForeignSubscriptionParser {
                         val options = source.optJSONObject("plugin-opts") ?: JSONObject()
                         fields(
                             options,
-                            if (it == "obfs" || it == "obfs-local") setOf("mode", "host")
-                            else setOf("mode", "tls", "host", "path", "mux", "skip-cert-verify"),
+                            if (it == "obfs" || it == "obfs-local") {
+                                setOf("mode", "host")
+                            } else {
+                                setOf("mode", "tls", "host", "path", "mux", "skip-cert-verify")
+                            },
                         )
                         val values =
                             options
@@ -384,16 +397,20 @@ internal object ForeignSubscriptionParser {
                                 .asSequence()
                                 .map { key ->
                                     val option =
-                                        if (it == "obfs" || it == "obfs-local")
+                                        if (it == "obfs" || it == "obfs-local") {
                                             when (key) {
                                                 "mode" -> "obfs"
                                                 else -> "obfs-host"
                                             }
-                                        else key
+                                        } else {
+                                            key
+                                        }
                                     val value = options.get(key)
                                     if (value is Boolean) {
                                         if (value) option else ""
-                                    } else "$option=$value"
+                                    } else {
+                                        "$option=$value"
+                                    }
                                 }
                                 .filter { it.isNotEmpty() }
                                 .joinToString(";")
@@ -401,40 +418,53 @@ internal object ForeignSubscriptionParser {
                     }
             }
             "trojan",
-            "anytls" -> node.put("password", required(source, "password"))
+            "anytls",
+            -> node.put("password", required(source, "password"))
             "tuic" -> {
                 node
                     .put("uuid", required(source, "uuid"))
                     .put("password", required(source, "password"))
-                for ((from, to) in
-                    mapOf(
-                        "congestion-controller" to "congestion_control",
-                        "udp-relay-mode" to "udp_relay_mode",
-                        "heartbeat-interval" to "heartbeat",
-                    )) if (source.has(from))
-                    node.put(
-                        to,
-                        source.get(from).let {
-                            if (from == "heartbeat-interval" && it is Number) "${it}s" else it
-                        },
-                    )
-                if (source.has("reduce-rtt"))
+                for (
+                (from, to) in
+                mapOf(
+                    "congestion-controller" to "congestion_control",
+                    "udp-relay-mode" to "udp_relay_mode",
+                    "heartbeat-interval" to "heartbeat",
+                )
+                ) {
+                    if (source.has(from)) {
+                        node.put(
+                            to,
+                            source.get(from).let {
+                                if (from == "heartbeat-interval" && it is Number) "${it}s" else it
+                            },
+                        )
+                    }
+                }
+                if (source.has("reduce-rtt")) {
                     node.put("zero_rtt_handshake", bool(source, "reduce-rtt"))
-                if (source.has("udp-over-stream"))
+                }
+                if (source.has("udp-over-stream")) {
                     node.put("udp_over_stream", bool(source, "udp-over-stream"))
+                }
             }
             "hysteria",
-            "hysteria2" -> {
+            "hysteria2",
+            -> {
                 node.put(
                     if (mapped == "hysteria") "auth_str" else "password",
                     required(source, if (source.has("auth-str")) "auth-str" else "password"),
                 )
-                if (mapped == "hysteria")
+                if (mapped == "hysteria") {
                     require(!source.has("auth")) {
                         "Unsupported Hysteria binary auth; use auth-str"
                     }
-                for (key in listOf("up", "down")) if (source.has(key))
-                    node.put("${key}_mbps", bandwidth(required(source, key)))
+                }
+                for (key in listOf("up", "down")) {
+                    if (source.has(key)) {
+                        node.put("${key}_mbps", bandwidth(required(source, key)))
+                    }
+                }
                 if (mapped == "hysteria") {
                     if (!node.has("up_mbps")) node.put("up_mbps", 100)
                     if (!node.has("down_mbps")) node.put("down_mbps", 100)
@@ -443,37 +473,44 @@ internal object ForeignSubscriptionParser {
                     .optString("obfs")
                     .takeIf { it.isNotBlank() }
                     ?.let {
-                        if (mapped == "hysteria2")
+                        if (mapped == "hysteria2") {
                             node.put(
                                 "obfs",
                                 JSONObject()
                                     .put("type", it)
                                     .put("password", required(source, "obfs-password")),
                             )
-                        else node.put("obfs", it)
+                        } else {
+                            node.put("obfs", it)
+                        }
                     }
                 if (source.has("ports")) {
                     val ranges =
                         ProxyLinkParser.endpoint(
-                                "[${node.getString("server")}]:${source.get("ports")}"
-                            )
+                            "[${node.getString("server")}]:${source.get("ports")}",
+                        )
                             .ports
                     node.put("server_ports", JSONArray(ranges))
                 }
-                if (source.has("hop-interval"))
+                if (source.has("hop-interval")) {
                     node.put(
                         "hop_interval",
                         source.get("hop-interval").let { if (it is Number) "${it}s" else it },
                     )
+                }
             }
             "socks",
-            "http" -> {
+            "http",
+            -> {
                 if (mapped == "socks") {
                     node.put("version", "5")
                     require(!bool(source, "tls")) { "Unsupported SOCKS TLS transport" }
                 }
-                for (key in listOf("username", "password")) if (source.has(key))
-                    node.put(key, source.get(key))
+                for (key in listOf("username", "password")) {
+                    if (source.has(key)) {
+                        node.put(key, source.get(key))
+                    }
+                }
             }
         }
         if (source.has("udp") && !bool(source, "udp")) {
@@ -494,34 +531,37 @@ internal object ForeignSubscriptionParser {
                     "dual" -> ""
                     else -> error("Unsupported IP version")
                 }
-            if (strategy.isNotEmpty())
+            if (strategy.isNotEmpty()) {
                 node.put(
                     "domain_resolver",
                     JSONObject().put("server", "dns-direct").put("strategy", strategy),
                 )
+            }
         }
         require(!source.has("plugin-opts") || source.has("plugin")) { "Missing Shadowsocks plugin" }
         require(!source.has("obfs-password") || source.has("obfs")) {
             "Missing Hysteria obfuscation type"
         }
-        if (mapped == "hysteria2")
+        if (mapped == "hysteria2") {
             require(!source.has("auth")) { "Unsupported Hysteria binary auth" }
+        }
         val mandatoryTls = mapped in setOf("trojan", "hysteria", "hysteria2", "tuic", "anytls")
         val enabledTls = mandatoryTls || bool(source, "tls") || source.has("reality-opts")
-        if (!enabledTls)
+        if (!enabledTls) {
             require(
                 listOf(
-                        "servername",
-                        "sni",
-                        "alpn",
-                        "skip-cert-verify",
-                        "client-fingerprint",
-                        "fingerprint",
-                    )
-                    .none { source.has(it) }
+                    "servername",
+                    "sni",
+                    "alpn",
+                    "skip-cert-verify",
+                    "client-fingerprint",
+                    "fingerprint",
+                )
+                    .none { source.has(it) },
             ) {
                 "Invalid TLS parameters without enabled TLS"
             }
+        }
         if (enabledTls) {
             require(mapped !in setOf("socks", "shadowsocks")) {
                 "Unsupported TLS wrapper for this proxy type"
@@ -539,15 +579,18 @@ internal object ForeignSubscriptionParser {
                         },
                     )
             if (source.has("alpn")) tls.put("alpn", source.getJSONArray("alpn"))
-            if (source.has("skip-cert-verify"))
+            if (source.has("skip-cert-verify")) {
                 tls.put("insecure", bool(source, "skip-cert-verify"))
+            }
             if (source.has("disable-sni")) tls.put("disable_sni", bool(source, "disable-sni"))
             source
                 .optString("client-fingerprint")
                 .takeIf { it.isNotBlank() }
                 ?.let {
-                    require(mapped !in setOf("tuic", "hysteria") &&
-                        (mapped != "hysteria2" || it.equals("chrome", ignoreCase = true))) {
+                    require(
+                        mapped !in setOf("tuic", "hysteria") &&
+                            (mapped != "hysteria2" || it.equals("chrome", ignoreCase = true)),
+                    ) {
                         "Unsupported QUIC uTLS fingerprint"
                     }
                     tls.put("utls", JSONObject().put("enabled", true).put("fingerprint", it))
@@ -575,12 +618,13 @@ internal object ForeignSubscriptionParser {
             }
             node.put("tls", tls)
         }
-        if (mapped in setOf("vless", "vmess", "trojan"))
+        if (mapped in setOf("vless", "vmess", "trojan")) {
             clashTransport(source)?.let { node.put("transport", it) }
-        else
+        } else {
             require(source.optString("network") in setOf("", "tcp")) {
                 "Unsupported transport for proxy type"
             }
+        }
         source.optJSONObject("smux")?.let { options ->
             fields(
                 options,
@@ -597,23 +641,27 @@ internal object ForeignSubscriptionParser {
             options.keys().forEach { key -> mux.put(key.replace('-', '_'), options.get(key)) }
             node.put("multiplex", mux)
         }
-        if (mapped == "anytls")
-            for ((from, to) in
-                mapOf(
-                    "idle-session-check-interval" to "idle_session_check_interval",
-                    "idle-session-timeout" to "idle_session_timeout",
-                    "min-idle-session" to "min_idle_session",
-                )) if (source.has(from)) node.put(to, source.get(from))
+        if (mapped == "anytls") {
+            for (
+            (from, to) in
+            mapOf(
+                "idle-session-check-interval" to "idle_session_check_interval",
+                "idle-session-timeout" to "idle_session_timeout",
+                "min-idle-session" to "min_idle_session",
+            )
+            ) {
+                if (source.has(from)) node.put(to, source.get(from))
+            }
+        }
         return QuicTlsCompatibility.normalize(node)
     }
 
-    private fun bandwidth(value: String): Int =
-        Regex("(?i)^(\\d+)(?:\\s*(?:mbps|m))?$")
-            .matchEntire(value.trim())
-            ?.groupValues
-            ?.get(1)
-            ?.toIntOrNull()
-            ?.takeIf { it > 0 } ?: error("Invalid Hysteria bandwidth")
+    private fun bandwidth(value: String): Int = Regex("(?i)^(\\d+)(?:\\s*(?:mbps|m))?$")
+        .matchEntire(value.trim())
+        ?.groupValues
+        ?.get(1)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 } ?: error("Invalid Hysteria bandwidth")
 
     private fun clashTransport(source: JSONObject): JSONObject? {
         val network = source.optString("network", "tcp")
@@ -629,14 +677,14 @@ internal object ForeignSubscriptionParser {
             }
         require(
             listOf(
-                    "ws-opts",
-                    "grpc-opts",
-                    "h2-opts",
-                    "http-opts",
-                    "http-upgrade-opts",
-                    "xhttp-opts",
-                )
-                .none { it != selectedOption && source.has(it) }
+                "ws-opts",
+                "grpc-opts",
+                "h2-opts",
+                "http-opts",
+                "http-upgrade-opts",
+                "xhttp-opts",
+            )
+                .none { it != selectedOption && source.has(it) },
         ) {
             "Invalid transport options for selected network"
         }
@@ -650,13 +698,15 @@ internal object ForeignSubscriptionParser {
                 "xhttp" -> "xhttp-opts"
                 "tcp",
                 "raw",
-                "" -> return null
+                "",
+                -> return null
                 else -> error("Unsupported Clash transport")
             }
         val options = source.optJSONObject(optionKey) ?: JSONObject()
         val params = mutableMapOf<String, String>()
-        if (options.opt("path") is String)
+        if (options.opt("path") is String) {
             options.optString("path").takeIf { it.isNotBlank() }?.let { params["path"] = it }
+        }
         options.optString("host").takeIf { it.isNotBlank() }?.let { params["host"] = it }
         if (network == "xhttp") {
             fields(options, setOf("host", "path", "mode"))
@@ -669,12 +719,16 @@ internal object ForeignSubscriptionParser {
         } else if (network in setOf("h2", "http")) {
             fields(options, setOf("host", "path", "method", "headers"))
             val transport = JSONObject().put("type", "http")
-            if (options.has("host"))
+            if (options.has("host")) {
                 transport.put(
                     "host",
-                    if (options.get("host") is JSONArray) options.getJSONArray("host")
-                    else JSONArray().put(options.get("host")),
+                    if (options.get("host") is JSONArray) {
+                        options.getJSONArray("host")
+                    } else {
+                        JSONArray().put(options.get("host"))
+                    },
                 )
+            }
             if (options.has("path")) {
                 val path = options.get("path")
                 require(path !is JSONArray || path.length() == 1) {
@@ -682,24 +736,32 @@ internal object ForeignSubscriptionParser {
                 }
                 transport.put("path", if (path is JSONArray) path.getString(0) else path)
             }
-            for (key in listOf("method", "headers")) if (options.has(key))
-                transport.put(key, options.get(key))
+            for (key in listOf("method", "headers")) {
+                if (options.has(key)) {
+                    transport.put(key, options.get(key))
+                }
+            }
             return transport
-        } else
+        } else {
             fields(
                 options,
-                if (network == "ws")
+                if (network == "ws") {
                     setOf("path", "host", "headers", "max-early-data", "early-data-header-name")
-                else setOf("path", "host"),
+                } else {
+                    setOf("path", "host")
+                },
             )
+        }
         val transport =
             ProxyLinkParser.transport(network, params, source.getString("server")) ?: return null
         if (options.has("headers")) transport.put("headers", options.getJSONObject("headers"))
         if (network == "ws") {
-            if (options.has("max-early-data"))
+            if (options.has("max-early-data")) {
                 transport.put("max_early_data", options.getInt("max-early-data"))
-            if (options.has("early-data-header-name"))
+            }
+            if (options.has("early-data-header-name")) {
                 transport.put("early_data_header_name", options.getString("early-data-header-name"))
+            }
         }
         return transport
     }
@@ -714,31 +776,37 @@ internal object ForeignSubscriptionParser {
                 servers.add(
                     ForeignServer(servers.size + 1, "Сервер ${i + 1}") {
                         error("Invalid Xray outbound object")
-                    }
+                    },
                 )
                 continue
             }
             val protocol = outbound.optString("protocol")
             if (protocol == "hysteria" && !outbound.optJSONObject("streamSettings")
-                    ?.optJSONObject("tlsSettings")?.optString("fingerprint").isNullOrBlank()) {
+                    ?.optJSONObject("tlsSettings")?.optString("fingerprint").isNullOrBlank()
+            ) {
                 hysteriaFingerprint = true
             }
             if (protocol in setOf("freedom", "blackhole", "dns")) continue
             val settings = outbound.optJSONObject("settings") ?: JSONObject()
             val entries =
-                (settings.optJSONArray(
-                        if (protocol in setOf("vmess", "vless")) "vnext" else "servers"
-                    ) ?: JSONArray())
+                (
+                    settings.optJSONArray(
+                        if (protocol in setOf("vmess", "vless")) "vnext" else "servers",
+                    ) ?: JSONArray()
+                    )
                     .also {
-                        if (it.length() == 0)
+                        if (it.length() == 0) {
                             it.put(if (protocol == "hysteria") settings else JSONObject())
+                        }
                     }
             for (j in 0 until entries.length()) {
                 val server = entries.optJSONObject(j) ?: JSONObject()
                 val users =
-                    if (protocol in setOf("vmess", "vless", "socks"))
+                    if (protocol in setOf("vmess", "vless", "socks")) {
                         server.optJSONArray("users") ?: JSONArray().put(JSONObject())
-                    else JSONArray().put(server)
+                    } else {
+                        JSONArray().put(server)
+                    }
                 if (users.length() == 0) users.put(JSONObject())
                 for (k in 0 until users.length()) {
                     val position = servers.size + 1
@@ -746,12 +814,15 @@ internal object ForeignSubscriptionParser {
                         root.optString("remarks").ifBlank {
                             outbound.optString("tag").ifBlank { "Сервер $position" }
                         } +
-                            if (entries.length() > 1 || users.length() > 1) " (${j + 1}/${k + 1})"
-                            else ""
+                            if (entries.length() > 1 || users.length() > 1) {
+                                " (${j + 1}/${k + 1})"
+                            } else {
+                                ""
+                            }
                     servers.add(
                         ForeignServer(position, name.take(120)) {
                             xrayNode(outbound, server, users.optJSONObject(k) ?: JSONObject(), name)
-                        }
+                        },
                     )
                 }
             }
@@ -773,7 +844,7 @@ internal object ForeignSubscriptionParser {
         val stream = source.getJSONObject("streamSettings")
         fields(stream, setOf("network", "security", "hysteriaSettings", "tlsSettings", "finalmask"))
         require(
-            stream.getString("network") == "hysteria" && stream.getString("security") == "tls"
+            stream.getString("network") == "hysteria" && stream.getString("security") == "tls",
         ) {
             "Invalid Xray Hysteria transport"
         }
@@ -800,7 +871,7 @@ internal object ForeignSubscriptionParser {
         if (options.has("allowInsecure")) tls.put("insecure", bool(options, "allowInsecure"))
         if (options.has("alpn")) tls.put("alpn", options.getJSONArray("alpn"))
         require(
-            !options.has("enableSessionResumption") || !bool(options, "enableSessionResumption")
+            !options.has("enableSessionResumption") || !bool(options, "enableSessionResumption"),
         ) {
             "Unsupported Hysteria session resumption"
         }
@@ -856,18 +927,23 @@ internal object ForeignSubscriptionParser {
                 "vless",
                 "vmess",
                 "socks",
-                "http" -> setOf("address", "port", "users")
+                "http",
+                -> setOf("address", "port", "users")
                 "trojan" -> setOf("address", "port", "password", "level", "email")
                 else -> setOf("address", "port", "method", "password", "uot", "level", "email")
             },
         )
         when (protocol) {
             "vless",
-            "vmess" -> {
+            "vmess",
+            -> {
                 fields(
                     user,
-                    if (protocol == "vless") setOf("id", "flow", "encryption", "level", "email")
-                    else setOf("id", "security", "alterId", "level", "email"),
+                    if (protocol == "vless") {
+                        setOf("id", "flow", "encryption", "level", "email")
+                    } else {
+                        setOf("id", "security", "alterId", "level", "email")
+                    },
                 )
                 node.put("uuid", required(user, "id"))
                 if (protocol == "vless") {
@@ -890,21 +966,27 @@ internal object ForeignSubscriptionParser {
                 require(!bool(server, "uot")) { "Unsupported Xray Shadowsocks UDP-over-TCP" }
             }
             "socks",
-            "http" -> {
+            "http",
+            -> {
                 if (protocol == "socks") node.put("version", "5")
                 val auth =
-                    if (protocol == "http")
+                    if (protocol == "http") {
                         server.optJSONArray("users")?.let {
                             require(it.length() <= 1) { "Unsupported multiple HTTP users" }
                             it.optJSONObject(0)
                         }
-                    else user
+                    } else {
+                        user
+                    }
                 auth?.let {
                     fields(it, setOf("user", "pass", "level"))
-                    for ((from, to) in mapOf("user" to "username", "pass" to "password")) if (
-                        it.has(from)
-                    )
-                        node.put(to, it.get(from))
+                    for ((from, to) in mapOf("user" to "username", "pass" to "password")) {
+                        if (
+                            it.has(from)
+                        ) {
+                            node.put(to, it.get(from))
+                        }
+                    }
                 }
             }
         }
@@ -940,18 +1022,20 @@ internal object ForeignSubscriptionParser {
             require(protocol != "socks") { "Unsupported SOCKS TLS transport" }
             val options =
                 stream.optJSONObject(
-                    if (security == "reality") "realitySettings" else "tlsSettings"
+                    if (security == "reality") "realitySettings" else "tlsSettings",
                 ) ?: JSONObject()
             fields(
                 options,
                 setOf("serverName", "allowInsecure", "alpn", "fingerprint") +
-                    if (security == "reality") setOf("publicKey", "shortId", "spiderX", "show", "fingerprint", "serverName")
-                    else
+                    if (security == "reality") {
+                        setOf("publicKey", "shortId", "spiderX", "show", "fingerprint", "serverName")
+                    } else {
                         setOf(
                             "pinnedPeerCertSha256",
                             "verifyPeerCertByName",
                             "enableSessionResumption",
-                        ),
+                        )
+                    },
             )
             val tls =
                 JSONObject()
@@ -966,7 +1050,7 @@ internal object ForeignSubscriptionParser {
             if (security == "tls") {
                 require(
                     !options.has("enableSessionResumption") ||
-                        !bool(options, "enableSessionResumption")
+                        !bool(options, "enableSessionResumption"),
                 ) {
                     "Unsupported TLS session resumption"
                 }
@@ -976,7 +1060,7 @@ internal object ForeignSubscriptionParser {
                     options.optString("verifyPeerCertByName"),
                 )
             }
-            if (security == "reality")
+            if (security == "reality") {
                 ProxyLinkParser.applyReality(
                     tls,
                     required(options, "publicKey"),
@@ -984,11 +1068,13 @@ internal object ForeignSubscriptionParser {
                     spiderX = options.optString("spiderX").ifBlank { null },
                     fingerprint = options.optString("fingerprint").ifBlank { null },
                 )
+            }
             node.put("tls", tls)
         }
         val network = stream.optString("network", "tcp")
-        if (protocol !in setOf("vless", "vmess", "trojan"))
+        if (protocol !in setOf("vless", "vmess", "trojan")) {
             require(network in setOf("tcp", "raw")) { "Unsupported Xray transport for proxy type" }
+        }
         val key =
             when (network) {
                 "tcp" -> "tcpSettings"
@@ -996,7 +1082,8 @@ internal object ForeignSubscriptionParser {
                 "ws" -> "wsSettings"
                 "grpc" -> "grpcSettings"
                 "http",
-                "h2" -> "httpSettings"
+                "h2",
+                -> "httpSettings"
                 "httpupgrade" -> "httpupgradeSettings"
                 "xhttp" -> "xhttpSettings"
                 "splithttp" -> "splithttpSettings"
@@ -1004,23 +1091,24 @@ internal object ForeignSubscriptionParser {
             }
         require(
             listOf(
-                    "tcpSettings",
-                    "rawSettings",
-                    "wsSettings",
-                    "grpcSettings",
-                    "httpSettings",
-                    "httpupgradeSettings",
-                    "xhttpSettings",
-                    "splithttpSettings",
-                )
-                .none { it != key && stream.has(it) }
+                "tcpSettings",
+                "rawSettings",
+                "wsSettings",
+                "grpcSettings",
+                "httpSettings",
+                "httpupgradeSettings",
+                "xhttpSettings",
+                "splithttpSettings",
+            )
+                .none { it != key && stream.has(it) },
         ) {
             "Invalid Xray transport options for selected network"
         }
         val options = stream.optJSONObject(key) ?: JSONObject()
         when (network) {
             "tcp",
-            "raw" -> {
+            "raw",
+            -> {
                 fields(options, setOf("header"))
                 val header = options.optJSONObject("header")
                 require(header == null || header.optString("type", "none") == "none") {
@@ -1031,12 +1119,16 @@ internal object ForeignSubscriptionParser {
                 fields(options, setOf("path", "headers", "maxEarlyData", "earlyDataHeaderName"))
                 val transport =
                     JSONObject().put("type", "ws").put("path", options.optString("path", "/"))
-                for ((from, to) in
-                    mapOf(
-                        "headers" to "headers",
-                        "maxEarlyData" to "max_early_data",
-                        "earlyDataHeaderName" to "early_data_header_name",
-                    )) if (options.has(from)) transport.put(to, options.get(from))
+                for (
+                (from, to) in
+                mapOf(
+                    "headers" to "headers",
+                    "maxEarlyData" to "max_early_data",
+                    "earlyDataHeaderName" to "early_data_header_name",
+                )
+                ) {
+                    if (options.has(from)) transport.put(to, options.get(from))
+                }
                 node.put("transport", transport)
             }
             "grpc" -> {
@@ -1051,11 +1143,15 @@ internal object ForeignSubscriptionParser {
             }
             "http",
             "h2",
-            "httpupgrade" -> {
+            "httpupgrade",
+            -> {
                 fields(
                     options,
-                    if (network == "httpupgrade") setOf("host", "path")
-                    else setOf("host", "path", "method", "headers"),
+                    if (network == "httpupgrade") {
+                        setOf("host", "path")
+                    } else {
+                        setOf("host", "path", "method", "headers")
+                    },
                 )
                 val transport =
                     JSONObject(options.toString())
@@ -1063,10 +1159,14 @@ internal object ForeignSubscriptionParser {
                 node.put("transport", transport)
             }
             "xhttp",
-            "splithttp" -> {
+            "splithttp",
+            -> {
                 val params = mutableMapOf<String, String>()
-                for (field in listOf("host", "path", "mode")) if (options.has(field))
-                    params[field] = options.getString(field)
+                for (field in listOf("host", "path", "mode")) {
+                    if (options.has(field)) {
+                        params[field] = options.getString(field)
+                    }
+                }
                 val extra = JSONObject(options.toString())
                 listOf("host", "path", "mode").forEach { extra.remove(it) }
                 val nested = extra.remove("extra") as? JSONObject

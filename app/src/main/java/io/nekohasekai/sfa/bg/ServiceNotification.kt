@@ -36,7 +36,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class ServiceNotification(private val service: Service) :
-    CommandClient.Handler, OnPreferenceDataStoreChangeListener {
+    CommandClient.Handler,
+    OnPreferenceDataStoreChangeListener {
     companion object {
         private const val notificationId = 1
         private const val notificationChannel = "service"
@@ -86,9 +87,8 @@ class ServiceNotification(private val service: Service) :
             localOnly = true,
         )
 
-    private fun readTitleMode() =
-        runCatching { JSONObject(Settings.appearanceJson).optString("notificationTitle", "group") }
-            .getOrDefault("group")
+    private fun readTitleMode() = runCatching { JSONObject(Settings.appearanceJson).optString("notificationTitle", "group") }
+        .getOrDefault("group")
 
     private fun title() = NotificationTitle.resolve(titleMode, profileName, activeGroups)
 
@@ -132,22 +132,22 @@ class ServiceNotification(private val service: Service) :
                     Intent(service, MainActivity::class.java)
                         .setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
                     flags,
-                )
+                ),
             )
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .apply {
                 addAction(
                     NotificationCompat.Action.Builder(
+                        0,
+                        service.getText(R.string.stop),
+                        PendingIntent.getBroadcast(
+                            service,
                             0,
-                            service.getText(R.string.stop),
-                            PendingIntent.getBroadcast(
-                                service,
-                                0,
-                                Intent(Action.SERVICE_CLOSE).setPackage(service.packageName),
-                                flags,
-                            ),
-                        )
-                        .build()
+                            Intent(Action.SERVICE_CLOSE).setPackage(service.packageName),
+                            flags,
+                        ),
+                    )
+                        .build(),
                 )
             }
     }
@@ -164,7 +164,7 @@ class ServiceNotification(private val service: Service) :
                     notificationChannel,
                     "Service Notifications",
                     NotificationManager.IMPORTANCE_LOW,
-                )
+                ),
             )
         }
         service.startForeground(
@@ -176,28 +176,27 @@ class ServiceNotification(private val service: Service) :
         )
     }
 
-    suspend fun start() =
-        withContext(Dispatchers.Main.immediate) {
-            if (started || !checkPermission()) return@withContext
-            started = true
-            dynamicNotification.value = Settings.dynamicNotification
-            Settings.dataStore.registerChangeListener(this@ServiceNotification)
-            groupClient.connect()
-            scope.launch {
-                combine(
-                        AppLifecycleObserver.isScreenOn,
-                        AppLifecycleObserver.isDeviceIdle,
-                        dynamicNotification,
-                    ) { screenOn, idle, dynamic ->
-                        PowerUsagePolicy.notificationActive(dynamic, screenOn, idle)
-                    }
-                    .distinctUntilChanged()
-                    .collect { active ->
-                        polling = active
-                        if (active) commandClient.connect() else commandClient.disconnect()
-                    }
+    suspend fun start() = withContext(Dispatchers.Main.immediate) {
+        if (started || !checkPermission()) return@withContext
+        started = true
+        dynamicNotification.value = Settings.dynamicNotification
+        Settings.dataStore.registerChangeListener(this@ServiceNotification)
+        groupClient.connect()
+        scope.launch {
+            combine(
+                AppLifecycleObserver.isScreenOn,
+                AppLifecycleObserver.isDeviceIdle,
+                dynamicNotification,
+            ) { screenOn, idle, dynamic ->
+                PowerUsagePolicy.notificationActive(dynamic, screenOn, idle)
             }
+                .distinctUntilChanged()
+                .collect { active ->
+                    polling = active
+                    if (active) commandClient.connect() else commandClient.disconnect()
+                }
         }
+    }
 
     override fun updateStatus(status: StatusMessage) {
         val content =

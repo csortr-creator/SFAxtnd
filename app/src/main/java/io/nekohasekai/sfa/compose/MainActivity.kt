@@ -32,13 +32,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PlayArrow
@@ -97,11 +97,11 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.CrashReportManager
 import io.nekohasekai.sfa.bg.OOMReportManager
 import io.nekohasekai.sfa.bg.PowerReportManager
+import io.nekohasekai.sfa.bg.RuntimeProfileState
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
 import io.nekohasekai.sfa.compat.WindowSizeClassCompat
@@ -150,9 +150,9 @@ import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity :
     AppCompatActivity(),
@@ -506,7 +506,6 @@ class MainActivity :
                 }
         }
 
-
         // Connections Sheet state
         var showConnectionsSheet by remember { mutableStateOf(false) }
 
@@ -809,8 +808,6 @@ class MainActivity :
             dashboardViewModel.updateServiceStatus(currentServiceStatus)
         }
 
-
-
         val isSettingsSubScreen = currentRoute?.startsWith("settings/") == true
         val isToolsSubScreen = currentRoute?.startsWith("tools/") == true
         val isConnectionsDetail = currentRoute?.startsWith("connections/detail") == true
@@ -1022,8 +1019,15 @@ class MainActivity :
                     NavHost(
                         navController = navController,
                         serviceStatus = currentServiceStatus,
-                        onToggleConnection = { if (isRemote) RemoteControlManager.exitRemoteControl()
-                            else if (currentServiceStatus == Status.Stopped) startService() else dashboardViewModel.toggleService() },
+                        onToggleConnection = {
+                            if (isRemote) {
+                                RemoteControlManager.exitRemoteControl()
+                            } else if (currentServiceStatus == Status.Stopped) {
+                                startService()
+                            } else {
+                                dashboardViewModel.toggleService()
+                            }
+                        },
                         showStartFab = showStartFab,
                         showStatusBar = showStatusBar && (isRemote || useNavigationRail),
                         newProfileArgs = newProfileArgs,
@@ -1285,60 +1289,62 @@ class MainActivity :
                                 color = MaterialTheme.colorScheme.surfaceContainer,
                                 tonalElevation = 3.dp,
                             ) {
-                            Column {
-                                if (!isRemote) ServiceStatusBar(
-                                    visible = showLocalSessionPanel,
-                                    serviceStatus = currentServiceStatus,
-                                    connectionsCount = dashboardUiState.connectionsCount,
-                                    onConnectionsClick = { showConnectionsSheet = true },
-                                    onStopClick = { dashboardViewModel.toggleService() },
-                                )
-                                androidx.compose.material3.HorizontalDivider(
-                                    Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                )
-                            NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent) {
-                                bottomNavigationScreens.forEach { screen ->
-                                    NavigationBarItem(
-                                        icon = {
-                                            if (screen == Screen.Settings && hasUpdate) {
-                                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.primary) }) {
-                                                    Icon(screen.icon, contentDescription = null)
-                                                }
-                                            } else if (screen == Screen.Tools && taildropFailedCount > 0) {
-                                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("!") } }) {
-                                                    Icon(screen.icon, contentDescription = null)
-                                                }
-                                            } else if (screen == Screen.Tools && toolsUnreadCount > 0) {
-                                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("$toolsUnreadCount") } }) {
-                                                    Icon(screen.icon, contentDescription = null)
-                                                }
-                                            } else {
-                                                Icon(screen.icon, contentDescription = null)
-                                            }
-                                        },
-                                        label = { Text(stringResource(screen.titleRes)) },
-                                        selected =
-                                        currentDestination?.hierarchy?.any {
-                                            it.route == screen.route
-                                        } == true,
-                                        onClick = {
-                                            navController.navigate(screen.route) {
-                                                // Pop up to the start destination of the graph to
-                                                // avoid building up a large stack of destinations
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
-                                                // Avoid multiple copies of the same destination
-                                                launchSingleTop = true
-                                                // Restore state when reselecting a previously selected item
-                                                restoreState = true
-                                            }
-                                        },
+                                Column {
+                                    if (!isRemote) {
+                                        ServiceStatusBar(
+                                            visible = showLocalSessionPanel,
+                                            serviceStatus = currentServiceStatus,
+                                            connectionsCount = dashboardUiState.connectionsCount,
+                                            onConnectionsClick = { showConnectionsSheet = true },
+                                            onStopClick = { dashboardViewModel.toggleService() },
+                                        )
+                                    }
+                                    androidx.compose.material3.HorizontalDivider(
+                                        Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant,
                                     )
+                                    NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent) {
+                                        bottomNavigationScreens.forEach { screen ->
+                                            NavigationBarItem(
+                                                icon = {
+                                                    if (screen == Screen.Settings && hasUpdate) {
+                                                        BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.primary) }) {
+                                                            Icon(screen.icon, contentDescription = null)
+                                                        }
+                                                    } else if (screen == Screen.Tools && taildropFailedCount > 0) {
+                                                        BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("!") } }) {
+                                                            Icon(screen.icon, contentDescription = null)
+                                                        }
+                                                    } else if (screen == Screen.Tools && toolsUnreadCount > 0) {
+                                                        BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text("$toolsUnreadCount") } }) {
+                                                            Icon(screen.icon, contentDescription = null)
+                                                        }
+                                                    } else {
+                                                        Icon(screen.icon, contentDescription = null)
+                                                    }
+                                                },
+                                                label = { Text(stringResource(screen.titleRes)) },
+                                                selected =
+                                                currentDestination?.hierarchy?.any {
+                                                    it.route == screen.route
+                                                } == true,
+                                                onClick = {
+                                                    navController.navigate(screen.route) {
+                                                        // Pop up to the start destination of the graph to
+                                                        // avoid building up a large stack of destinations
+                                                        popUpTo(navController.graph.findStartDestination().id) {
+                                                            saveState = true
+                                                        }
+                                                        // Avoid multiple copies of the same destination
+                                                        launchSingleTop = true
+                                                        // Restore state when reselecting a previously selected item
+                                                        restoreState = true
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
-                            }
-                            }
                             }
                         }
                     },

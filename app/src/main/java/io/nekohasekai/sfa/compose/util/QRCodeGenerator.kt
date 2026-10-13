@@ -2,10 +2,10 @@ package io.nekohasekai.sfa.compose.util
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter

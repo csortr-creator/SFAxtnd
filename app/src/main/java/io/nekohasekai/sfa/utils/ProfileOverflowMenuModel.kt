@@ -21,8 +21,7 @@ object ProfileOverflowMenuModel {
     }
 
     /** Top-level actions in order. */
-    fun primaryActions(): List<PrimaryAction> =
-        listOf(PrimaryAction.Edit, PrimaryAction.Share, PrimaryAction.Delete)
+    fun primaryActions(): List<PrimaryAction> = listOf(PrimaryAction.Edit, PrimaryAction.Share, PrimaryAction.Delete)
 
     /**
      * Share/export actions nested under «Поделиться».

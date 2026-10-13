@@ -1,17 +1,17 @@
 package io.nekohasekai.sfa.utils
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.util.UUID
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Safe config-file commit for remote subscription updates.
@@ -27,8 +27,10 @@ object ProfileConfigCommit {
 
     private val locks = ConcurrentHashMap<Long, Mutex>()
     private val generations = ConcurrentHashMap<Long, AtomicLong>()
+
     /** Profile ids removed by [markDeleted]; blocks further commits until cleared. */
     private val deletedIds = ConcurrentHashMap.newKeySet<Long>()
+
     /** Process-local successful file-replace counter (B3-3c). Separate from operation tokens. */
     private val writeGenerations = ConcurrentHashMap<Long, AtomicLong>()
 
@@ -76,15 +78,11 @@ object ProfileConfigCommit {
     fun mutexFor(profileId: Long): Mutex = locks.getOrPut(profileId) { Mutex() }
 
     /** Run [block] under the per-profile commit/delete mutex. */
-    suspend fun <T> withProfileLock(profileId: Long, block: suspend () -> T): T =
-        mutexFor(profileId).withLock { block() }
+    suspend fun <T> withProfileLock(profileId: Long, block: suspend () -> T): T = mutexFor(profileId).withLock { block() }
 
+    fun currentWriteGeneration(profileId: Long): Long = writeGenerations[profileId]?.get() ?: 0L
 
-    fun currentWriteGeneration(profileId: Long): Long =
-        writeGenerations[profileId]?.get() ?: 0L
-
-    private fun bumpWriteGeneration(profileId: Long): Long =
-        writeGenerations.getOrPut(profileId) { AtomicLong(0L) }.incrementAndGet()
+    private fun bumpWriteGeneration(profileId: Long): Long = writeGenerations.getOrPut(profileId) { AtomicLong(0L) }.incrementAndGet()
 
     /** SHA-256 of file bytes, or null if missing/unreadable. */
     fun fileSha256(file: File): String? {
@@ -111,16 +109,15 @@ object ProfileConfigCommit {
     suspend fun snapshotExpectedState(
         profileId: Long,
         configPath: String,
-    ): ConfigExpectedState =
-        mutexFor(profileId).withLock {
-            val file = File(configPath)
-            ConfigExpectedState(
-                profileId = profileId,
-                configPath = configPath,
-                contentSha256 = fileSha256(file),
-                writeGeneration = currentWriteGeneration(profileId),
-            )
-        }
+    ): ConfigExpectedState = mutexFor(profileId).withLock {
+        val file = File(configPath)
+        ConfigExpectedState(
+            profileId = profileId,
+            configPath = configPath,
+            contentSha256 = fileSha256(file),
+            writeGeneration = currentWriteGeneration(profileId),
+        )
+    }
 
     /** Bind a pre-fetch file snapshot to the operation that started the fetch. */
     suspend fun beginUpdate(profileId: Long, configPath: String): ConfigExpectedState {
@@ -294,7 +291,6 @@ object ProfileConfigCommit {
         }
     }
 
-
     /**
      * Editor save path: replace under mutex, bump write generation when bytes change.
      * Call only outside outer withProfileLock (acquires mutex itself) OR use from
@@ -338,8 +334,7 @@ sealed class CommitOutcome<out T> {
     data class Success<T>(val replaced: Boolean, val metadata: T) : CommitOutcome<T>()
 
     /** File on disk is the new content; report/DB update failed. */
-    data class FileCommittedMetadataFailed(val replaced: Boolean, val error: Throwable) :
-        CommitOutcome<Nothing>()
+    data class FileCommittedMetadataFailed(val replaced: Boolean, val error: Throwable) : CommitOutcome<Nothing>()
 
     data class Failed(val error: Throwable) : CommitOutcome<Nothing>()
 

@@ -7,22 +7,22 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.CommitOutcome
-import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.utils.HTTPClient
-import io.nekohasekai.sfa.utils.NetworkErrorKind
-import io.nekohasekai.sfa.utils.NetworkErrorPresentation
-import io.nekohasekai.sfa.utils.ProfileConfigCommit
-import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
-import io.nekohasekai.sfa.utils.ManualPrepareResult
-import io.nekohasekai.sfa.utils.PendingImportHolder
 import io.nekohasekai.sfa.utils.ImportOperationOutcome
 import io.nekohasekai.sfa.utils.ImportResultFormatter
+import io.nekohasekai.sfa.utils.ManualPrepareResult
+import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
+import io.nekohasekai.sfa.utils.NetworkErrorKind
+import io.nekohasekai.sfa.utils.NetworkErrorPresentation
+import io.nekohasekai.sfa.utils.PendingImportHolder
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -269,9 +269,9 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                             lastUpdated = profile.typed.lastUpdated,
                             isUpdating = false,
                             showUpdateSuccess =
-                                result.outcome == ImportOperationOutcome.APPLIED ||
-                                    result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
-                                    result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
+                            result.outcome == ImportOperationOutcome.APPLIED ||
+                                result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
+                                result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
                             pendingImport = null,
                             showPartialImportDialog = false,
                         )
@@ -329,9 +329,9 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                             lastUpdated = profile?.typed?.lastUpdated ?: it.lastUpdated,
                             isUpdating = false,
                             showUpdateSuccess =
-                                result.outcome == ImportOperationOutcome.APPLIED ||
-                                    result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
-                                    result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
+                            result.outcome == ImportOperationOutcome.APPLIED ||
+                                result.outcome == ImportOperationOutcome.PARTIAL_APPLIED ||
+                                result.outcome == ImportOperationOutcome.APPLIED_UNCHANGED,
                             pendingImport = null,
                         )
                     }
@@ -345,12 +345,14 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
                 -> {
                     val message = if (profile != null) {
                         io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
-                    } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
+                    } else {
+                        "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
+                    }
                     _uiState.update {
                         it.copy(
                             isUpdating = false,
                             errorMessage =
-                                message,
+                            message,
                             pendingImport = null,
                         )
                     }
@@ -366,7 +368,6 @@ class EditProfileViewModel(application: Application) : AndroidViewModel(applicat
             it.copy(pendingImport = null, showPartialImportDialog = false)
         }
     }
-
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }

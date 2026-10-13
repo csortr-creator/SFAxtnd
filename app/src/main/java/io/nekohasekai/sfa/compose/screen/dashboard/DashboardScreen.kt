@@ -14,13 +14,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -85,7 +85,6 @@ fun DashboardScreen(
         )
     }
 
-
     OverrideTopBar {
         TopAppBar(
             title = { Text(stringResource(R.string.title_subscriptions)) },
@@ -93,25 +92,27 @@ fun DashboardScreen(
                 IconButton(
                     onClick = viewModel::updateAllProfiles,
                     enabled =
-                        !isRemote &&
-                            !uiState.isUpdatingAll &&
-                            uiState.updatingProfileIds.isEmpty() &&
-                            uiState.profiles.any {
-                                it.typed.type ==
-                                    io.nekohasekai.sfa.database.TypedProfile.Type.Remote
-                            },
+                    !isRemote &&
+                        !uiState.isUpdatingAll &&
+                        uiState.updatingProfileIds.isEmpty() &&
+                        uiState.profiles.any {
+                            it.typed.type ==
+                                io.nekohasekai.sfa.database.TypedProfile.Type.Remote
+                        },
                 ) {
-                    if (uiState.isUpdatingAll)
+                    if (uiState.isUpdatingAll) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(22.dp),
                             strokeWidth = 2.dp,
                         )
-                    else Icon(Icons.Default.Refresh, "Обновить все подписки")
+                    } else {
+                        Icon(Icons.Default.Refresh, "Обновить все подписки")
+                    }
                 }
                 IconButton(onClick = viewModel::showAddProfileSheet, enabled = !isRemote) {
                     Icon(Icons.Default.Add, "Добавить подписку")
                 }
-                if (remoteServers.isNotEmpty())
+                if (remoteServers.isNotEmpty()) {
                     Box {
                         IconButton(onClick = { showOthersMenu = true }) {
                             Icon(Icons.Default.Dns, "Удалённое управление")
@@ -127,6 +128,7 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
             },
         )
     }

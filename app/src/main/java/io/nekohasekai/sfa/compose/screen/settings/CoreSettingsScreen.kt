@@ -2,19 +2,14 @@ package io.nekohasekai.sfa.compose.screen.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Context
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.Lifecycle
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.material.icons.outlined.BatteryChargingFull
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
-import android.os.PowerManager
-import android.os.Build
-import android.net.Uri
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
@@ -51,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +61,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
@@ -178,10 +178,11 @@ fun CoreSettingsScreen(navController: NavController) {
                 supportingContent = {
                     Text(
                         text =
-                            if (isBatteryOptimizationIgnored)
-                                stringResource(R.string.battery_optimization_ignored)
-                            else
-                                stringResource(R.string.battery_optimization_active),
+                        if (isBatteryOptimizationIgnored) {
+                            stringResource(R.string.battery_optimization_ignored)
+                        } else {
+                            stringResource(R.string.battery_optimization_active)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
@@ -192,10 +193,11 @@ fun CoreSettingsScreen(navController: NavController) {
                         imageVector = Icons.Outlined.BatteryChargingFull,
                         contentDescription = null,
                         tint =
-                            if (isBatteryOptimizationIgnored)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.tertiary,
+                        if (isBatteryOptimizationIgnored) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.tertiary
+                        },
                     )
                 },
                 modifier =
@@ -438,7 +440,6 @@ fun CoreSettingsScreen(navController: NavController) {
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-
 
 private fun openBackgroundWorkSettings(
     context: Context,

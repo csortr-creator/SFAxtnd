@@ -71,8 +71,7 @@ object OutboundProfileState {
         }
         return JSONObject()
             .put("outbounds", outbounds)
-            .put("dns", JSONObject().put("servers", JSONArray().put(
-                JSONObject().put("type", "local").put("tag", "probe-dns"))))
+            .put("dns", JSONObject().put("servers", JSONArray().put(JSONObject().put("type", "local").put("tag", "probe-dns"))))
             .put("route", JSONObject().put("default_domain_resolver", "probe-dns").put("auto_detect_interface", true))
             .apply {
                 original.optJSONObject("certificate")?.let { put("certificate", it) }

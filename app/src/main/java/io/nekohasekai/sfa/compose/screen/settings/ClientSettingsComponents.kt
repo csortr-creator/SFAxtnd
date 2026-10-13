@@ -40,16 +40,17 @@ internal fun ClientSettingsPage(
             .padding(
                 top = padding.calculateTopPadding() + 8.dp,
                 bottom = padding.calculateBottomPadding() + 24.dp,
-            )
+            ),
     ) {
         content()
-        if (title != "Оформление")
+        if (title != "Оформление") {
             Text(
                 "Параметры сети применятся после переподключения VPN.",
                 Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
     }
 }
 
@@ -63,13 +64,15 @@ internal fun SettingToggle(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent =
-            if (description.isNotBlank()) {
-                { Text(description) }
-            } else null,
+        if (description.isNotBlank()) {
+            { Text(description) }
+        } else {
+            null
+        },
         trailingContent = { Switch(value, onChange) },
         modifier = Modifier.clickable { onChange(!value) },
         colors =
-            ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     )
 }
 
@@ -87,9 +90,9 @@ internal fun SettingChoice(
         trailingContent = { Icon(Icons.Default.ExpandMore, null) },
         modifier = Modifier.clickable { open = true },
         colors =
-            ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     )
-    if (open)
+    if (open) {
         AlertDialog(
             onDismissRequest = { open = false },
             title = { Text(title) },
@@ -102,7 +105,7 @@ internal fun SettingChoice(
                                     onChange(key)
                                     open = false
                                 }
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = 4.dp),
                         ) {
                             RadioButton(
                                 value == key,
@@ -118,6 +121,7 @@ internal fun SettingChoice(
             },
             confirmButton = { TextButton(onClick = { open = false }) { Text("Закрыть") } },
         )
+    }
 }
 
 @Composable
@@ -135,14 +139,14 @@ internal fun SettingNumber(
         headlineContent = { Text(title) },
         supportingContent = { Text("$value $suffix".trim()) },
         modifier =
-            Modifier.clickable {
-                draft = value.toString()
-                open = true
-            },
+        Modifier.clickable {
+            draft = value.toString()
+            open = true
+        },
         colors =
-            ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     )
-    if (open)
+    if (open) {
         AlertDialog(
             onDismissRequest = { open = false },
             title = { Text(title) },
@@ -154,9 +158,9 @@ internal fun SettingNumber(
                     isError = !valid,
                     supportingText = { Text("${range.first}–${range.last} $suffix") },
                     keyboardOptions =
-                        androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                        ),
+                    androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    ),
                 )
             },
             confirmButton = {
@@ -172,10 +176,10 @@ internal fun SettingNumber(
             },
             dismissButton = { TextButton(onClick = { open = false }) { Text("Отмена") } },
         )
+    }
 }
 
-internal fun settingsObject(raw: String) =
-    runCatching { JSONObject(raw.ifBlank { "{}" }) }.getOrDefault(JSONObject())
+internal fun settingsObject(raw: String) = runCatching { JSONObject(raw.ifBlank { "{}" }) }.getOrDefault(JSONObject())
 
 internal val dnsStrategies =
     listOf(

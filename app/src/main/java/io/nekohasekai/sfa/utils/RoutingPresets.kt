@@ -22,39 +22,33 @@ object RoutingPresets {
             RF_IPS to "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
         )
 
-    fun tags(raw: String) =
-        raw.split(',', ';', '\n').map(String::trim).filter(String::isNotBlank).toSet()
+    fun tags(raw: String) = raw.split(',', ';', '\n').map(String::trim).filter(String::isNotBlank).toSet()
 
     fun isWhitelist(rule: RoutingRule) = tags(rule.ruleSet).any { it in whitelistTags }
 
-    fun isRf(rule: RoutingRule) =
-        rule.name in setOf("ru-sites", "ru-ip", "РФ напрямую") ||
-            tags(rule.ruleSet).any { it in rfTags }
+    fun isRf(rule: RoutingRule) = rule.name in setOf("ru-sites", "ru-ip", "РФ напрямую") ||
+        tags(rule.ruleSet).any { it in rfTags }
 
-    private fun preset(whitelist: Boolean) =
-        RoutingRule(
-            name = if (whitelist) "Whitelist для России" else "РФ напрямую",
-            ruleSet = (if (whitelist) whitelistTags else rfTags).joinToString(","),
-            outbound = RoutingRule.OUTBOUND_DIRECT,
-            dnsRule = true,
-        )
+    private fun preset(whitelist: Boolean) = RoutingRule(
+        name = if (whitelist) "Whitelist для России" else "РФ напрямую",
+        ruleSet = (if (whitelist) whitelistTags else rfTags).joinToString(","),
+        outbound = RoutingRule.OUTBOUND_DIRECT,
+        dnsRule = true,
+    )
 
-    fun whitelist(rules: List<RoutingRule>) =
-        rules.filterNot { isWhitelist(it) || isRf(it) } + preset(true)
+    fun whitelist(rules: List<RoutingRule>) = rules.filterNot { isWhitelist(it) || isRf(it) } + preset(true)
 
-    fun rfDirect(rules: List<RoutingRule>) =
-        rules.filterNot { isWhitelist(it) || isRf(it) } + preset(false)
+    fun rfDirect(rules: List<RoutingRule>) = rules.filterNot { isWhitelist(it) || isRf(it) } + preset(false)
 
     fun migrateRules(rules: JSONArray?): JSONArray? {
         if (rules == null) return null
         val items = (0 until rules.length()).mapNotNull { rules.optJSONObject(it) }
-        fun kind(item: JSONObject): String? =
-            when {
-                item.optString("name") in setOf("Whitelist · домены", "Whitelist · IP") ->
-                    "whitelist"
-                item.optString("name") in setOf("ru-sites", "ru-ip") -> "rf"
-                else -> null
-            }
+        fun kind(item: JSONObject): String? = when {
+            item.optString("name") in setOf("Whitelist · домены", "Whitelist · IP") ->
+                "whitelist"
+            item.optString("name") in setOf("ru-sites", "ru-ip") -> "rf"
+            else -> null
+        }
         if (items.none { kind(it) != null }) return rules
         val emitted = mutableSetOf<String>()
         val result = JSONArray()
@@ -73,7 +67,7 @@ object RoutingPresets {
                     .put("ruleSet", next.ruleSet)
                     .put("outbound", next.outbound)
                     .put("dnsRule", true)
-                    .put("enabled", old.all { it.optBoolean("enabled", true) })
+                    .put("enabled", old.all { it.optBoolean("enabled", true) }),
             )
         }
         return result

@@ -14,7 +14,7 @@ object RuleSetPolicy {
                 .forEach(entry::remove)
         } else {
             error(
-                "Нет сохранённого rule-set для режима без автообновления: ${entry.optString("tag")}"
+                "Нет сохранённого rule-set для режима без автообновления: ${entry.optString("tag")}",
             )
         }
     }

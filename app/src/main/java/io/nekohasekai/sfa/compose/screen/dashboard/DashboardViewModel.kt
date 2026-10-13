@@ -1,11 +1,11 @@
 package io.nekohasekai.sfa.compose.screen.dashboard
 
-import io.nekohasekai.sfa.Application
-
+import android.util.Log
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.libbox.StatusMessage
+import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ProfileSelectionQueue
 import io.nekohasekai.sfa.bg.RuntimeProfileState
@@ -14,31 +14,28 @@ import io.nekohasekai.sfa.compose.base.UiEvent
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
-import io.nekohasekai.sfa.utils.ProfileSafeDelete
-import io.nekohasekai.sfa.utils.ProfileConfigCommit
-import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
-import io.nekohasekai.sfa.utils.ManualPrepareResult
-import io.nekohasekai.sfa.utils.ImportConfirmationQueue
-import io.nekohasekai.sfa.utils.PendingImportHolder
-import io.nekohasekai.sfa.utils.ImportOperationOutcome
-import io.nekohasekai.sfa.utils.CommitOutcome
-import io.nekohasekai.sfa.utils.ImportResultFormatter
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
+import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.utils.ImportConfirmationQueue
+import io.nekohasekai.sfa.utils.ImportOperationOutcome
+import io.nekohasekai.sfa.utils.ImportResultFormatter
+import io.nekohasekai.sfa.utils.ManualPrepareResult
+import io.nekohasekai.sfa.utils.ManualSubscriptionUpdate
+import io.nekohasekai.sfa.utils.PendingImportHolder
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.ProfileSafeDelete
 import io.nekohasekai.sfa.utils.RemoteControlManager
-import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.coroutineContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,11 +43,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONException
 import java.io.File
 import java.util.Collections
 import java.util.Date
+import kotlin.coroutines.coroutineContext
 
 enum class CardGroup {
     ClashMode,
@@ -236,7 +235,6 @@ class DashboardViewModel :
         }
     }
 
-
     fun toggleService() {
         if (currentState.isLoading) {
             stopService()
@@ -245,7 +243,7 @@ class DashboardViewModel :
         when (currentState.serviceStatus) {
             Status.Starting, Status.Started -> stopService()
             Status.Stopped -> sendGlobalEvent(UiEvent.RequestStartService)
-            else -> {   }
+            else -> { }
         }
     }
 
@@ -264,7 +262,9 @@ class DashboardViewModel :
                         if (_serviceStatus.value == Status.Stopped &&
                             RuntimeProfileState.startingProfileId == -1L &&
                             RuntimeProfileState.loadedProfileId == -1L
-                        ) return@withTimeoutOrNull true
+                        ) {
+                            return@withTimeoutOrNull true
+                        }
                         delay(100L)
                     } while (true)
                 }
@@ -276,7 +276,6 @@ class DashboardViewModel :
             }
         }
     }
-
 
     fun selectProfile(profileId: Long) {
         if (profileId in currentState.deletingProfileIds) return
@@ -346,8 +345,11 @@ class DashboardViewModel :
                     sendGlobalEvent(UiEvent.RequestReconnectService)
                     coroutineContext.ensureActive()
                     if (!selectionQueue.runIfCurrent(request) {
-                        BoxService.start(targetProfileId = profileId, switchRequestId = switchId)
-                    }) return@launch
+                            BoxService.start(targetProfileId = profileId, switchRequestId = switchId)
+                        }
+                    ) {
+                        return@launch
+                    }
                     Log.i(TAG, "START_NEW requested target=$profileId id=$switchId")
 
                     val leftStopped =
@@ -449,11 +451,11 @@ class DashboardViewModel :
                         filesDir = Application.application.filesDir,
                         serviceStatus = status,
                         stopVpnAndAwait = {
-                            fun confirmedStopped() =
-                                !RuntimeProfileState.shouldStopForDeletion(
-                                    profile.id, Settings.selectedProfile,
-                                    _serviceStatus.value != Status.Stopped,
-                                )
+                            fun confirmedStopped() = !RuntimeProfileState.shouldStopForDeletion(
+                                profile.id,
+                                Settings.selectedProfile,
+                                _serviceStatus.value != Status.Stopped,
+                            )
                             if (confirmedStopped()) return@delete true
                             BoxService.stop(expectedProfileId = profile.id)
                             val deadline = System.currentTimeMillis() + 15_000L
@@ -512,11 +514,13 @@ class DashboardViewModel :
                         updateState { copy(updatedProfileId = profile.id) }
                     }
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 sendErrorMessage("Не удалось обновить подписку: ошибка загрузки или проверки конфигурации")
+            } finally {
+                updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) }
             }
-            finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
             delay(1500)
             updateState { if (updatedProfileId == profile.id) copy(updatedProfileId = null) else this }
         }
@@ -537,14 +541,18 @@ class DashboardViewModel :
                         } else {
                             "${profile.name}\nОбновление пропущено"
                         }
-                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                    catch (e: Exception) {
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
                         "${profile.name}\nНе удалось обновить: ошибка загрузки или проверки конфигурации"
+                    } finally {
+                        updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) }
                     }
-                    finally { updateState { copy(updatingProfileIds = updatingProfileIds - profile.id) } }
                 }
                 io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(UiEvent.ImportReport("Обновление всех подписок", reports.joinToString("\n\n")))
-            } finally { updateState { copy(isUpdatingAll = false, updatingProfileIds = emptySet()) } }
+            } finally {
+                updateState { copy(isUpdatingAll = false, updatingProfileIds = emptySet()) }
+            }
         }
     }
 
@@ -594,7 +602,9 @@ class DashboardViewModel :
                 val profile = ProfileManager.get(pending.profileId)
                 val message = if (profile != null) {
                     io.nekohasekai.sfa.compose.base.ImportReportNotifier.text(profile, result)
-                } else "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
+                } else {
+                    "PROFILE_UNAVAILABLE: профиль удалён или недоступен"
+                }
                 io.nekohasekai.sfa.compose.base.GlobalEventBus.emit(
                     UiEvent.ImportReport(pending.profileName, message),
                 )
@@ -615,7 +625,6 @@ class DashboardViewModel :
         ManualSubscriptionUpdate.cancel(pending)
         updateState { copy(importConfirmations = importConfirmations.complete(pending)) }
     }
-
 
     fun moveProfile(from: Int, to: Int) {
         val currentProfiles = currentState.profiles.toMutableList()
@@ -649,7 +658,6 @@ class DashboardViewModel :
     fun hideAddProfileSheet() {
         updateState { copy(showAddProfileSheet = false) }
     }
-
 
     fun updateServiceStatus(status: Status) {
         viewModelScope.launch {

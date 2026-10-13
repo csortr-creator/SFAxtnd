@@ -20,10 +20,10 @@ import io.nekohasekai.sfa.bg.PowerReportManager
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.compose.screen.tools.TaildropFiles
 import io.nekohasekai.sfa.constant.Bugs
+import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.ProfileConfigCommit
-import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope

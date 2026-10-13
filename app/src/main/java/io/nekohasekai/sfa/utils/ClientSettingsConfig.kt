@@ -1,8 +1,8 @@
 package io.nekohasekai.sfa.utils
 
-import java.net.URI
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 
 object ClientSettingsConfig {
     fun applyCore(root: JSONObject, options: JSONObject) {
@@ -12,8 +12,9 @@ object ClientSettingsConfig {
             if (inbound.optString("type") != "tun") continue
             val mtu = options.optInt("mtu")
             if (mtu in 1280..9000) inbound.put("mtu", mtu)
-            if (options.has("strictRoute"))
+            if (options.has("strictRoute")) {
                 inbound.put("strict_route", options.optBoolean("strictRoute"))
+            }
             val mode = options.optString("ipMode", "profile")
             if (mode in setOf("ipv4", "dual")) {
                 val addresses =
@@ -30,9 +31,10 @@ object ClientSettingsConfig {
                 if (updated.length() == 0) updated.put("172.19.0.1/30")
                 if (
                     mode == "dual" &&
-                        (0 until updated.length()).none { updated.optString(it).contains(':') }
-                )
+                    (0 until updated.length()).none { updated.optString(it).contains(':') }
+                ) {
                     updated.put("fdfe:dcba:9876::1/126")
+                }
                 inbound.put("address", updated)
             }
         }
@@ -52,30 +54,32 @@ object ClientSettingsConfig {
             rules.put(action)
         }
         val outbounds = root.optJSONArray("outbounds") ?: JSONArray()
-        if (options.optBoolean("fastFallback"))
+        if (options.optBoolean("fastFallback")) {
             for (i in 0 until outbounds.length()) {
                 val outbound = outbounds.optJSONObject(i) ?: continue
                 if (
                     outbound.optString("type") in
-                        setOf(
-                            "direct",
-                            "vless",
-                            "vmess",
-                            "trojan",
-                            "shadowsocks",
-                            "hysteria",
-                            "hysteria2",
-                            "tuic",
-                            "http",
-                            "socks",
-                            "anytls",
-                            "naive",
-                            "ssh",
-                        )
-                )
+                    setOf(
+                        "direct",
+                        "vless",
+                        "vmess",
+                        "trojan",
+                        "shadowsocks",
+                        "hysteria",
+                        "hysteria2",
+                        "tuic",
+                        "http",
+                        "socks",
+                        "anytls",
+                        "naive",
+                        "ssh",
+                    )
+                ) {
                     outbound.put("fallback_delay", "10ms")
+                }
             }
-        if (hijack == "on")
+        }
+        if (hijack == "on") {
             rules.put(
                 JSONObject()
                     .put("type", "logical")
@@ -86,13 +90,14 @@ object ClientSettingsConfig {
                             .put(JSONObject().put("protocol", "dns"))
                             .put(JSONObject().put("port", JSONArray().put(53))),
                     )
-                    .put("action", "hijack-dns")
+                    .put("action", "hijack-dns"),
             )
+        }
         if (options.optString("resolveMode") == "on") {
             rules.put(
                 JSONObject()
                     .put("action", "resolve")
-                    .put("strategy", options.optString("resolveStrategy", "prefer_ipv4"))
+                    .put("strategy", options.optString("resolveStrategy", "prefer_ipv4")),
             )
         }
         for (i in 0 until existing.length()) {
@@ -100,9 +105,10 @@ object ClientSettingsConfig {
             if (sniff != "profile" && rule.optString("action") == "sniff") continue
             if (
                 options.optString("resolveMode", "profile") != "profile" &&
-                    rule.optString("action") == "resolve"
-            )
+                rule.optString("action") == "resolve"
+            ) {
                 continue
+            }
             if (hijack != "profile" && rule.optString("action") == "hijack-dns") continue
             // Replace the legacy block outbound action; rejection is a normal route event.
             if (rule.optString("outbound") == "block") {
@@ -124,8 +130,10 @@ object ClientSettingsConfig {
         val route = root.optJSONObject("route") ?: JSONObject().also { root.put("route", it) }
         val sets = route.optJSONArray("rule_set") ?: JSONArray()
         val byTag = linkedMapOf<String, JSONObject>()
-        for (i in 0 until sets.length()) sets.optJSONObject(i)?.let {
-            byTag[it.optString("tag")] = it
+        for (i in 0 until sets.length()) {
+            sets.optJSONObject(i)?.let {
+                byTag[it.optString("tag")] = it
+            }
         }
         for (i in 0 until custom.length()) {
             val item = custom.optJSONObject(i) ?: continue
@@ -145,10 +153,12 @@ object ClientSettingsConfig {
             )
             dns.remove("disable_expire")
         }
-        if (user.has("timeoutSeconds"))
+        if (user.has("timeoutSeconds")) {
             dns.put("timeout", "${user.optInt("timeoutSeconds", 5).coerceIn(1, 60)}s")
-        if (user.has("cacheCapacity"))
+        }
+        if (user.has("cacheCapacity")) {
             dns.put("cache_capacity", user.optInt("cacheCapacity", 4096).coerceIn(1024, 65536))
+        }
         val definitions = user.optJSONArray("servers") ?: JSONArray()
         val servers = dns.optJSONArray("servers") ?: JSONArray().also { dns.put("servers", it) }
         // Apply robust URI parsing, including IPv6 literals and non-default ports.
@@ -162,23 +172,25 @@ object ClientSettingsConfig {
             val address = definition.optString("address")
             if (address == "local") continue
             runCatching {
-                    val uri = URI(if (address.contains("://")) address else "udp://$address")
-                    val host = uri.host ?: error("Некорректный адрес DNS")
-                    target.put("server", host.removePrefix("[").removeSuffix("]"))
-                    if (uri.port > 0) target.put("server_port", uri.port)
-                    if (uri.scheme == "https" || uri.scheme == "h3")
-                        target.put("path", uri.rawPath.ifBlank { "/dns-query" })
-                    if (!isIpLiteral(host)) {
-                        val bootstrapTag = "sfa-bootstrap"
-                        if (
-                            (0 until servers.length()).none {
-                                servers.optJSONObject(it)?.optString("tag") == bootstrapTag
-                            }
-                        )
-                            servers.put(JSONObject().put("type", "local").put("tag", bootstrapTag))
-                        target.put("domain_resolver", bootstrapTag)
-                    }
+                val uri = URI(if (address.contains("://")) address else "udp://$address")
+                val host = uri.host ?: error("Некорректный адрес DNS")
+                target.put("server", host.removePrefix("[").removeSuffix("]"))
+                if (uri.port > 0) target.put("server_port", uri.port)
+                if (uri.scheme == "https" || uri.scheme == "h3") {
+                    target.put("path", uri.rawPath.ifBlank { "/dns-query" })
                 }
+                if (!isIpLiteral(host)) {
+                    val bootstrapTag = "sfa-bootstrap"
+                    if (
+                        (0 until servers.length()).none {
+                            servers.optJSONObject(it)?.optString("tag") == bootstrapTag
+                        }
+                    ) {
+                        servers.put(JSONObject().put("type", "local").put("tag", bootstrapTag))
+                    }
+                    target.put("domain_resolver", bootstrapTag)
+                }
+            }
                 .getOrThrow()
         }
         if (!user.optBoolean("managed", false)) return
@@ -211,7 +223,7 @@ object ClientSettingsConfig {
             val clean = JSONObject(condition.toString())
             listOf("action", "server", "timeout", "strategy", "tag").forEach(clean::remove)
             val denied =
-                if (clean.optString("type") == "logical")
+                if (clean.optString("type") == "logical") {
                     JSONObject()
                         .put("type", "logical")
                         .put("mode", "and")
@@ -219,7 +231,9 @@ object ClientSettingsConfig {
                             "rules",
                             JSONArray().put(clean).put(JSONObject().put("query_type", query)),
                         )
-                else clean.put("query_type", query)
+                } else {
+                    clean.put("query_type", query)
+                }
             return denied.put("action", "predefined").put("rcode", "NOERROR")
         }
         fun chain(condition: JSONObject, group: String) {
@@ -239,15 +253,16 @@ object ClientSettingsConfig {
                             "timeout",
                             "${user.optInt("${group}TimeoutSeconds", 5).coerceIn(1, 60)}s",
                         )
-                if (index == tags.lastIndex) output.put(opts.put("action", "route"))
-                else {
+                if (index == tags.lastIndex) {
+                    output.put(opts.put("action", "route"))
+                } else {
                     val responseTag = "sfa-fallback-${chainId++}"
                     output.put(opts.put("action", "evaluate").put("tag", responseTag))
                     output.put(
                         JSONObject()
                             .put("match_response", responseTag)
                             .put("response_rcode", "NOERROR")
-                            .put("action", "respond")
+                            .put("action", "respond"),
                     )
                 }
             }
@@ -255,18 +270,23 @@ object ClientSettingsConfig {
         // Resolve proxy/DNS endpoint hostnames through the direct group to avoid a loop.
         val bootstrapDomains = linkedSetOf<String>()
         val outbounds = root.optJSONArray("outbounds") ?: JSONArray()
-        for (i in 0 until outbounds.length()) outbounds
-            .optJSONObject(i)
-            ?.optString("server")
-            ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
-            ?.let(bootstrapDomains::add)
-        for (i in 0 until servers.length()) servers
-            .optJSONObject(i)
-            ?.optString("server")
-            ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
-            ?.let(bootstrapDomains::add)
-        if (bootstrapDomains.isNotEmpty())
+        for (i in 0 until outbounds.length()) {
+            outbounds
+                .optJSONObject(i)
+                ?.optString("server")
+                ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
+                ?.let(bootstrapDomains::add)
+        }
+        for (i in 0 until servers.length()) {
+            servers
+                .optJSONObject(i)
+                ?.optString("server")
+                ?.takeIf { it.isNotBlank() && !isIpLiteral(it) }
+                ?.let(bootstrapDomains::add)
+        }
+        if (bootstrapDomains.isNotEmpty()) {
             chain(JSONObject().put("domain", JSONArray(bootstrapDomains.toList())), "direct")
+        }
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             // 1.14 evaluate/respond cannot coexist with legacy address filters or
@@ -275,10 +295,11 @@ object ClientSettingsConfig {
             val legacyStrategy = rule.optString("strategy")
             fun needsResponse(rule: JSONObject): Boolean {
                 val nested = rule.optJSONArray("rules")
-                if (nested != null)
+                if (nested != null) {
                     return (0 until nested.length()).any {
                         nested.optJSONObject(it)?.let(::needsResponse) == true
                     }
+                }
                 val sets =
                     when (val raw = rule.opt("rule_set")) {
                         is JSONArray -> raw
@@ -286,22 +307,29 @@ object ClientSettingsConfig {
                         else -> null
                     }
                 return !rule.has("match_response") &&
-                    (rule.has("ip_cidr") ||
-                        rule.has("ip_is_private") ||
-                        rule.has("ip_accept_any") ||
-                        (sets != null &&
-                            (0 until sets.length()).any {
-                                !sets.optString(it).startsWith("geosite-")
-                            }))
+                    (
+                        rule.has("ip_cidr") ||
+                            rule.has("ip_is_private") ||
+                            rule.has("ip_accept_any") ||
+                            (
+                                sets != null &&
+                                    (0 until sets.length()).any {
+                                        !sets.optString(it).startsWith("geosite-")
+                                    }
+                                )
+                        )
             }
             fun migrate(rule: JSONObject, responseTag: String?) {
                 rule.remove("strategy")
                 rule.remove("rule_set_ip_cidr_accept_empty")
-                if (responseTag != null && needsResponse(rule) && !rule.has("rules"))
+                if (responseTag != null && needsResponse(rule) && !rule.has("rules")) {
                     rule.put("match_response", responseTag)
+                }
                 val nested = rule.optJSONArray("rules") ?: return
-                for (index in 0 until nested.length()) nested.optJSONObject(index)?.let {
-                    migrate(it, responseTag)
+                for (index in 0 until nested.length()) {
+                    nested.optJSONObject(index)?.let {
+                        migrate(it, responseTag)
+                    }
                 }
             }
             val needsResponse = needsResponse(rule)
@@ -317,7 +345,7 @@ object ClientSettingsConfig {
                             .put(
                                 "timeout",
                                 "${user.optInt("proxyTimeoutSeconds", 5).coerceIn(1, 60)}s",
-                            )
+                            ),
                     )
                     migrate(rule, evaluateTag)
                 }
@@ -335,8 +363,8 @@ object ClientSettingsConfig {
                 }
             if (
                 group != null &&
-                    groups[group].orEmpty().isNotEmpty() &&
-                    rule.optString("action") in setOf("", "route")
+                groups[group].orEmpty().isNotEmpty() &&
+                rule.optString("action") in setOf("", "route")
             ) {
                 val actionKeys =
                     setOf(
@@ -350,7 +378,9 @@ object ClientSettingsConfig {
                         "client_subnet",
                     )
                 if (rule.keys().asSequence().any { it !in actionKeys }) chain(rule, group)
-            } else output.put(rule)
+            } else {
+                output.put(rule)
+            }
         }
         if (user.optBoolean("fakeip", false)) {
             val fakeTag = "sfa-fakeip"
@@ -359,12 +389,12 @@ object ClientSettingsConfig {
                     .put("type", "fakeip")
                     .put("tag", fakeTag)
                     .put("inet4_range", "198.18.0.0/15")
-                    .put("inet6_range", "fc00::/18")
+                    .put("inet6_range", "fc00::/18"),
             )
             output.put(
                 JSONObject()
                     .put("query_type", JSONArray(listOf("A", "AAAA")))
-                    .put("server", fakeTag)
+                    .put("server", fakeTag),
             )
         }
         val finalGroup = user.optString("defaultGroup", "proxy")
@@ -385,9 +415,7 @@ object ClientSettingsConfig {
         }
     }
 
-    private fun isIpLiteral(host: String) =
-        host.contains(':') || host.matches(Regex("[0-9]+(?:\\.[0-9]+){3}"))
+    private fun isIpLiteral(host: String) = host.contains(':') || host.matches(Regex("[0-9]+(?:\\.[0-9]+){3}"))
 
-    private fun values(raw: String) =
-        raw.split(',', ';', '\n').map(String::trim).filter(String::isNotEmpty)
+    private fun values(raw: String) = raw.split(',', ';', '\n').map(String::trim).filter(String::isNotEmpty)
 }

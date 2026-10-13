@@ -29,38 +29,49 @@ internal object FinalMaskCompatibility {
                 "Unsupported finalmask UDP mask chain or conflicting obfuscation"
             }
             val entry = masks.getJSONObject(0)
-            require(entry.keys().asSequence().all { it in setOf("type", "settings") } &&
-                entry.getString("type") == "salamander") {
+            require(
+                entry.keys().asSequence().all { it in setOf("type", "settings") } &&
+                    entry.getString("type") == "salamander",
+            ) {
                 "Unsupported finalmask UDP mask"
             }
             val settings = entry.getJSONObject("settings")
             require(settings.keys().asSequence().all { it == "password" }) {
                 "Unsupported finalmask Salamander settings"
             }
-            require(settings.get("password") is String &&
-                settings.getString("password").toByteArray(Charsets.UTF_8).size >= 4) {
+            require(
+                settings.get("password") is String &&
+                    settings.getString("password").toByteArray(Charsets.UTF_8).size >= 4,
+            ) {
                 "Invalid finalmask Salamander password"
             }
             // Both implementations use 8-byte salt and XOR with BLAKE2b-256(password+salt).
             // Keep proxy authentication separate from the mask password.
-            node.put("obfs", JSONObject().put("type", "salamander")
-                .put("password", settings.getString("password")))
+            node.put(
+                "obfs",
+                JSONObject().put("type", "salamander")
+                    .put("password", settings.getString("password")),
+            )
         }
         require(!mask.has("tcp") || mask.optJSONArray("tcp") != null) {
             "Invalid finalmask TCP mask array"
         }
         mask.optJSONArray("tcp")?.takeIf { it.length() > 0 }?.let { masks ->
-            require(node.optString("type") == "vless" && !node.has("transport") &&
-                !node.has("tls") &&
-                node.optString("flow").isEmpty()) {
+            require(
+                node.optString("type") == "vless" && !node.has("transport") &&
+                    !node.has("tls") &&
+                    node.optString("flow").isEmpty(),
+            ) {
                 "Unsupported finalmask TCP transport combination"
             }
             require(masks.length() == 1 && !node.has("tcp_header")) {
                 "Unsupported finalmask TCP mask chain"
             }
             val entry = masks.getJSONObject(0)
-            require(entry.keys().asSequence().all { it in setOf("type", "settings") } &&
-                entry.getString("type") == "header-custom") {
+            require(
+                entry.keys().asSequence().all { it in setOf("type", "settings") } &&
+                    entry.getString("type") == "header-custom",
+            ) {
                 "Unsupported finalmask TCP mask"
             }
             val settings = entry.getJSONObject("settings")
@@ -79,8 +90,10 @@ internal object FinalMaskCompatibility {
                     require(sequence.length() <= 64) { "Invalid finalmask TCP header size" }
                     for (j in 0 until sequence.length()) {
                         val item = sequence.getJSONObject(j)
-                        require(item.keys().asSequence().all { it in setOf("type", "packet") } &&
-                            item.getString("type") == "str" && item.get("packet") is String) {
+                        require(
+                            item.keys().asSequence().all { it in setOf("type", "packet") } &&
+                                item.getString("type") == "str" && item.get("packet") is String,
+                        ) {
                             "Unsupported finalmask TCP header item"
                         }
                         val value = item.getString("packet")
@@ -102,10 +115,12 @@ internal object FinalMaskCompatibility {
         require(node.getString("type") == "hysteria2") {
             "Unsupported finalmask QUIC options for proxy type"
         }
-        for (key in quic.keys()) require(
-            key in setOf("congestion", "debug", "bbrProfile", "disablePathMTUDiscovery", "disableChromeParrot", "udpHop")
-        ) {
-            "Unsupported finalmask QUIC parameter: $key"
+        for (key in quic.keys()) {
+            require(
+                key in setOf("congestion", "debug", "bbrProfile", "disablePathMTUDiscovery", "disableChromeParrot", "udpHop"),
+            ) {
+                "Unsupported finalmask QUIC parameter: $key"
+            }
         }
         require(quic.optString("congestion") in setOf("", "bbr")) {
             "Unsupported finalmask congestion control"
@@ -151,11 +166,13 @@ internal object FinalMaskCompatibility {
                 require(!node.has("hop_interval")) { "Invalid conflicting port hopping interval" }
                 // Prefer integer seconds when the value is whole (sing-box duration style).
                 val rendered =
-                    if (interval == interval.toLong().toDouble()) "${interval.toLong()}s"
-                    else "${interval}s"
+                    if (interval == interval.toLong().toDouble()) {
+                        "${interval.toLong()}s"
+                    } else {
+                        "${interval}s"
+                    }
                 node.put("hop_interval", rendered)
             }
         }
     }
-
 }

@@ -10,8 +10,7 @@ import androidx.annotation.StringRes
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.sfa.R
 
-fun Context.errorDialogBuilder(@StringRes messageId: Int): MaterialAlertDialogBuilder =
-    errorDialogBuilder(getString(messageId))
+fun Context.errorDialogBuilder(@StringRes messageId: Int): MaterialAlertDialogBuilder = errorDialogBuilder(getString(messageId))
 
 fun Context.errorDialogBuilder(message: String): MaterialAlertDialogBuilder {
     val summary =
@@ -46,8 +45,7 @@ fun Context.errorDialogBuilder(message: String): MaterialAlertDialogBuilder {
         .setPositiveButton(android.R.string.ok, null)
 }
 
-fun Context.errorDialogBuilder(exception: Throwable): MaterialAlertDialogBuilder =
-    errorDialogBuilder(exception.localizedMessage ?: exception.toString())
+fun Context.errorDialogBuilder(exception: Throwable): MaterialAlertDialogBuilder = errorDialogBuilder(exception.localizedMessage ?: exception.toString())
 
 private fun Context.buildSelectableMessageView(message: String): ScrollView {
     val density = resources.displayMetrics.density

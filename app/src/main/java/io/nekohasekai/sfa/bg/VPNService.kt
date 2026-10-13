@@ -17,15 +17,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class VPNService : VpnService(), PlatformInterfaceWrapper {
+class VPNService :
+    VpnService(),
+    PlatformInterfaceWrapper {
     companion object {
         private const val TAG = "VPNService"
     }
 
     private val service = BoxService(this, this)
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) =
-        service.onStartCommand(intent)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = service.onStartCommand(intent)
 
     override fun onBind(intent: Intent): IBinder {
         val binder = super.onBind(intent)
@@ -165,7 +166,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
                         options.httpProxyServer,
                         options.httpProxyServerPort,
                         options.httpProxyBypassDomain.toList(),
-                    )
+                    ),
                 )
             }
         } else {
@@ -180,9 +181,7 @@ class VPNService : VpnService(), PlatformInterfaceWrapper {
         return pfd.fd
     }
 
-    override fun sendNotification(notification: Notification) =
-        service.sendNotification(notification)
+    override fun sendNotification(notification: Notification) = service.sendNotification(notification)
 
-    override fun cancelNotification(identifier: String, typeID: Int) =
-        service.cancelNotification(identifier, typeID)
+    override fun cancelNotification(identifier: String, typeID: Int) = service.cancelNotification(identifier, typeID)
 }

@@ -1,15 +1,12 @@
 package io.nekohasekai.sfa.bg
 
-import io.nekohasekai.sfa.utils.NetworkErrorPresentation
-
 import android.content.Context
 import android.util.Log
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import kotlinx.coroutines.CancellationException
 import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -20,12 +17,14 @@ import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.CommitOutcome
 import io.nekohasekai.sfa.utils.HTTPClient
-import io.nekohasekai.sfa.utils.ProfileConfigCommit
-import io.nekohasekai.sfa.utils.PartialUpdatePolicy
-import io.nekohasekai.sfa.utils.PartialUpdateInput
-import io.nekohasekai.sfa.utils.UpdateTrigger
-import io.nekohasekai.sfa.utils.PolicyDecision
 import io.nekohasekai.sfa.utils.ImportResultFormatter
+import io.nekohasekai.sfa.utils.NetworkErrorPresentation
+import io.nekohasekai.sfa.utils.PartialUpdateInput
+import io.nekohasekai.sfa.utils.PartialUpdatePolicy
+import io.nekohasekai.sfa.utils.PolicyDecision
+import io.nekohasekai.sfa.utils.ProfileConfigCommit
+import io.nekohasekai.sfa.utils.UpdateTrigger
+import kotlinx.coroutines.CancellationException
 import java.util.Date
 import java.util.concurrent.TimeUnit
 

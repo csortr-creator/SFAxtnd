@@ -46,8 +46,10 @@ object NetworkErrorPresentation {
                 "reality verification failed" in hintBlob -> NetworkErrorKind.REALITY_VERIFICATION
                 "tls handshake timeout" in hintBlob -> NetworkErrorKind.TLS_TIMEOUT
                 hasType(typeBlob, "sslhandshakeexception", "sslexception") ||
-                    (hasHint(hintBlob, "tls", "ssl", "handshake", "certificate", "x509") &&
-                        "timeout" !in hintBlob) -> NetworkErrorKind.TLS
+                    (
+                        hasHint(hintBlob, "tls", "ssl", "handshake", "certificate", "x509") &&
+                            "timeout" !in hintBlob
+                        ) -> NetworkErrorKind.TLS
                 hasType(typeBlob, "unknownhostexception") ||
                     hasHint(hintBlob, "no such host", "no address associated") ->
                     NetworkErrorKind.DNS

@@ -44,9 +44,13 @@ data class GroupItem(
         Libbox.proxyDisplayType(item.type),
         item.urlTestTime,
         item.urlTestDelay,
-        probeStatus = if (item.urlTestTime > 0L && item.urlTestDelay > 0) "SUCCESS"
-        else if (item.urlTestTime > 0L) "PROBE_ERROR"
-        else "",
+        probeStatus = if (item.urlTestTime > 0L && item.urlTestDelay > 0) {
+            "SUCCESS"
+        } else if (item.urlTestTime > 0L) {
+            "PROBE_ERROR"
+        } else {
+            ""
+        },
         probeDetail = "",
     )
 }

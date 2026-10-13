@@ -3,12 +3,12 @@ package io.nekohasekai.sfa.compose.screen.configuration
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.utils.ProfileContentDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -73,8 +73,9 @@ class ProfileImportHandler(private val context: Context) {
                 }
 
             importProfile(content)
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -187,8 +188,9 @@ class ProfileImportHandler(private val context: Context) {
                     }
                 importProfile(content)
             }
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -218,8 +220,9 @@ class ProfileImportHandler(private val context: Context) {
                 )
             }
             importProfile(content)
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error")
         }
     }
@@ -297,9 +300,7 @@ class ProfileImportHandler(private val context: Context) {
         return ImportResult.Success(profile)
     }
 
-    private fun extractProfileNameFromUrl(url: String): String {
-        return io.nekohasekai.sfa.utils.SubscriptionMetadata.nameFromUrl(url)
-    }
+    private fun extractProfileNameFromUrl(url: String): String = io.nekohasekai.sfa.utils.SubscriptionMetadata.nameFromUrl(url)
 
     private fun extractHostFromUrl(url: String): String = try {
         val uri = Uri.parse(url)
@@ -360,7 +361,9 @@ class ProfileImportHandler(private val context: Context) {
         return try {
             val converted = if (io.nekohasekai.sfa.utils.SubscriptionContentParser.supports(jsonContent)) {
                 io.nekohasekai.sfa.utils.HTTPClient().use { it.parseSubscription(jsonContent) }
-            } else null
+            } else {
+                null
+            }
             val config = converted?.config ?: jsonContent
             // Validate the JSON configuration using sing-box
             try {
@@ -400,8 +403,9 @@ class ProfileImportHandler(private val context: Context) {
 
             io.nekohasekai.sfa.compose.base.ImportReportNotifier.show(profile)
             ImportResult.Success(profile)
-        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Unknown error importing JSON configuration")
         }
     }

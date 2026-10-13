@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.utils
 
-import java.security.MessageDigest
 import org.json.JSONObject
+import java.security.MessageDigest
 
 class ProfileLatencyCache(raw: String = "{}") {
     data class Result(
@@ -62,8 +62,9 @@ class ProfileLatencyCache(raw: String = "{}") {
     fun retain(profile: Long, fingerprints: Map<String, String>) {
         val values = entries.optJSONObject(profile.toString()) ?: return
         values.keys().asSequence().toList().forEach { tag ->
-            if (values.optJSONObject(tag)?.optString("fingerprint") != fingerprints[tag])
+            if (values.optJSONObject(tag)?.optString("fingerprint") != fingerprints[tag]) {
                 values.remove(tag)
+            }
         }
     }
 
@@ -105,18 +106,17 @@ class ProfileLatencyCache(raw: String = "{}") {
                 .toMap()
         }
 
-        private fun canonical(value: Any?): String =
-            when (value) {
-                is JSONObject ->
-                    value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") {
-                        JSONObject.quote(it) + ":" + canonical(value.get(it))
-                    }
-                is org.json.JSONArray ->
-                    (0 until value.length()).joinToString(",", "[", "]") {
-                        canonical(value.get(it))
-                    }
-                is String -> JSONObject.quote(value)
-                else -> value.toString()
-            }
+        private fun canonical(value: Any?): String = when (value) {
+            is JSONObject ->
+                value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") {
+                    JSONObject.quote(it) + ":" + canonical(value.get(it))
+                }
+            is org.json.JSONArray ->
+                (0 until value.length()).joinToString(",", "[", "]") {
+                    canonical(value.get(it))
+                }
+            is String -> JSONObject.quote(value)
+            else -> value.toString()
+        }
     }
 }

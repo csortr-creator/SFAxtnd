@@ -2,10 +2,6 @@ package io.nekohasekai.sfa.compose.navigation
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material.icons.outlined.Subscriptions
-import androidx.compose.material.icons.outlined.Route
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Dashboard
@@ -14,6 +10,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.nekohasekai.sfa.R
 

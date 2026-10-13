@@ -1,8 +1,8 @@
 package io.nekohasekai.sfa.utils
 
-import java.util.concurrent.CancellationException
 import org.json.JSONException
 import org.yaml.snakeyaml.error.YAMLException
+import java.util.concurrent.CancellationException
 
 internal enum class SubscriptionStage { FETCH, PARSE, METADATA }
 internal class SubscriptionStageFailure(val stage: SubscriptionStage, cause: Exception) : Exception(cause)
@@ -30,20 +30,24 @@ internal object SubscriptionDiagnostics {
             inspected.contains('@') ||
             Regex("(?i)(password|passwd|token|uuid|authorization|private[_ -]?key|secret)\\s*[:=]").containsMatchIn(inspected) ||
             Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").containsMatchIn(inspected)
-        ) return "Название скрыто: содержит данные подключения"
+        ) {
+            return "Название скрыто: содержит данные подключения"
+        }
         return issue.name.map { c ->
             if (c.isISOControl() || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069') ' ' else c
         }.joinToString("").trim().take(120).ifBlank { "Название не указано" }
     }
 
-    fun <T> at(stage: SubscriptionStage, block: () -> T): T =
-        try { block() }
-        catch (e: CancellationException) { throw e }
-        catch (e: Exception) { throw SubscriptionStageFailure(stage, e) }
+    fun <T> at(stage: SubscriptionStage, block: () -> T): T = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw SubscriptionStageFailure(stage, e)
+    }
 
-    fun reportOf(error: Throwable): SubscriptionImportReport? =
-        generateSequence(error) { it.cause }.filterIsInstance<SubscriptionResponseFailure>()
-            .firstOrNull()?.report
+    fun reportOf(error: Throwable): SubscriptionImportReport? = generateSequence(error) { it.cause }.filterIsInstance<SubscriptionResponseFailure>()
+        .firstOrNull()?.report
 
     fun reason(error: Throwable): String {
         val chain = generateSequence(error) { it.cause }.toList()

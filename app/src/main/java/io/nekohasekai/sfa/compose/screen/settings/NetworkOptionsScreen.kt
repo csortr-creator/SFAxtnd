@@ -47,15 +47,16 @@ internal fun NetworkOptionsContent(core: Boolean) {
                 "Выключено: использовать MTU из подписки",
                 options.has("mtu"),
             ) {
-                if (it) set("mtu", 1500)
-                else {
+                if (it) {
+                    set("mtu", 1500)
+                } else {
                     val current = settingsObject(Settings.coreOptionsJson)
                     current.remove("mtu")
                     raw = current.toString()
                     Settings.coreOptionsJson = raw
                 }
             }
-            if (options.has("mtu"))
+            if (options.has("mtu")) {
                 SettingNumber(
                     "MTU",
                     options.optInt("mtu", 1500),
@@ -63,6 +64,7 @@ internal fun NetworkOptionsContent(core: Boolean) {
                     { set("mtu", it) },
                     "байт",
                 )
+            }
             SettingToggle(
                 "IPv6",
                 "Включено: IPv4 и IPv6. Выключено: только IPv4; IPv6-трафик отклоняется. Стратегия DNS настраивается отдельно.",
@@ -74,8 +76,11 @@ internal fun NetworkOptionsContent(core: Boolean) {
             }
             SettingChoice(
                 "Строгая маршрутизация",
-                if (options.has("strictRoute")) options.optBoolean("strictRoute").toString()
-                else "profile",
+                if (options.has("strictRoute")) {
+                    options.optBoolean("strictRoute").toString()
+                } else {
+                    "profile"
+                },
                 listOf("profile" to "Из подписки", "true" to "Включить", "false" to "Выключить"),
             ) {
                 if (it == "profile") {
@@ -83,7 +88,9 @@ internal fun NetworkOptionsContent(core: Boolean) {
                     current.remove("strictRoute")
                     raw = current.toString()
                     Settings.coreOptionsJson = raw
-                } else set("strictRoute", it.toBoolean())
+                } else {
+                    set("strictRoute", it.toBoolean())
+                }
             }
             Text(
                 "В Android строгая маршрутизация запрещает приложениям обходить активный VPN. Исключения маршрутов и приложений сохраняются. Для блокировки сети после остановки VPN включите «Блокировать соединения без VPN» в системных настройках Android.",
@@ -167,8 +174,11 @@ internal fun NetworkOptionsContent(core: Boolean) {
                 modifier = Modifier.padding(horizontal = 16.dp),
             ) {
                 Text(
-                    if (advancedSniff) "Скрыть дополнительные параметры"
-                    else "Дополнительные параметры"
+                    if (advancedSniff) {
+                        "Скрыть дополнительные параметры"
+                    } else {
+                        "Дополнительные параметры"
+                    },
                 )
             }
             if (advancedSniff) {
@@ -245,8 +255,13 @@ internal fun NetworkOptionsContent(core: Boolean) {
             var interval by remember { mutableStateOf(Settings.ruleSetUpdateInterval) }
             SettingChoice(
                 "Период обновления",
-                if (interval <= 0) "-1"
-                else if (interval == 1800000L) "0.5" else (interval / 3600000L).toString(),
+                if (interval <= 0) {
+                    "-1"
+                } else if (interval == 1800000L) {
+                    "0.5"
+                } else {
+                    (interval / 3600000L).toString()
+                },
                 listOf(
                     "-1" to "Не обновлять автоматически",
                     "0.5" to "Каждые 30 минут",

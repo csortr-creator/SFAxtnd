@@ -27,15 +27,15 @@ import io.nekohasekai.sfa.compose.screen.dashboard.GroupsCard
 import io.nekohasekai.sfa.compose.screen.log.LogScreen
 import io.nekohasekai.sfa.compose.screen.log.LogViewModel
 import io.nekohasekai.sfa.compose.screen.profile.EditProfileRoute
-import io.nekohasekai.sfa.compose.screen.settings.RuleSetsScreen
-import io.nekohasekai.sfa.compose.screen.settings.DnsSettingsScreen
-import io.nekohasekai.sfa.compose.screen.settings.AppearanceSettingsScreen
-import io.nekohasekai.sfa.compose.screen.settings.NetworkOptionsScreen
 import io.nekohasekai.sfa.compose.screen.settings.AppSettingsScreen
+import io.nekohasekai.sfa.compose.screen.settings.AppearanceSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.CoreSettingsScreen
+import io.nekohasekai.sfa.compose.screen.settings.DnsSettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.EditRoutingRuleScreen
 import io.nekohasekai.sfa.compose.screen.settings.FDroidMirrorScreen
+import io.nekohasekai.sfa.compose.screen.settings.NetworkOptionsScreen
 import io.nekohasekai.sfa.compose.screen.settings.RoutingSettingsScreen
+import io.nekohasekai.sfa.compose.screen.settings.RuleSetsScreen
 import io.nekohasekai.sfa.compose.screen.settings.SettingsScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleFontPickerScreen
 import io.nekohasekai.sfa.compose.screen.settings.TailscaleGhosttyConfigEditorScreen
@@ -83,7 +83,6 @@ private val slideOutToLeft:
             animationSpec = tween(300),
         )
     }
-
 
 private val bottomTabOrder =
     listOf(
@@ -185,7 +184,6 @@ fun NavHost(
                 trafficAvailable = dashboard?.trafficVisible == true,
                 modifier = Modifier.fillMaxSize(),
             )
-
         }
 
         composable(Screen.Log.route) {

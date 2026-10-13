@@ -16,12 +16,16 @@ import org.json.JSONObject
 enum class NodeCoreVerdict {
     /** checkConfig succeeded for this outbound harness. */
     VALID,
+
     /** Outbound is the likely cause of checkConfig failure (only when control for family passed). */
     NODE_INVALID,
+
     /** Harness template / DNS-route scaffolding is broken (policy: HARNESS_ERROR — do not auto-skip). */
     HARNESS_INVALID,
+
     /** Native core not available in this process. */
     CORE_UNAVAILABLE,
+
     /** Cannot attribute failure safely — do not auto-exclude the node. */
     UNKNOWN,
 }
@@ -153,8 +157,10 @@ object NodeCoreHarness {
                 !listOf("unknown outbound type", "missing required field", "decode").any { it in msg }
 
         if (looksHarness &&
-            ("default domain resolver not found" in msg ||
-                ("dns" in msg && "not found" in msg && "outbound" !in msg))
+            (
+                "default domain resolver not found" in msg ||
+                    ("dns" in msg && "not found" in msg && "outbound" !in msg)
+                )
         ) {
             return NodeCoreVerdict.HARNESS_INVALID
         }
@@ -194,87 +200,80 @@ object NodeCoreHarness {
 
     // --- Synthetic control outbounds (no real user secrets) ---
 
-    fun controlVlessRealityDomain(): JSONObject =
-        JSONObject()
-            .put("type", "vless")
-            .put("tag", "ctrl-vless-reality-domain")
-            .put("server", "example.org")
-            .put("server_port", 443)
-            .put("uuid", "11111111-1111-4111-8111-111111111111")
-            .put(
-                "tls",
-                JSONObject()
-                    .put("enabled", true)
-                    .put("server_name", "www.example.com")
-                    .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome"))
-                    .put(
-                        "reality",
-                        JSONObject()
-                            .put("enabled", true)
-                            .put("public_key", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-                            .put("short_id", "abcd"),
-                    ),
-            )
+    fun controlVlessRealityDomain(): JSONObject = JSONObject()
+        .put("type", "vless")
+        .put("tag", "ctrl-vless-reality-domain")
+        .put("server", "example.org")
+        .put("server_port", 443)
+        .put("uuid", "11111111-1111-4111-8111-111111111111")
+        .put(
+            "tls",
+            JSONObject()
+                .put("enabled", true)
+                .put("server_name", "www.example.com")
+                .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome"))
+                .put(
+                    "reality",
+                    JSONObject()
+                        .put("enabled", true)
+                        .put("public_key", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                        .put("short_id", "abcd"),
+                ),
+        )
 
-    fun controlVlessRealityIp(): JSONObject =
-        controlVlessRealityDomain()
-            .put("tag", "ctrl-vless-reality-ip")
-            .put("server", "203.0.113.10")
+    fun controlVlessRealityIp(): JSONObject = controlVlessRealityDomain()
+        .put("tag", "ctrl-vless-reality-ip")
+        .put("server", "203.0.113.10")
 
-    fun controlVlessXhttp(): JSONObject =
-        JSONObject()
-            .put("type", "vless")
-            .put("tag", "ctrl-vless-xhttp")
-            .put("server", "example.org")
-            .put("server_port", 443)
-            .put("uuid", "11111111-1111-4111-8111-111111111111")
-            .put(
-                "transport",
-                JSONObject()
-                    .put("type", "xhttp")
-                    .put("path", "/")
-                    .put("mode", "auto"),
-            )
-            .put(
-                "tls",
-                JSONObject()
-                    .put("enabled", true)
-                    .put("server_name", "www.example.com")
-                    .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome")),
-            )
+    fun controlVlessXhttp(): JSONObject = JSONObject()
+        .put("type", "vless")
+        .put("tag", "ctrl-vless-xhttp")
+        .put("server", "example.org")
+        .put("server_port", 443)
+        .put("uuid", "11111111-1111-4111-8111-111111111111")
+        .put(
+            "transport",
+            JSONObject()
+                .put("type", "xhttp")
+                .put("path", "/")
+                .put("mode", "auto"),
+        )
+        .put(
+            "tls",
+            JSONObject()
+                .put("enabled", true)
+                .put("server_name", "www.example.com")
+                .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome")),
+        )
 
-    fun controlHysteria2(): JSONObject =
-        JSONObject()
-            .put("type", "hysteria2")
-            .put("tag", "ctrl-hysteria2")
-            .put("server", "203.0.113.20")
-            .put("server_port", 443)
-            .put("password", "fixture-password")
-            .put(
-                "tls",
-                JSONObject()
-                    .put("enabled", true)
-                    .put("server_name", "www.example.com")
-                    .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome")),
-            )
+    fun controlHysteria2(): JSONObject = JSONObject()
+        .put("type", "hysteria2")
+        .put("tag", "ctrl-hysteria2")
+        .put("server", "203.0.113.20")
+        .put("server_port", 443)
+        .put("password", "fixture-password")
+        .put(
+            "tls",
+            JSONObject()
+                .put("enabled", true)
+                .put("server_name", "www.example.com")
+                .put("utls", JSONObject().put("enabled", true).put("fingerprint", "chrome")),
+        )
 
-    fun controlVlessWithDomainResolver(): JSONObject =
-        controlVlessRealityDomain()
-            .put("tag", "ctrl-vless-domain-resolver")
-            .put("domain_resolver", DNS_DIRECT)
+    fun controlVlessWithDomainResolver(): JSONObject = controlVlessRealityDomain()
+        .put("tag", "ctrl-vless-domain-resolver")
+        .put("domain_resolver", DNS_DIRECT)
 
-    fun invalidUnknownType(): JSONObject =
-        JSONObject()
-            .put("type", "not-a-real-outbound-type")
-            .put("tag", "bad-unknown-type")
-            .put("server", "example.org")
-            .put("server_port", 443)
+    fun invalidUnknownType(): JSONObject = JSONObject()
+        .put("type", "not-a-real-outbound-type")
+        .put("tag", "bad-unknown-type")
+        .put("server", "example.org")
+        .put("server_port", 443)
 
-    fun invalidWrongFieldType(): JSONObject =
-        JSONObject()
-            .put("type", "vless")
-            .put("tag", "bad-field-type")
-            .put("server", "example.org")
-            .put("server_port", "not-a-number")
-            .put("uuid", "11111111-1111-4111-8111-111111111111")
+    fun invalidWrongFieldType(): JSONObject = JSONObject()
+        .put("type", "vless")
+        .put("tag", "bad-field-type")
+        .put("server", "example.org")
+        .put("server_port", "not-a-number")
+        .put("uuid", "11111111-1111-4111-8111-111111111111")
 }

@@ -1,8 +1,8 @@
 package io.nekohasekai.sfa.utils
 
-import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 data class SubscriptionImportIssue(
     val line: Int,
@@ -18,8 +18,7 @@ data class SubscriptionImportReport(
     val warnings: List<String> = emptyList(),
     val format: String = "Список ссылок",
 ) {
-    fun summary(): String =
-        "Получено: $received · Импортировано: $imported · Пропущено: ${issues.size}"
+    fun summary(): String = "Получено: $received · Импортировано: $imported · Пропущено: ${issues.size}"
 
     fun displayText(): String = buildString {
         append("Формат: $format\n")
@@ -47,34 +46,33 @@ data class SubscriptionImportReport(
                                 .put("name", it.name)
                                 .put("reason", it.reason)
                                 .put("code", it.code.name)
-                        }
+                        },
                     ),
                 )
         File("$configPath.import.json").writeText(json.toString())
     }
 
     companion object {
-        fun read(configPath: String): SubscriptionImportReport? =
-            runCatching {
-                    val json = JSONObject(File("$configPath.import.json").readText())
-                    val array = json.getJSONArray("issues")
-                    SubscriptionImportReport(
-                        json.getInt("received"),
-                        json.getInt("imported"),
-                        (0 until array.length()).map { i ->
-                            val issue = array.getJSONObject(i)
-                            SubscriptionImportIssue(
-                                issue.getInt("line"),
-                                issue.getString("name"),
-                                issue.getString("reason"),
-                                ImportIssueCode.fromWire(issue.optString("code", null)),
-                            )
-                        },
-                        json.optJSONArray("warnings")?.let { list -> (0 until list.length()).map { list.getString(it) } }.orEmpty(),
-                        json.optString("format", "Список ссылок"),
+        fun read(configPath: String): SubscriptionImportReport? = runCatching {
+            val json = JSONObject(File("$configPath.import.json").readText())
+            val array = json.getJSONArray("issues")
+            SubscriptionImportReport(
+                json.getInt("received"),
+                json.getInt("imported"),
+                (0 until array.length()).map { i ->
+                    val issue = array.getJSONObject(i)
+                    SubscriptionImportIssue(
+                        issue.getInt("line"),
+                        issue.getString("name"),
+                        issue.getString("reason"),
+                        ImportIssueCode.fromWire(issue.optString("code", null)),
                     )
-                }
-                .getOrNull()
+                },
+                json.optJSONArray("warnings")?.let { list -> (0 until list.length()).map { list.getString(it) } }.orEmpty(),
+                json.optString("format", "Список ссылок"),
+            )
+        }
+            .getOrNull()
     }
 }
 

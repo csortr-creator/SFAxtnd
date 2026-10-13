@@ -1,8 +1,8 @@
 package io.nekohasekai.sfa.compose.screen.dashboard
 
-import android.net.Uri
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,9 +24,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.MoreVert
@@ -35,10 +37,8 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material3.AlertDialog
@@ -90,12 +90,12 @@ import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.shareProfile
-import io.nekohasekai.sfa.utils.ProfileOverflowMenuModel
 import io.nekohasekai.sfa.ktx.shareProfileAsJson
-import java.io.File
+import io.nekohasekai.sfa.utils.ProfileOverflowMenuModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,7 +164,7 @@ fun ProfilesCard(
     var exportingProfileId by rememberSaveable { mutableStateOf(-1L) }
     val saveFileLauncher =
         rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+            contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
         ) { uri ->
             if (uri != null) {
                 val selectedProfile = profiles.find { it.id == exportingProfileId }
@@ -177,19 +177,19 @@ fun ProfilesCard(
                             }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(
-                                        context,
-                                        context.getString(R.string.success_profile_saved),
-                                        Toast.LENGTH_SHORT,
-                                    )
+                                    context,
+                                    context.getString(R.string.success_profile_saved),
+                                    Toast.LENGTH_SHORT,
+                                )
                                     .show()
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(
-                                        context,
-                                        "${context.getString(R.string.failed_save_profile)}: ${e.message}",
-                                        Toast.LENGTH_SHORT,
-                                    )
+                                    context,
+                                    "${context.getString(R.string.failed_save_profile)}: ${e.message}",
+                                    Toast.LENGTH_SHORT,
+                                )
                                     .show()
                             }
                         }
@@ -200,7 +200,7 @@ fun ProfilesCard(
 
     val saveJsonFileLauncher =
         rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.CreateDocument("application/json")
+            contract = ActivityResultContracts.CreateDocument("application/json"),
         ) { uri ->
             if (uri != null) {
                 val selectedProfile = profiles.find { it.id == exportingProfileId }
@@ -213,19 +213,19 @@ fun ProfilesCard(
                             }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(
-                                        context,
-                                        context.getString(R.string.success_profile_saved),
-                                        Toast.LENGTH_SHORT,
-                                    )
+                                    context,
+                                    context.getString(R.string.success_profile_saved),
+                                    Toast.LENGTH_SHORT,
+                                )
                                     .show()
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(
-                                        context,
-                                        "${context.getString(R.string.failed_save_profile)}: ${e.message}",
-                                        Toast.LENGTH_SHORT,
-                                    )
+                                    context,
+                                    "${context.getString(R.string.failed_save_profile)}: ${e.message}",
+                                    Toast.LENGTH_SHORT,
+                                )
                                     .show()
                             }
                         }
@@ -257,8 +257,6 @@ fun ProfilesCard(
                     fontWeight = FontWeight.Medium,
                 )
             }
-
-
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -276,36 +274,42 @@ fun ProfilesCard(
                 val isSelected = profile.id == selectedProfileId
                 val rowColor by
                     animateColorAsState(
-                        if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerLow
+                        },
                         label = "subscriptionSelection",
                     )
                 Surface(
                     onClick = { onProfileSelected(profile.id) },
                     modifier =
-                        Modifier.fillMaxWidth().padding(vertical = 2.dp).semantics {
-                            selected = isSelected
-                        },
+                    Modifier.fillMaxWidth().padding(vertical = 2.dp).semantics {
+                        selected = isSelected
+                    },
                     shape = MaterialTheme.shapes.large,
                     color = rowColor,
                     border =
-                        BorderStroke(
-                            1.dp,
-                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            else androidx.compose.ui.graphics.Color.Transparent,
-                        ),
+                    BorderStroke(
+                        1.dp,
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                        } else {
+                            androidx.compose.ui.graphics.Color.Transparent
+                        },
+                    ),
                 ) {
                     Row(
                         modifier =
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
                             imageVector =
-                                ProfileIcons.getIconById(profile.icon)
-                                    ?: ProfileIcons.getDefaultIconForType(
-                                        profile.typed.type == TypedProfile.Type.Remote
-                                    ),
+                            ProfileIcons.getIconById(profile.icon)
+                                ?: ProfileIcons.getDefaultIconForType(
+                                    profile.typed.type == TypedProfile.Type.Remote,
+                                ),
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -316,8 +320,11 @@ fun ProfilesCard(
                                 text = profile.name,
                                 style = MaterialTheme.typography.titleMedium,
                                 color =
-                                    if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onSurface,
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -407,15 +414,19 @@ fun ProfilesCard(
         }
     }
 
-    if (clipboardImporting) AlertDialog(
-        onDismissRequest = {},
-        title = { Text("Импорт из буфера обмена") },
-        text = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            CircularProgressIndicator(Modifier.size(24.dp))
-            Text("Загрузка и проверка серверов…")
-        } },
-        confirmButton = {},
-    )
+    if (clipboardImporting) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Импорт из буфера обмена") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Text("Загрузка и проверка серверов…")
+                }
+            },
+            confirmButton = {},
+        )
+    }
 
     if (showAddProfileSheet) {
         ModalBottomSheet(
@@ -447,7 +458,9 @@ fun ProfilesCard(
                                         is ProfileImportHandler.ImportResult.Success -> Unit
                                         is ProfileImportHandler.ImportResult.Error -> context.errorDialogBuilder(Exception(result.message)).show()
                                     }
-                                } finally { clipboardImporting = false }
+                                } finally {
+                                    clipboardImporting = false
+                                }
                             }
                         }
                     },
@@ -458,10 +471,10 @@ fun ProfilesCard(
 
                 ListItem(
                     modifier =
-                        Modifier.clickable {
-                            onHideAddProfileSheet()
-                            importFromFileLauncher.launch("*/*")
-                        },
+                    Modifier.clickable {
+                        onHideAddProfileSheet()
+                        importFromFileLauncher.launch("*/*")
+                    },
                     leadingContent = {
                         Icon(
                             imageVector = Icons.Outlined.FileUpload,
@@ -477,10 +490,10 @@ fun ProfilesCard(
 
                 ListItem(
                     modifier =
-                        Modifier.clickable {
-                            onHideAddProfileSheet()
-                            showQRScanSheet = true
-                        },
+                    Modifier.clickable {
+                        onHideAddProfileSheet()
+                        showQRScanSheet = true
+                    },
                     leadingContent = {
                         Icon(
                             imageVector = Icons.Default.QrCodeScanner,
@@ -494,10 +507,10 @@ fun ProfilesCard(
 
                 ListItem(
                     modifier =
-                        Modifier.clickable {
-                            onHideAddProfileSheet()
-                            onOpenNewProfile(NewProfileArgs())
-                        },
+                    Modifier.clickable {
+                        onHideAddProfileSheet()
+                        onOpenNewProfile(NewProfileArgs())
+                    },
                     leadingContent = {
                         Icon(
                             imageVector = Icons.Outlined.CreateNewFolder,
@@ -600,7 +613,7 @@ fun ProfilesCard(
                                 }
                             }
                         }
-                    }
+                    },
                 ) {
                     Text(stringResource(R.string.import_action))
                 }
@@ -612,7 +625,7 @@ fun ProfilesCard(
                         pendingImportName = null
                         pendingQrsData = null
                         pendingImportUri = null
-                    }
+                    },
                 ) {
                     Text(stringResource(R.string.cancel))
                 }
@@ -657,7 +670,7 @@ fun ProfilesCard(
                                             NewProfileArgs(
                                                 importName = parseResult.name,
                                                 importUrl = parseResult.url,
-                                            )
+                                            ),
                                         )
                                     }
                                 }
@@ -675,7 +688,7 @@ fun ProfilesCard(
                                             withContext(Dispatchers.Main) {
                                                 context
                                                     .errorDialogBuilder(
-                                                        Exception(importResult.message)
+                                                        Exception(importResult.message),
                                                     )
                                                     .show()
                                             }
@@ -739,10 +752,10 @@ private fun ProfileActionRow(
         if (profile.typed.type == TypedProfile.Type.Remote) {
             ActionButton(
                 icon =
-                    when {
-                        showUpdateSuccess -> Icons.Default.Check
-                        else -> Icons.Default.Refresh
-                    },
+                when {
+                    showUpdateSuccess -> Icons.Default.Check
+                    else -> Icons.Default.Refresh
+                },
                 contentDescription = stringResource(R.string.update_profile),
                 onClick = onUpdate,
                 enabled = !isUpdating && !showUpdateSuccess,
@@ -787,11 +800,11 @@ private fun ActionButton(
                     contentDescription = contentDescription,
                     modifier = Modifier.size(20.dp),
                     tint =
-                        if (enabled) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                        },
+                    if (enabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
                 )
             }
         }
@@ -1018,28 +1031,33 @@ private fun SubscriptionMetadata(profile: Profile) {
             value =
                 withContext(Dispatchers.IO) {
                     runCatching {
-                            val outbounds =
-                                org.json
-                                    .JSONObject(File(profile.typed.path).readText())
-                                    .optJSONArray("outbounds")
-                            if (outbounds == null) null
-                            else
-                                (0 until outbounds.length()).count { index ->
-                                    outbounds.optJSONObject(index)?.optString("type")?.let {
-                                        it !in
-                                            setOf("selector", "urltest", "direct", "block", "dns")
-                                    } == true
-                                }
+                        val outbounds =
+                            org.json
+                                .JSONObject(File(profile.typed.path).readText())
+                                .optJSONArray("outbounds")
+                        if (outbounds == null) {
+                            null
+                        } else {
+                            (0 until outbounds.length()).count { index ->
+                                outbounds.optJSONObject(index)?.optString("type")?.let {
+                                    it !in
+                                        setOf("selector", "urltest", "direct", "block", "dns")
+                                } == true
+                            }
                         }
+                    }
                         .getOrNull()
                 }
         }
     Text(
         listOfNotNull(
-                if (profile.typed.type == TypedProfile.Type.Remote) "Подписка"
-                else "Локальный профиль",
-                count?.let { "Серверов: $it" },
-            )
+            if (profile.typed.type == TypedProfile.Type.Remote) {
+                "Подписка"
+            } else {
+                "Локальный профиль"
+            },
+            count?.let { "Серверов: $it" },
+        )
             .joinToString(" · "),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

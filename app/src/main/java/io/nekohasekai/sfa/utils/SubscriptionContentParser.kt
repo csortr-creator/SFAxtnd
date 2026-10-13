@@ -879,6 +879,7 @@ internal class SubscriptionContentParser(
         usedTags[SubscriptionRouting.WHITELIST_SELECTOR_TAG] = 1
         usedTags["direct"] = 1
         usedTags["block"] = 1
+        val allocatedTags = usedTags.keys.toMutableSet()
 
         val normalProxyTags = mutableListOf<String>()
         val whitelistProxyTags = mutableListOf<String>()
@@ -890,9 +891,15 @@ internal class SubscriptionContentParser(
             val rawTag =
                 node.optString("tag").ifEmpty { node.optString("server").ifEmpty { "Proxy" } }
             val cleanTag = cleanNodeName(rawTag)
-            val count = usedTags.getOrDefault(cleanTag, 0)
-            val uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
+            var count = usedTags.getOrDefault(cleanTag, 0)
+            var uniqueTag = if (count > 0) "$cleanTag ($count)" else cleanTag
+            // A literal "A (1)" can collide with the suffix generated for a second "A".
+            while (uniqueTag in allocatedTags) {
+                count++
+                uniqueTag = "$cleanTag ($count)"
+            }
             usedTags[cleanTag] = count + 1
+            allocatedTags.add(uniqueTag)
             node.put("tag", uniqueTag)
 
             val type = node.optString("type")

@@ -10,11 +10,12 @@ The table describes implemented paths, not a guarantee that a remote server is r
 | Xray certificate pins / names | Native verification options | Existing mapping; no conversion into `insecure` |
 | Reality public key / short ID / fingerprint | Native Reality TLS options | Existing core compatibility patches; fingerprint support still matters |
 | XHTTP padding range | `transport.x_padding_bytes` | Existing parser/core support; conflicting aliases rejected |
-| VLESS Encryption | `encryption` | Existing native single-key `mlkem768x25519plus.native.0rtt/1rtt`; Vision combination rejected |
+| VLESS Encryption + Vision | `encryption` + `flow` | Native single-key `mlkem768x25519plus.native.0rtt/1rtt`; Vision can use the encryption connection without removing either layer |
 | FinalMask UDP Salamander | Hysteria2 `obfs.type=salamander` | One mask, password-only settings, at least four UTF-8 bytes; proxy authentication remains separate |
 | FinalMask TCP header-custom | VLESS `tcp_header.clients/servers` | One mask; literal `str` items; plain TCP without TLS/Reality, other transport, or Vision |
 | FinalMask QUIC tuning | Native Hysteria2 BBR/MTU/hopping options | Existing supported subset; other QUIC fields are rejected |
-| QUIC uTLS fingerprint | Hysteria2 Chrome parrot for exact `chrome` | Existing normalization; other fingerprints are not silently substituted |
+| Hysteria2 URI / Xray JSON fingerprint | Source-aware QUIC conversion | Xray uses standard TLS here and does not apply its TCP fingerprint; preserve the independent QUIC Chrome parrot option |
+| Native / Clash QUIC uTLS | Hysteria2 Chrome parrot for exact `chrome` | Explicit native/Clash uTLS remains strict; the Xray rule does not apply to these formats |
 | Other FinalMask masks/chains | Import issue | Unsupported settings are not ignored or collapsed into a different mask |
 
 ## Shared mapping
@@ -62,13 +63,53 @@ in the APK. The wire tests cover:
 Loopback permission exists only in fixture configs. Android device and provider
 tests are separate from successful import, config checks, and loopback tests.
 
+## Subscription compatibility matrix
+
+The same Encryption + Vision + Reality connection is tested through nine input
+containers: URI, Base64 URI, Xray JSON, Xray JSON array, Clash JSON, Clash YAML,
+Base64 YAML, sing-box JSON and sing-box outbound array. The matrix preserves
+encryption, flow, UUID, public key, short ID, SNI and the chosen fingerprint,
+and exports every generated configuration for native core validation.
+
+The runtime uses the existing sing-vmess Vision implementation with the
+`CommonConn` registry adapter from sing-box-lx. Its buffer layout and registry
+entry are tested so a dependency change cannot silently invalidate the adapter.
+The browser preset dependency is pinned to utls-lx; Firefox 148 and Safari 26.3
+provide their own hybrid key shares, with Chrome Auto remaining Chrome 133.
+
+The Xray interoperability matrix covers Chrome, Firefox and Safari with 0rtt
+and 1rtt, fresh and resumed connections, TLS 1.3, and a 1.4 MiB upload/download.
+Wrong Reality key/short ID and wrong Encryption key must fail. Vision tests run
+without race/checkptr because sing-vmess uses unsafe reflection; ordinary
+Reality, encryption and Hysteria tests retain race instrumentation.
+
+Hysteria2 source conversion follows Xray's actual dialer: `GetTLSConfig`
+returns `crypto/tls.Config`; `tlsSettings.fingerprint` is not used by that path.
+`finalmask.quicParams.disableChromeParrot` is independent and is preserved.
+The same rule applies to the Xray-style `fp` extension in Hysteria2 share links,
+with a report note explaining it. SNI, certificate verification/pins, proxy
+authentication and Salamander credentials are not changed. Native/Clash uTLS
+settings are not reinterpreted as Xray hints. Hysteria2 wire tests cover both
+parrot settings and reject wrong certificate names, authentication and masks.
+
+Pinned implementation references:
+
+- [Vision adapter, sing-box-lx 6b1cfa4](https://github.com/Leadaxe/sing-box-lx/blob/6b1cfa43d931ba5f7e79acaa64841290f25557de/protocol/vless/encryption/lx_vision.go)
+- [utls-lx ad69b19](https://github.com/Leadaxe/utls-lx/tree/ad69b191e2f83367ec0ac5f3a1a61310732c43b9), locked by Go module checksums
+- [Xray v26.9.9 Hysteria dialer](https://github.com/XTLS/Xray-core/blob/v26.9.9/transport/internet/hysteria/dialer.go)
+- [Xray v26.9.9 TLS configuration](https://github.com/XTLS/Xray-core/blob/v26.9.9/transport/internet/tls/config.go)
+
 ## Remaining work
 
 Audit unsupported combinations against native capabilities before implementing
 new protocol code. Current limits include dynamic header items, arbitrary mask
-chains, Salamander packet-size/gecko options, broader QUIC fingerprints, and
-Encryption/Vision combinations. Keep offline probe/Stop lifecycle work separate
+chains, Salamander packet-size/gecko options, explicit native QUIC fingerprints,
+multi-key Encryption profiles and Reality ML-DSA signatures. Keep offline probe/Stop lifecycle work separate
 from protocol compatibility; this change does not claim to fix those behaviors.
+
+No importer can guarantee arbitrary future protocol extensions or a remote
+server's availability. Unsupported wire requirements must stay visible and must
+not become a successful import by removing encryption or certificate checks.
 
 References: pinned Xray `infra/conf/transport_finalmask.go` and
 `transport/internet/finalmask/header/custom/tcp.go`; pinned sing-quic

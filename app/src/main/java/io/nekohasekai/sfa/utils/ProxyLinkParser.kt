@@ -32,7 +32,9 @@ internal object ProxyLinkParser {
         ) {
             "Unsupported VLESS encryption profile"
         }
-        require(flow.isNullOrEmpty()) { "Unsupported VLESS encryption with Vision flow" }
+        require(flow.isNullOrEmpty() || flow == "xtls-rprx-vision") {
+            "Unsupported VLESS flow"
+        }
         require(Regex("[A-Za-z0-9_-]+").matches(parts[3])) { "Invalid VLESS encryption key" }
         val key =
             try {
@@ -441,7 +443,7 @@ internal object ProxyLinkParser {
             }
     }
 
-    fun hysteria(line: String): JSONObject {
+    fun hysteria(line: String, warn: (String) -> Unit = {}): JSONObject {
         val scheme = line.substringBefore("://").lowercase()
         val v2 = scheme != "hysteria"
         val body = line.substringAfter("://").substringBefore('#')
@@ -452,6 +454,8 @@ internal object ProxyLinkParser {
                 "allowInsecure" to "insecure",
                 "skip-cert-verify" to "insecure",
                 "serverName" to "sni",
+                "peer" to "sni",
+                "fingerprint" to "fp",
                 "obfsPassword" to "obfs-password",
                 "hop-interval" to "hopInterval",
                 "up" to "upmbps",
@@ -570,13 +574,6 @@ internal object ProxyLinkParser {
         }
         if (v2) {
             result.put("password", auth)
-            val fp = params["fp"]?.takeIf { it.isNotBlank() }?.lowercase()
-            if (fp != null) {
-                // Chrome-like fingerprints keep QUIC chrome parrot (default); others disable it.
-                // Only Chrome ClientHello family uses sing-box QUIC chrome parrot.
-                val chromeLike = fp == "chrome" || fp.startsWith("chrome_") || fp.startsWith("chrome-")
-                result.put("disable_chrome_parrot", !chromeLike)
-            }
             params["obfs"]
                 ?.takeIf { it.isNotBlank() && it != "none" }
                 ?.let { type ->
@@ -606,8 +603,10 @@ internal object ProxyLinkParser {
             bandwidth(result, params, "down", true)
         }
         applyXrayVerification(tls, params["pcs"], params["vcn"])
-        params["fm"]?.takeIf { it.isNotBlank() }?.let { applyFinalMask(result, JSONObject(it)) }
-        return QuicTlsCompatibility.normalize(result)
+        params["fm"]?.let { applyFinalMask(result, JSONObject(it)) }
+        if (v2 && !params["fp"].isNullOrBlank()) warn(QuicTlsCompatibility.XRAY_HYSTERIA_NOTE)
+        return if (v2) QuicTlsCompatibility.fromXrayHysteria(result)
+        else QuicTlsCompatibility.normalize(result)
     }
 
     private fun bandwidth(

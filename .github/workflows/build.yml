@@ -175,7 +175,7 @@ jobs:
             -ldflags=-checklinkname=0 -tags=with_quic,with_utls ./transport/v2rayxhttp ./transport/v2ray ./option ./experimental/libbox ./common/tls ./daemon ./common/urltest ./transport/vlessenc
 
       - name: Test Reality with legacy and current Xray
-        timeout-minutes: 5
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euxo pipefail
@@ -196,8 +196,8 @@ jobs:
             ./common/tls -run '^TestSFARealityXrayInterop$' -count=3 -v
           # sing-vmess Vision uses unsafe reflection incompatible with race checkptr.
           # Keep auth/plain under -race; run the actual Vision HTTPS exchange separately.
-          go test -timeout 2m -ldflags=-checklinkname=0 -tags=with_quic,with_utls \
-            ./common/tls -run '^TestSFARealityXrayVision$' -count=3 -v
+          go test -timeout 5m -ldflags=-checklinkname=0 -tags=with_quic,with_utls \
+            ./common/tls ./transport/vlessenc -run '^Test(SFAReality(XrayVision|EncryptionVision)|Vision.*_LX)$' -count=3 -v
 
       - name: Test proxy share-link import
         shell: bash

@@ -64,7 +64,7 @@ class VlessEncryptionImportTest {
                     ProxyLinkParser.applyVlessEncryption(
                         JSONObject(),
                         "mlkem768x25519plus.native.0rtt.$key",
-                        "xtls-rprx-vision",
+                        "unsupported-flow",
                     )
                 }
                 .isFailure

@@ -98,6 +98,15 @@ else
     git -C sing-box-core apply "$PWD/$FINALMASK_TCP_PATCH"
 fi
 
+# Reuse the reviewed Vision/Encryption adapter and pinned browser presets.
+SUBSCRIPTION_COMPAT_PATCH=patches/sing-box-1.14.2-subscription-compatibility.patch
+if git -C sing-box-core apply --reverse --check "$PWD/$SUBSCRIPTION_COMPAT_PATCH" 2>/dev/null; then
+    echo "Subscription runtime compatibility patch already applied"
+else
+    git -C sing-box-core apply --check "$PWD/$SUBSCRIPTION_COMPAT_PATCH"
+    git -C sing-box-core apply "$PWD/$SUBSCRIPTION_COMPAT_PATCH"
+fi
+
 # Получаем строку, где кончается класс HTTPClient
 LINE=$(grep -n "override fun close()" app/src/main/java/io/nekohasekai/sfa/utils/HTTPClient.kt | cut -d: -f1)
 

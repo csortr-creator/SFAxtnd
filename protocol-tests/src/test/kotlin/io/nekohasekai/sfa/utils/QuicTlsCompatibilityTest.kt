@@ -49,14 +49,19 @@ class QuicTlsCompatibilityTest {
             assertFalse(hy.getBoolean("disable_chrome_parrot"))
         }
     }
-    @Test fun unsupportedFingerprintHasTypedIssueAndKeepsValidNodes() {
+    @Test fun shareLinksUseXrayHysteriaSemanticsButNativeUtlsRemainsStrict() {
         val result = SubscriptionContentParser().parse(
-            "hy2://fixture@example.org:443?fp=chrome#good\n" +
-                "hy2://fixture@example.org:443?fp=firefox#unsupported",
+            "hy2://fixture@example.org:443?fp=chrome#chrome\n" +
+                "hy2://fixture@example.org:443?fp=firefox#firefox",
         )
         assertEquals(2, result.report.received)
-        assertEquals(1, result.report.imported)
-        assertEquals(ImportIssueCode.UNSUPPORTED_FEATURE, result.report.issues.single().code)
+        assertEquals(2, result.report.imported)
+        assertTrue(result.report.issues.isEmpty())
+        assertEquals(listOf(QuicTlsCompatibility.XRAY_HYSTERIA_NOTE), result.report.warnings)
+        val native = node("hysteria2", "firefox")
+        val original = native.toString()
+        assertTrue(runCatching { QuicTlsCompatibility.normalize(native) }.isFailure)
+        assertEquals(original, native.toString())
     }
 
     @Test fun nativeUtlsFetchFailureIsIdentifiedWithoutLeakingSubscriptionUrl() {

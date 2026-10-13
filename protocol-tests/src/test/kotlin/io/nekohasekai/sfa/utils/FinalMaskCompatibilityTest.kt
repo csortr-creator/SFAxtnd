@@ -68,9 +68,12 @@ class FinalMaskCompatibilityTest {
         assertTrue(runCatching { FinalMaskCompatibility.apply(existing, JSONObject(udp)) }.isFailure)
     }
 
-    @Test fun nativeObfsEquivalenceDoesNotBypassUnsupportedFingerprint() {
+    @Test fun xrayHysteriaFingerprintIsNotMistakenForTcpUtls() {
         val fm = URLEncoder.encode(udp, "UTF-8")
-        assertTrue(runCatching { ProxyLinkParser.hysteria("hy2://proxy-password@example.org:9000?fp=firefox&fm=$fm") }.isFailure)
+        val node = ProxyLinkParser.hysteria("hy2://proxy-password@example.org:9000?fp=firefox&fm=$fm")
+        assertFalse(node.getJSONObject("tls").has("utls"))
+        assertFalse(node.getBoolean("disable_chrome_parrot"))
+        assertEquals("mask-password", node.getJSONObject("obfs").getString("password"))
     }
 
     @Test fun trojanDoesNotSilentlyAcceptAnUnsupportedFinalMask() {

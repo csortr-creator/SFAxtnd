@@ -583,7 +583,9 @@ internal class SubscriptionContentParser(
                     trimmed.startsWith("tuic://") || trimmed.startsWith("anytls://") || trimmed.startsWith("socks://") || trimmed.startsWith("socks5://") || trimmed.startsWith("http://") || trimmed.startsWith("https://") -> ProxyLinkParser.additional(trimmed)
                 trimmed.startsWith("hysteria://") ||
                         trimmed.startsWith("hysteria2://") ||
-                        trimmed.startsWith("hy2://") -> ProxyLinkParser.hysteria(trimmed)
+                        trimmed.startsWith("hy2://") -> ProxyLinkParser.hysteria(trimmed) { note ->
+                            if (note !in shareLinkWarnings) shareLinkWarnings.add(note)
+                        }
                     else -> null
                 }
             if (node != null) nodes.add(node)

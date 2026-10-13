@@ -498,9 +498,12 @@ class ProxyLinkParserTest {
         assertEquals("example.org", chrome.getJSONObject("tls").getString("server_name"))
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun hysteria2RejectsUnsupportedFirefoxInsteadOfProducingUnusableTls() {
-        ProxyLinkParser.hysteria("hysteria2://secret@example.org:443?fp=firefox#test")
+    @Test
+    fun hysteria2KeepsXrayQuicDefaultsRegardlessOfTcpFingerprint() {
+        val node = ProxyLinkParser.hysteria("hysteria2://secret@example.org:443?fp=firefox#test")
+        assertFalse(node.getJSONObject("tls").has("utls"))
+        assertFalse(node.getBoolean("disable_chrome_parrot"))
+        assertEquals("secret", node.getString("password"))
     }
 
     @Test

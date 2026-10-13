@@ -1,0 +1,154 @@
+diff --git a/protocol/vless/outbound.go b/protocol/vless/outbound.go
+--- a/protocol/vless/outbound.go
++++ b/protocol/vless/outbound.go
+@@ -70,9 +70,6 @@
+ 		}
+ 		outbound.tcpHeader = options.TCPHeader
+ 	}
+-	if outbound.encryption != nil && options.Flow != "" {
+-		return nil, E.New("VLESS encryption with Vision flow is not supported")
+-	}
+ 	if options.TLS != nil {
+ 		outbound.tlsConfig, err = tls.NewClientWithOptions(tls.ClientOptions{
+ 			Context:       ctx,
+diff --git a/go.mod b/go.mod
+--- a/go.mod
++++ b/go.mod
+@@ -198,3 +198,5 @@
+ 	lukechampine.com/blake3 v1.3.0 // indirect
+ 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
+ )
++
++replace github.com/metacubex/utls => github.com/Leadaxe/utls-lx v1.8.8-0.20261011005638-ad69b191e2f8
+diff --git a/go.sum b/go.sum
+--- a/go.sum
++++ b/go.sum
+@@ -10,6 +10,8 @@
+ filippo.io/hpke v0.4.0 h1:p575VVQ6ted4pL+it6M00V/f2qTZITO0zgmdKCkd5+A=
+ filippo.io/hpke v0.4.0/go.mod h1:EmAN849/P3qdeK+PCMkDpDm83vRHM5cDipBJ8xbQLVY=
+ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
++github.com/Leadaxe/utls-lx v1.8.8-0.20261011005638-ad69b191e2f8 h1:zPtCcZOcrs2519wouMl7+8X+t9iRFuloHMhCO/vyqoA=
++github.com/Leadaxe/utls-lx v1.8.8-0.20261011005638-ad69b191e2f8/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
+ github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=
+ github.com/RyuaNerin/go-krypto v1.3.0/go.mod h1:9R9TU936laAIqAmjcHo/LsaXYOZlymudOAxjaBf62UM=
+ github.com/RyuaNerin/testingutil v0.1.0 h1:IYT6JL57RV3U2ml3dLHZsVtPOP6yNK7WUVdzzlpNrss=
+diff --git a/transport/vlessenc/vision.go b/transport/vlessenc/vision.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/vision.go
+@@ -0,0 +1,40 @@
++// Adapted from Leadaxe/sing-box-lx 6b1cfa43d931ba5f7e79acaa64841290f25557de.
++// SPDX-License-Identifier: GPL-3.0-or-later
++package vlessenc
++
++// lx: SPEC 105 — let flow `xtls-rprx-vision` run on top of this layer.
++//
++// Vision in sing-vmess finds the TLS conn beneath it through a private registry
++// that only knows crypto/tls and utls, so a *CommonConn was rejected with
++// "not a valid supported TLS connection". Xray treats CommonConn like a TLS
++// conn: Vision reads its input/rawInput fields, and direct copy goes to the
++// conn beneath the encryption layer (proxy.UnwrapRawConn). One registry entry
++// gives sing-vmess the same view.
++
++import (
++	"net"
++	"reflect"
++	"unsafe"
++
++	"github.com/sagernet/sing-vmess/vless"
++	N "github.com/sagernet/sing/common/network"
++)
++
++// Importing vless above runs its init first, so the entry lands after the
++// built-in crypto/tls and utls ones.
++var _ = vless.FlowVision
++
++//go:linkname visionTLSRegistry github.com/sagernet/sing-vmess/vless.tlsRegistry
++var visionTLSRegistry []func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr)
++
++func init() {
++	visionTLSRegistry = append(visionTLSRegistry, castVisionConn)
++}
++
++func castVisionConn(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr) {
++	commonConn, loaded := N.CastReader[*CommonConn](conn)
++	if !loaded {
++		return
++	}
++	return true, commonConn.Conn, reflect.TypeOf(commonConn).Elem(), uintptr(unsafe.Pointer(commonConn))
++}
+diff --git a/transport/vlessenc/vision_test.go b/transport/vlessenc/vision_test.go
+new file mode 100644
+--- /dev/null
++++ b/transport/vlessenc/vision_test.go
+@@ -0,0 +1,70 @@
++//go:build !race
++
++package vlessenc
++
++import (
++	"bytes"
++	"net"
++	"reflect"
++	"testing"
++
++	"github.com/sagernet/sing-vmess/vless"
++)
++
++// SPEC 105 §4.1: Vision accepts a *CommonConn and reads the input/rawInput
++// fields Xray reads.
++func TestVisionAcceptsCommonConn_LX(t *testing.T) {
++	inner, peer := net.Pipe()
++	defer inner.Close()
++	defer peer.Close()
++	commonConn := NewCommonConn(inner, false)
++
++	if _, err := vless.NewVisionConn(commonConn, commonConn, [16]byte{}, nil); err != nil {
++		t.Fatalf("NewVisionConn over *CommonConn: %v", err)
++	}
++
++	loaded, netConn, reflectType, reflectPointer := castVisionConn(commonConn)
++	if !loaded {
++		t.Fatal("castVisionConn did not load *CommonConn")
++	}
++	if netConn != inner {
++		t.Fatalf("direct copy conn = %T, want the conn beneath the encryption layer", netConn)
++	}
++	input, ok := reflectType.FieldByName("input")
++	if !ok || input.Type != reflect.TypeOf(bytes.Reader{}) {
++		t.Fatal("CommonConn.input missing or not bytes.Reader")
++	}
++	rawInput, ok := reflectType.FieldByName("rawInput")
++	if !ok || rawInput.Type != reflect.TypeOf(bytes.Buffer{}) {
++		t.Fatal("CommonConn.rawInput missing or not bytes.Buffer")
++	}
++	if reflectPointer+input.Offset != reflect.ValueOf(&commonConn.input).Pointer() {
++		t.Fatal("input offset does not point at CommonConn.input")
++	}
++	if reflectPointer+rawInput.Offset != reflect.ValueOf(&commonConn.rawInput).Pointer() {
++		t.Fatal("rawInput offset does not point at CommonConn.rawInput")
++	}
++}
++
++// SPEC 105 §4.2: the linkname target still exists with the expected shape and
++// holds our entry. A sing-vmess bump that renames or reshapes the registry
++// fails here instead of silently breaking Vision.
++func TestVisionRegistryHoldsCommonConn_LX(t *testing.T) {
++	for _, entry := range visionTLSRegistry {
++		if reflect.ValueOf(entry).Pointer() == reflect.ValueOf(castVisionConn).Pointer() {
++			return
++		}
++	}
++	t.Fatal("castVisionConn is not in sing-vmess vless.tlsRegistry")
++}
++
++// A plain conn is still rejected, so the entry does not widen Vision beyond
++// TLS-like conns.
++func TestVisionRejectsPlainConn_LX(t *testing.T) {
++	inner, peer := net.Pipe()
++	defer inner.Close()
++	defer peer.Close()
++	if _, err := vless.NewVisionConn(inner, inner, [16]byte{}, nil); err == nil {
++		t.Fatal("NewVisionConn accepted a plain conn")
++	}
++}

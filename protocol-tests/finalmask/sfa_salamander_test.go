@@ -108,20 +108,27 @@ func TestSFASalamanderXray(t *testing.T) {
 	pool := x509.NewCertPool()
 	pool.AddCert(origin.Certificate())
 	for _, tc := range []struct {
-		name, password, mask string
-		valid                bool
+		name, password, mask            string
+		valid, disableParrot, wrongName bool
 	}{
-		{"valid", "proxy-password", "mask-password", true},
-		{"wrong-auth", "wrong-password", "mask-password", false},
-		{"wrong-mask", "proxy-password", "wrong-mask-password", false},
+		{"valid", "proxy-password", "mask-password", true, false, false},
+		{"without-parrot", "proxy-password", "mask-password", true, true, false},
+		{"wrong-certificate-name", "proxy-password", "mask-password", false, false, true},
+		{"wrong-auth", "wrong-password", "mask-password", false, false, false},
+		{"wrong-mask", "proxy-password", "wrong-mask-password", false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 			defer cancel()
+			serverName := "127.0.0.1"
+			if tc.wrongName {
+				serverName = "wrong.example.org"
+			}
 			out, err := HY.NewOutbound(ctx, nil, logger.NOP(), "hy2", option.Hysteria2OutboundOptions{
 				ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: uint16(port)}, Password: tc.password,
+				DisableChromeParrot:         tc.disableParrot,
 				Obfs:                        &option.Hysteria2Obfs{Type: "salamander", Password: tc.mask},
-				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: "127.0.0.1", Certificate: []string{string(certificate)}}},
+				OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: &option.OutboundTLSOptions{Enabled: true, ServerName: serverName, Certificate: []string{string(certificate)}}},
 			})
 			if err != nil {
 				t.Fatal(err)

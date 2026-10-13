@@ -27,14 +27,14 @@ class SubscriptionDiagnosticsTest {
 
     @Test fun noUsableNodesCarriesCurrentStatisticsWithoutExposingRawInput() {
         val error = failure(SubscriptionStage.PARSE) {
-            SubscriptionContentParser().parse("hy2://fixture@example.org:443?fp=firefox#private-name")
+            SubscriptionContentParser().parse("hy2://fixture@example.org:443?obfs=unsupported-mask#private-name")
         }
         val report = requireNotNull(SubscriptionDiagnostics.reportOf(error))
         assertEquals(1, report.received)
         assertEquals(0, report.imported)
         val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, report, reason = SubscriptionDiagnostics.reason(error))
         assertTrue(text.contains("IMPORT_NO_USABLE_NODES"))
-        assertTrue(text.contains("uTLS fingerprint"))
+        assertTrue(text.contains("UNSUPPORTED_FEATURE"))
         assertTrue(text.contains("private-name"))
         assertFalse(text.contains("example.org"))
     }

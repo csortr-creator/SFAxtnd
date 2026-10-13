@@ -103,7 +103,7 @@ internal object FinalMaskCompatibility {
             "Unsupported finalmask QUIC options for proxy type"
         }
         for (key in quic.keys()) require(
-            key in setOf("congestion", "debug", "bbrProfile", "disablePathMTUDiscovery", "udpHop")
+            key in setOf("congestion", "debug", "bbrProfile", "disablePathMTUDiscovery", "disableChromeParrot", "udpHop")
         ) {
             "Unsupported finalmask QUIC parameter: $key"
         }
@@ -127,6 +127,12 @@ internal object FinalMaskCompatibility {
                 "Invalid QUIC path MTU setting"
             }
             node.put("disable_path_mtu_discovery", quic.getBoolean("disablePathMTUDiscovery"))
+        }
+        if (quic.has("disableChromeParrot")) {
+            require(quic.get("disableChromeParrot") is Boolean) {
+                "Invalid QUIC Chrome parrot setting"
+            }
+            node.put("disable_chrome_parrot", quic.getBoolean("disableChromeParrot"))
         }
         require(!quic.has("udpHop") || quic.optJSONObject("udpHop") != null) {
             "Invalid finalmask port hopping object"

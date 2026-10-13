@@ -37,7 +37,7 @@ class ImportIssueNameTest {
     } catch (e: SubscriptionResponseFailure) { requireNotNull(e.report) }
 
     @Test fun rejectedShareLinkShowsItsDisplayNameAndKeepsCredentialsHidden() {
-        val report = rejected("hy2://TOP_SECRET_PASSWORD@private.example:443?fp=firefox#%F0%9F%87%B5%F0%9F%87%B1%20Poland%20Hysteria2")
+        val report = rejected("hy2://TOP_SECRET_PASSWORD@private.example:443?obfs=unsupported-mask#%F0%9F%87%B5%F0%9F%87%B1%20Poland%20Hysteria2")
         val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, report)
         assertTrue(text.contains("Запись 1 · 🇵🇱 Poland Hysteria2"))
         assertTrue(text.contains("UNSUPPORTED_FEATURE"))

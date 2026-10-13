@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/transport/vlessenc"
 	"github.com/sagernet/sing-vmess/vless"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -50,13 +51,29 @@ func sfaRunRealityXrayMatrix(t *testing.T, flow string) {
 }
 
 func sfaCheckRealityXray(t *testing.T, binary, flow string) {
+	sfaCheckRealityCombination(t, binary, flow, "chrome", "")
+}
+
+func sfaCheckRealityCombination(t *testing.T, binary, flow, fingerprint, encryptionMode string) {
 	target := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	target.Config.ErrorLog = log.New(io.Discard, "", 0)
 	target.EnableHTTP2 = true
 	target.TLS = &tls.Config{MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519}}
 	target.StartTLS()
 	t.Cleanup(func() { target.CloseClientConnections(); target.Close() })
-	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	payload := bytes.Repeat([]byte("verified-vision-stream\n"), 65536)
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if encryptionMode == "" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		uploaded, err := io.ReadAll(io.LimitReader(r.Body, int64(len(payload)+1)))
+		if err != nil || !bytes.Equal(uploaded, payload) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Write(payload)
+	}))
 	origin.Config.ErrorLog = log.New(io.Discard, "", 0)
 	originListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -70,15 +87,36 @@ func sfaCheckRealityXray(t *testing.T, binary, flow string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	address := sfaStartRealityXray(t, binary, target.Listener.Addr().String(), key.Bytes())
-	for _, tc := range []struct {
+	encryption, decryption := "none", "none"
+	if encryptionMode != "" {
+		encryptionKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encryption = "mlkem768x25519plus.native." + encryptionMode + "." + base64.RawURLEncoding.EncodeToString(encryptionKey.PublicKey().Bytes())
+		decryption = "mlkem768x25519plus.native.600s." + base64.RawURLEncoding.EncodeToString(encryptionKey.Bytes())
+	}
+	encryptionClient, err := vlessenc.NewClient(encryption)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := sfaStartRealityXray(t, binary, target.Listener.Addr().String(), key.Bytes(), decryption)
+	cases := []struct {
 		name, shortID, flow string
 		validKey, success   bool
 	}{
 		{"valid", "abcd", flow, true, true},
+		{"valid-reconnect", "abcd", flow, true, true},
 		{"wrong-short-id", "fefe", "", true, false},
 		{"wrong-public-key", "abcd", "", false, false},
-	} {
+	}
+	if encryptionMode != "" && fingerprint == "chrome" {
+		cases = append(cases, struct {
+			name, shortID, flow string
+			validKey, success   bool
+		}{"wrong-encryption-key", "abcd", flow, true, true})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			public := key.PublicKey().Bytes()
 			if !tc.validKey {
@@ -90,7 +128,7 @@ func sfaCheckRealityXray(t *testing.T, binary, flow string) {
 			}
 			config, err := NewRealityClient(context.Background(), logger.NOP(), "example.com", option.OutboundTLSOptions{
 				Enabled: true, ServerName: "example.com",
-				UTLS:    &option.OutboundUTLSOptions{Enabled: true, Fingerprint: "chrome"},
+				UTLS:    &option.OutboundUTLSOptions{Enabled: true, Fingerprint: fingerprint},
 				Reality: &option.OutboundRealityOptions{Enabled: true, PublicKey: base64.RawURLEncoding.EncodeToString(public), ShortID: tc.shortID},
 			})
 			if err != nil {
@@ -123,7 +161,35 @@ func sfaCheckRealityXray(t *testing.T, binary, flow string) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				tunnel, err := client.DialEarlyConn(authenticated, M.ParseSocksaddr(origin.Listener.Addr().String()))
+				var stream net.Conn = authenticated
+				if encryptionClient != nil {
+					activeEncryption := encryptionClient
+					if tc.name == "wrong-encryption-key" {
+						wrong, err := ecdh.X25519().GenerateKey(rand.Reader)
+						if err != nil {
+							t.Fatal(err)
+						}
+						activeEncryption, err = vlessenc.NewClient("mlkem768x25519plus.native." + encryptionMode + "." + base64.RawURLEncoding.EncodeToString(wrong.PublicKey().Bytes()))
+						if err != nil {
+							t.Fatal(err)
+						}
+						var cancelNegative context.CancelFunc
+						ctx, cancelNegative = context.WithTimeout(ctx, 2*time.Second)
+						defer cancelNegative()
+					}
+					stream, err = activeEncryption.Wrap(ctx, stream)
+					if tc.name == "wrong-encryption-key" {
+						if err == nil {
+							stream.Close()
+							t.Fatal("VLESS Encryption accepted wrong public key")
+						}
+						return
+					}
+					if err != nil {
+						t.Fatalf("VLESS Encryption handshake failed: %v", err)
+					}
+				}
+				tunnel, err := client.DialEarlyConn(stream, M.ParseSocksaddr(origin.Listener.Addr().String()))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -135,15 +201,37 @@ func sfaCheckRealityXray(t *testing.T, binary, flow string) {
 				if err := https.HandshakeContext(ctx); err != nil {
 					t.Fatalf("HTTPS through VLESS failed: %v", err)
 				}
-				if _, err := fmt.Fprint(https, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"); err != nil {
-					t.Fatal(err)
+				if encryptionMode == "" {
+					if _, err := fmt.Fprint(https, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					request, err := http.NewRequest("POST", origin.URL, bytes.NewReader(payload))
+					if err != nil {
+						t.Fatal(err)
+					}
+					request.Close = true
+					if err := request.Write(https); err != nil {
+						t.Fatal(err)
+					}
 				}
 				response, err := http.ReadResponse(bufio.NewReader(https), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
+				body, readErr := io.ReadAll(response.Body)
 				response.Body.Close()
-				if response.StatusCode != http.StatusNoContent {
+				expected := http.StatusNoContent
+				if encryptionMode != "" {
+					expected = http.StatusOK
+				}
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				if encryptionMode != "" && !bytes.Equal(body, payload) {
+					t.Fatal("Vision stream payload mismatch")
+				}
+				if response.StatusCode != expected {
 					t.Fatalf("unexpected HTTPS status %d", response.StatusCode)
 				}
 			} else if err == nil {
@@ -154,7 +242,7 @@ func sfaCheckRealityXray(t *testing.T, binary, flow string) {
 	}
 }
 
-func sfaStartRealityXray(t *testing.T, binary, target string, private []byte) string {
+func sfaStartRealityXray(t *testing.T, binary, target string, private []byte, decryption string) string {
 	t.Helper()
 	var address string
 	var port int
@@ -178,7 +266,7 @@ func sfaStartRealityXray(t *testing.T, binary, target string, private []byte) st
 		"log": map[string]any{"loglevel": "debug"},
 		"inbounds": []any{map[string]any{
 			"listen": "127.0.0.1", "port": port, "protocol": "vless",
-			"settings": map[string]any{"clients": []any{map[string]any{"id": "00000000-0000-0000-0000-000000000001"}, map[string]any{"id": "00000000-0000-0000-0000-000000000002", "flow": "xtls-rprx-vision"}}, "decryption": "none"},
+			"settings": map[string]any{"clients": []any{map[string]any{"id": "00000000-0000-0000-0000-000000000001"}, map[string]any{"id": "00000000-0000-0000-0000-000000000002", "flow": "xtls-rprx-vision"}}, "decryption": decryption},
 			"streamSettings": map[string]any{"network": "tcp", "security": "reality", "realitySettings": map[string]any{
 				"dest": target, "serverNames": []string{"example.com"}, "privateKey": base64.RawURLEncoding.EncodeToString(private), "shortIds": []string{"abcd"},
 			}},

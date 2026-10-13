@@ -706,6 +706,7 @@ internal object ForeignSubscriptionParser {
 
     private fun xray(root: JSONObject): ForeignSubscription {
         val servers = mutableListOf<ForeignServer>()
+        var hysteriaFingerprint = false
         val outbounds = root.getJSONArray("outbounds")
         for (i in 0 until outbounds.length()) {
             val outbound = outbounds.optJSONObject(i)
@@ -718,6 +719,10 @@ internal object ForeignSubscriptionParser {
                 continue
             }
             val protocol = outbound.optString("protocol")
+            if (protocol == "hysteria" && !outbound.optJSONObject("streamSettings")
+                    ?.optJSONObject("tlsSettings")?.optString("fingerprint").isNullOrBlank()) {
+                hysteriaFingerprint = true
+            }
             if (protocol in setOf("freedom", "blackhole", "dns")) continue
             val settings = outbound.optJSONObject("settings") ?: JSONObject()
             val entries =
@@ -756,7 +761,7 @@ internal object ForeignSubscriptionParser {
             servers,
             listOf(
                 "Из Xray импортируются только outbound-серверы. Inbounds, routing, DNS, groups и policy Xray не переносятся — используются настройки SFAxtnd. Reality spiderX/fingerprint маппятся в sing-box при наличии.",
-            ),
+            ) + if (hysteriaFingerprint) listOf(QuicTlsCompatibility.XRAY_HYSTERIA_NOTE) else emptyList(),
         )
     }
 
@@ -818,20 +823,11 @@ internal object ForeignSubscriptionParser {
                 .put("server_port", port(settings))
                 .put("password", required(hy, "auth"))
                 .put("tls", tls)
-        options
-            .optString("fingerprint")
-            .takeIf { it.isNotBlank() }
-            ?.lowercase()
-            ?.let { fp ->
-                val chromeLike =
-                    fp == "chrome" || fp.startsWith("chrome_") || fp.startsWith("chrome-")
-                node.put("disable_chrome_parrot", !chromeLike)
-            }
         stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
         require(!stream.has("finalmask") || stream.optJSONObject("finalmask") != null) {
             "Invalid finalmask object"
         }
-        return QuicTlsCompatibility.normalize(node)
+        return QuicTlsCompatibility.fromXrayHysteria(node)
     }
 
     private fun xrayNode(

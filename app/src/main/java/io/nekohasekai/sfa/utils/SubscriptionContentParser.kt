@@ -705,6 +705,9 @@ internal class SubscriptionContentParser(
         }
 
         applyMultiplex(outbound, params)
+        params["fm"]?.let {
+            ProxyLinkParser.applyFinalMask(outbound, JSONObject(it))
+        }
         return outbound
     }
 
@@ -878,6 +881,7 @@ internal class SubscriptionContentParser(
         }
 
         applyMultiplex(outbound, params)
+        params["fm"]?.let { ProxyLinkParser.applyFinalMask(outbound, JSONObject(it)) }
         return outbound
     }
 

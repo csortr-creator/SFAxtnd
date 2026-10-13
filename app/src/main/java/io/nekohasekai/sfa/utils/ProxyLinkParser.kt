@@ -192,72 +192,8 @@ internal object ProxyLinkParser {
             }
     }
 
-    fun applyFinalMask(node: JSONObject, mask: JSONObject) {
-        for (key in mask.keys()) {
-            require(key in setOf("quicParams", "udp", "tcp")) {
-                "Unsupported finalmask parameter: $key"
-            }
-            if (key != "quicParams")
-                require(mask.getJSONArray(key).length() == 0) {
-                    "Unsupported finalmask wire obfuscation"
-                }
-        }
-        require(!mask.has("quicParams") || mask.optJSONObject("quicParams") != null) {
-            "Invalid finalmask QUIC object"
-        }
-        val quic = mask.optJSONObject("quicParams") ?: return
-        require(node.getString("type") == "hysteria2") {
-            "Unsupported finalmask QUIC options for proxy type"
-        }
-        for (key in quic.keys()) require(
-            key in setOf("congestion", "debug", "bbrProfile", "disablePathMTUDiscovery", "udpHop")
-        ) {
-            "Unsupported finalmask QUIC parameter: $key"
-        }
-        require(quic.optString("congestion") in setOf("", "bbr")) {
-            "Unsupported finalmask congestion control"
-        }
-        require(!quic.has("debug") || quic.get("debug") == false) {
-            "Unsupported finalmask debug mode"
-        }
-        quic
-            .optString("bbrProfile")
-            .takeIf { it.isNotBlank() }
-            ?.let {
-                require(it in setOf("standard", "conservative", "aggressive")) {
-                    "Invalid BBR profile"
-                }
-                node.put("bbr_profile", it)
-            }
-        if (quic.has("disablePathMTUDiscovery")) {
-            require(quic.get("disablePathMTUDiscovery") is Boolean) {
-                "Invalid QUIC path MTU setting"
-            }
-            node.put("disable_path_mtu_discovery", quic.getBoolean("disablePathMTUDiscovery"))
-        }
-        require(!quic.has("udpHop") || quic.optJSONObject("udpHop") != null) {
-            "Invalid finalmask port hopping object"
-        }
-        quic.optJSONObject("udpHop")?.let {
-            require(it.keys().asSequence().all { key -> key in setOf("ports", "interval") }) {
-                "Unsupported finalmask port hopping parameter"
-            }
-            val ports =
-                endpoint("[" + node.getString("server") + "]:" + it.getString("ports")).ports
-            require(!node.has("server_ports")) { "Invalid conflicting port hopping options" }
-            node.put("server_ports", JSONArray(ports))
-            if (it.has("interval")) {
-                val interval = it.getDouble("interval")
-                require(interval.isFinite() && interval > 0) { "Invalid port hopping interval" }
-                require(!node.has("hop_interval")) { "Invalid conflicting port hopping interval" }
-                // Prefer integer seconds when the value is whole (sing-box duration style).
-                val rendered =
-                    if (interval == interval.toLong().toDouble()) "${interval.toLong()}s"
-                    else "${interval}s"
-                node.put("hop_interval", rendered)
-            }
-        }
-    }
+    fun applyFinalMask(node: JSONObject, mask: JSONObject) =
+        FinalMaskCompatibility.apply(node, mask)
 
     fun applyReality(
         tls: JSONObject,

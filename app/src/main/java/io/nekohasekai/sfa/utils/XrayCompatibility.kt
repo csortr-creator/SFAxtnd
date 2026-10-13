@@ -45,6 +45,7 @@ internal object XrayCompatibility {
             "muxPadding",
             "padding",
             "encryption",
+            "fm",
             "flow",
             "pbk",
             "sid",

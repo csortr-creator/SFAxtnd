@@ -828,6 +828,9 @@ internal object ForeignSubscriptionParser {
                 node.put("disable_chrome_parrot", !chromeLike)
             }
         stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
+        require(!stream.has("finalmask") || stream.optJSONObject("finalmask") != null) {
+            "Invalid finalmask object"
+        }
         return QuicTlsCompatibility.normalize(node)
     }
 
@@ -925,6 +928,7 @@ internal object ForeignSubscriptionParser {
                 "httpupgradeSettings",
                 "xhttpSettings",
                 "splithttpSettings",
+                "finalmask",
             ),
         )
         val security = stream.optString("security", "none")
@@ -1086,6 +1090,10 @@ internal object ForeignSubscriptionParser {
             require(!bool(mux, "enabled")) {
                 "Unsupported Xray Mux.Cool; not equivalent to sing-box multiplex"
             }
+        }
+        stream.optJSONObject("finalmask")?.let { ProxyLinkParser.applyFinalMask(node, it) }
+        require(!stream.has("finalmask") || stream.optJSONObject("finalmask") != null) {
+            "Invalid finalmask object"
         }
         return QuicTlsCompatibility.normalize(node)
     }

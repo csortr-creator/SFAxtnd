@@ -35,7 +35,7 @@ class SubscriptionDiagnosticsTest {
         val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, report, reason = SubscriptionDiagnostics.reason(error))
         assertTrue(text.contains("IMPORT_NO_USABLE_NODES"))
         assertTrue(text.contains("uTLS fingerprint"))
-        assertFalse(text.contains("private-name"))
+        assertTrue(text.contains("private-name"))
         assertFalse(text.contains("example.org"))
     }
 
@@ -44,7 +44,8 @@ class SubscriptionDiagnosticsTest {
             1, "private-name", "Unsupported QUIC uTLS fingerprint https://private.example/key", ImportIssueCode.UNSUPPORTED_FEATURE,
         )))
         val text = ImportResultFormatter.format(ImportOperationOutcome.KEPT_LKG, report)
-        assertFalse(text.contains("private"))
+        assertTrue(text.contains("private-name"))
+        assertFalse(text.contains("private.example"))
         assertFalse(text.contains("uTLS fingerprint"))
     }
 

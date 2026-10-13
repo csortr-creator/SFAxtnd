@@ -114,18 +114,19 @@ internal class SubscriptionContentParser(
             for (server in foreign.servers) accept(server.position, server.name) { server.convert() }
         } else if (content.startsWith("[")) {
             val array = JSONArray(content)
-            for (i in 0 until array.length()) accept(i + 1, "Сервер ${i + 1}", independent = false) {
-                array.optJSONObject(i) ?: error("Expected a server object")
+            for (i in 0 until array.length()) {
+                val source = array.optJSONObject(i)
+                val name = source?.optString("tag")?.takeIf { it.isNotBlank() }?.take(120)
+                    ?: "Сервер ${i + 1}"
+                accept(i + 1, name, independent = false) {
+                    source ?: error("Expected a server object")
+                }
             }
         } else {
             for ((index, rawLine) in content.lines().withIndex()) {
                 val line = rawLine.trim()
                 if (line.isEmpty() || line.startsWith('#') || line.startsWith("//")) continue
-                // Only the fragment is a display name; never persist the URI or credentials.
-                val name =
-                    runCatching { cleanNodeName(line.substringAfter('#', "Сервер ${index + 1}")) }
-                        .getOrDefault("Сервер ${index + 1}")
-                        .take(120)
+                val name = issueNameForLink(line, index + 1)
                 accept(index + 1, name) {
                     parseUriLines(line).singleOrNull() ?: error("Invalid or unsupported server link")
                 }
@@ -138,6 +139,21 @@ internal class SubscriptionContentParser(
         val report = SubscriptionImportReport(received, nodes.size, issues, warnings, foreign?.format ?: "Список ссылок")
         if (nodes.isEmpty()) throw SubscriptionResponseFailure(SubscriptionResponseProblem.NO_USABLE_NODES, report)
         return SubscriptionImportResult(buildSingBoxConfig(nodes, mode), report)
+    }
+
+    private fun issueNameForLink(line: String, position: Int): String {
+        val fallback = "Сервер $position"
+        // These are labels, not connection fields; extract before converting a failing node.
+        val label = when {
+            '#' in line -> line.substringAfter('#')
+            line.startsWith("vmess://") -> runCatching {
+                JSONObject(decodeBase64(line.removePrefix("vmess://").substringBefore('?'))
+                    .toString(StandardCharsets.UTF_8)).opt("ps") as? String
+            }.getOrNull()
+            else -> null
+        }
+        return runCatching { cleanNodeName(label?.takeIf { it.isNotBlank() } ?: fallback) }
+            .getOrDefault(fallback).take(120)
     }
 
     /**

@@ -44,7 +44,7 @@ internal object ImportResultFormatter {
                     append("\nОтклонено записей: ${report.issues.size}")
                     for (issue in report.issues.take(20)) {
                         // Legacy reports and provider names can contain arbitrary text.
-                        // Show the typed category and position, never raw name/reason/URI.
+                        // Render bounded display metadata; keep reasons typed and URI-free.
                         val category = SubscriptionDiagnostics.issueDetail(issue) ?: when (issue.code) {
                             ImportIssueCode.FORMAT_ERROR -> "Некорректный формат записи"
                             ImportIssueCode.PARSE_ERROR -> "Не удалось разобрать параметры"
@@ -52,7 +52,7 @@ internal object ImportResultFormatter {
                             ImportIssueCode.NODE_CORE_INVALID -> "Ядро отклонило параметры сервера"
                             ImportIssueCode.UNKNOWN -> "Причина пока не определена"
                         }
-                        append("\nЗапись ${issue.line}: $category [${issue.code.name}]")
+                        append("\nЗапись ${issue.line} · ${SubscriptionDiagnostics.issueName(issue)}: $category [${issue.code.name}]")
                     }
                     if (report.issues.size > 20) append("\nЕщё отклонено: ${report.issues.size - 20}")
                 }

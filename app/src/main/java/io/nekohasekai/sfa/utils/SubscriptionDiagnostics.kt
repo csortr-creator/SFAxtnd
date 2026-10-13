@@ -20,6 +20,22 @@ internal class SubscriptionResponseFailure(
 
 /** Stage markers remain internal; presentation emits only fixed codes/text. */
 internal object SubscriptionDiagnostics {
+    /** Display metadata only: never render a URI accidentally stored as a name. */
+    fun issueName(issue: SubscriptionImportIssue): String {
+        var inspected = issue.name
+        repeat(2) {
+            inspected = runCatching { ProxyLinkParser.decode(inspected) }.getOrDefault(inspected)
+        }
+        if (Regex("(?i)[a-z][a-z0-9+.-]*://|www\\.").containsMatchIn(inspected) ||
+            inspected.contains('@') ||
+            Regex("(?i)(password|passwd|token|uuid|authorization|private[_ -]?key|secret)\\s*[:=]").containsMatchIn(inspected) ||
+            Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").containsMatchIn(inspected)
+        ) return "Название скрыто: содержит данные подключения"
+        return issue.name.map { c ->
+            if (c.isISOControl() || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069') ' ' else c
+        }.joinToString("").trim().take(120).ifBlank { "Название не указано" }
+    }
+
     fun <T> at(stage: SubscriptionStage, block: () -> T): T =
         try { block() }
         catch (e: CancellationException) { throw e }

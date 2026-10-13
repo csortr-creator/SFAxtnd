@@ -44,7 +44,9 @@ class ImportResultFormatterTest {
         assertTrue(text.contains("Запись 42"))
         assertTrue(text.contains("NODE_CORE_INVALID"))
         assertTrue(text.contains("STALE"))
-        assertFalse(text.contains("private"))
+        assertTrue(text.contains("private-name"))
+        assertFalse(text.contains("private-uuid"))
+        assertFalse(text.contains("private-key"))
         assertFalse(text.contains("://"))
     }
 

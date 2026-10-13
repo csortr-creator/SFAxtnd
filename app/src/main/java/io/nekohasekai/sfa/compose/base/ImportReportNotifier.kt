@@ -51,7 +51,9 @@ internal object ImportReportNotifier {
                 is ManualPrepareResult.Failed -> ImportResultFormatter.format(
                     ImportOperationOutcome.KEPT_LKG, result.report, hadPreviousConfig = hadPrevious, reason = result.safeMessage,
                 )
-                is ManualPrepareResult.AwaitConfirmation -> "Ожидается подтверждение частичного обновления"
+                is ManualPrepareResult.AwaitConfirmation ->
+                    "Ожидается подтверждение частичного обновления\n" +
+                        ImportResultFormatter.partialPreview(result.pending.report)
             }
         }
 

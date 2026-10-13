@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
@@ -65,12 +67,9 @@ fun DashboardScreen(
             title = { Text("Частичный импорт") },
             text = {
                 Text(
-                    "${pending.profileName}\n\n" +
-                        "Получено: ${pending.received}\n" +
-                        "Импортировано: ${pending.imported}\n" +
-                        "Отклонено: ${pending.rejected}\n\n" +
-                        "Часть серверов не удалось импортировать. " +
-                        "Применение может уменьшить список доступных серверов.",
+                    text = "${pending.profileName}\n\n" +
+                        io.nekohasekai.sfa.utils.ImportResultFormatter.partialPreview(pending.report),
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                 )
             },
             confirmButton = {

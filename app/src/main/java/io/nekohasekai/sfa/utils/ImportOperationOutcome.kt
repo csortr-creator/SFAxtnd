@@ -26,6 +26,11 @@ enum class ImportOperationOutcome {
  * Never includes URLs, UUIDs, keys, or raw exception messages.
  */
 internal object ImportResultFormatter {
+    fun partialPreview(report: SubscriptionImportReport): String =
+        format(ImportOperationOutcome.KEPT_LKG, report).substringAfter('\n') +
+            "\n\nЧасть серверов не удалось импортировать. " +
+            "Применение может уменьшить список доступных серверов."
+
     fun format(
         outcome: ImportOperationOutcome,
         report: SubscriptionImportReport? = null,

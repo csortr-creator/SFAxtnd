@@ -7,6 +7,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ImportIssueNameTest {
+    @Test fun partialPreviewIdentifiesMissingNodesBeforeAnyApplyDecision() {
+        val report = SubscriptionImportReport(8, 6, listOf(
+            SubscriptionImportIssue(2, "Польша Hysteria2", "Unsupported QUIC uTLS fingerprint", ImportIssueCode.UNSUPPORTED_FEATURE),
+            SubscriptionImportIssue(4, "Финляндия Hysteria2", "Unsupported QUIC uTLS fingerprint", ImportIssueCode.UNSUPPORTED_FEATURE),
+        ))
+        val text = ImportResultFormatter.partialPreview(report)
+        assertTrue(text.contains("Получено: 8 · Импортировано: 6 · Отклонено: 2"))
+        assertTrue(text.contains("Запись 2 · Польша Hysteria2"))
+        assertTrue(text.contains("Запись 4 · Финляндия Hysteria2"))
+        assertTrue(text.contains("Применение может уменьшить"))
+        assertFalse(text.contains("Конфигурация обновлена"))
+        assertFalse(text.contains("Обновление не применено"))
+    }
+
+    @Test fun pendingPreviewUsesTheSameNameAndReasonPrivacyRules() {
+        val report = SubscriptionImportReport(2, 1, listOf(
+            SubscriptionImportIssue(1, "https://private.example/?token=TOP_SECRET", "raw reason TOP_SECRET", ImportIssueCode.PARSE_ERROR),
+        ))
+        val text = ImportResultFormatter.partialPreview(report)
+        assertTrue(text.contains("Название скрыто"))
+        assertFalse(text.contains("TOP_SECRET"))
+        assertFalse(text.contains("private.example"))
+    }
+
     private fun rejected(content: String): SubscriptionImportReport = try {
         SubscriptionContentParser().parse(content)
         throw AssertionError("Fixture must fail import")

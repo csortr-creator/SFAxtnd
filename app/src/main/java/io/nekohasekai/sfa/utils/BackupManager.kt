@@ -13,7 +13,7 @@ object BackupManager {
 
     suspend fun exportSettings(context: Context, uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val allSettings = Settings.instance.keyValuePairDao().all()
+            val allSettings = Settings.keyValuePairDao().all()
             val jsonArray = JSONArray()
 
             for (entity in allSettings) {
@@ -84,7 +84,7 @@ object BackupManager {
                 entities.add(entity)
             }
 
-            val dao = Settings.instance.keyValuePairDao()
+            val dao = Settings.keyValuePairDao()
             entities.forEach { dao.put(it) }
 
             Result.success(Unit)
